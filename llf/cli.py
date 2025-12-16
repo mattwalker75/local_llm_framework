@@ -152,6 +152,24 @@ Simply type your message and press Enter to chat with the LLM.
         if self.runtime.is_server_running():
             return True
 
+        # Check server control flags
+        if self.no_server_start:
+            console.print("[red]Server is not running and --no-server-start flag is set.[/red]")
+            console.print("[yellow]Please start the server manually with: llf server start[/yellow]")
+            return False
+
+        # If auto-start is not enabled, prompt the user
+        if not self.auto_start_server:
+            console.print("[yellow]Server is not running.[/yellow]")
+            response = Prompt.ask(
+                "Would you like to start the server?",
+                choices=["y", "n"],
+                default="y"
+            )
+            if response.lower() != 'y':
+                console.print("[yellow]Server not started. Exiting.[/yellow]")
+                return False
+
         console.print("[yellow]Starting LLM server...[/yellow]")
         console.print("[dim]This may take a minute or two...[/dim]")
 
@@ -397,7 +415,7 @@ def server_command(args) -> int:
         if args.action == 'status':
             # Check server status
             if runtime.is_server_running():
-                console.print(f"[green]✓[/green] Server is running on {config.get_vllm_url()}")
+                console.print(f"[green]✓[/green] Server is running on {config.get_server_url()}")
                 console.print(f"[cyan]Model: {config.model_name}[/cyan]")
                 return 0
             else:
@@ -407,7 +425,7 @@ def server_command(args) -> int:
         elif args.action == 'start':
             # Start server
             if runtime.is_server_running():
-                console.print(f"[yellow]Server is already running on {config.get_vllm_url()}[/yellow]")
+                console.print(f"[yellow]Server is already running on {config.get_server_url()}[/yellow]")
                 return 0
 
             # Ensure model is downloaded
@@ -421,11 +439,11 @@ def server_command(args) -> int:
                     console.print(f"[red]Failed to download model: {e}[/red]")
                     return 1
 
-            console.print(f"[yellow]Starting vLLM server with model {config.model_name}...[/yellow]")
+            console.print(f"[yellow]Starting llama-server with model {config.model_name}...[/yellow]")
             console.print("[dim]This may take a minute or two...[/dim]")
 
             runtime.start_server()
-            console.print(f"[green]✓ Server started successfully on {config.get_vllm_url()}[/green]")
+            console.print(f"[green]✓ Server started successfully on {config.get_server_url()}[/green]")
 
             if args.daemon:
                 console.print("[cyan]Server is running in daemon mode.[/cyan]")
@@ -476,7 +494,7 @@ def server_command(args) -> int:
 
             console.print("[dim]Starting server...[/dim]")
             runtime.start_server()
-            console.print(f"[green]✓ Server restarted successfully on {config.get_vllm_url()}[/green]")
+            console.print(f"[green]✓ Server restarted successfully on {config.get_server_url()}[/green]")
             return 0
 
     except Exception as e:
@@ -489,22 +507,38 @@ def main():
     """Main entry point for CLI application."""
     parser = argparse.ArgumentParser(
         prog='llf',
-        description='Local LLM Framework - Run LLMs locally with vLLM',
+        description='Local LLM Framework - Run LLMs locally with llama.cpp',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Chat commands
   llf                              Start interactive chat (default)
-  llf chat                         Start interactive chat
-  llf chat --model mistralai/Mistral-7B-Instruct-v0.2
-  llf download                     Download default model
-  llf download --model mistralai/Mistral-7B-Instruct-v0.2
+  llf chat                         Start interactive chat (prompts to start server if not running)
+  llf chat --auto-start-server     Auto-start server if not running (no prompt)
+  llf chat --no-server-start       Exit with error if server not running
+  llf chat --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  # Server management
+  llf server start                 Start llama-server (stays in foreground)
+  llf server start --daemon        Start server in background
+  llf server start --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf server stop                  Stop running server
+  llf server status                Check if server is running
+  llf server restart               Restart server with current model
+
+  # Model management (GGUF format)
+  llf download                     Download default GGUF model
+  llf download --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf list                         List downloaded models
   llf info                         Show model information
-  llf info --model mistralai/Mistral-7B-Instruct-v0.2
+  llf info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  # Configuration
   llf -d /custom/path              Set custom download directory
   llf --log-level DEBUG            Enable debug logging
 
-For more information, visit: https://github.com/your-repo/local_llm_framework
+Note: Requires llama.cpp compiled with llama-server binary.
+For setup instructions, see: https://github.com/ggml-org/llama.cpp
         """
     )
 
@@ -617,8 +651,8 @@ For more information, visit: https://github.com/your-repo/local_llm_framework
     # Server command
     server_parser = subparsers.add_parser(
         'server',
-        help='Manage vLLM server',
-        description='Start, stop, or check status of the vLLM inference server.'
+        help='Manage llama-server',
+        description='Start, stop, or check status of the llama.cpp inference server.'
     )
     server_parser.add_argument(
         'action',
@@ -665,13 +699,19 @@ For more information, visit: https://github.com/your-repo/local_llm_framework
         return list_command(args)
     elif args.command == 'info':
         return info_command(args)
+    elif args.command == 'server':
+        return server_command(args)
     elif args.command == 'chat' or args.command is None:
         # Override model if specified via --model parameter
         if hasattr(args, 'model') and args.model:
             config.model_name = args.model
 
+        # Get server control flags
+        auto_start = getattr(args, 'auto_start_server', False)
+        no_start = getattr(args, 'no_server_start', False)
+
         # Default to chat
-        cli = CLI(config)
+        cli = CLI(config, auto_start_server=auto_start, no_server_start=no_start)
         return cli.run()
     else:
         parser.print_help()

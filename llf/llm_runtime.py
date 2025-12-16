@@ -1,16 +1,15 @@
 """
 LLM runtime module for Local LLM Framework.
 
-This module manages the vLLM server lifecycle and provides inference capabilities.
+This module manages the llama-server lifecycle and provides inference capabilities.
 
-Design: Abstracts vLLM server management and uses OpenAI-compatible API for inference.
+Design: Abstracts llama-server management and uses OpenAI-compatible API for inference.
 Future: Can be extended to support different backends, streaming, and batch processing.
 """
 
 import subprocess
 import time
 import signal
-import sys
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import requests
@@ -26,10 +25,10 @@ logger = get_logger(__name__)
 
 class LLMRuntime:
     """
-    Manages vLLM server lifecycle and provides inference interface.
+    Manages llama-server lifecycle and provides inference interface.
 
     Responsibilities:
-    - Start and stop vLLM server
+    - Start and stop llama-server via wrapper script
     - Health checking
     - Execute inference via OpenAI-compatible API
     - Handle errors and timeouts
@@ -45,48 +44,54 @@ class LLMRuntime:
         """
         self.config = config
         self.model_manager = model_manager
-        self.vllm_process: Optional[subprocess.Popen] = None
+        self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[OpenAI] = None
 
-    def _get_vllm_command(self, model_path: Path) -> List[str]:
+    def _get_server_command(self, model_file_path: Path) -> List[str]:
         """
-        Build vLLM server command.
+        Build llama-server command using wrapper script.
 
         Args:
-            model_path: Path to the model directory.
+            model_file_path: Path to the GGUF model file.
 
         Returns:
             Command as list of strings.
         """
         cmd = [
-            sys.executable,  # Use same Python as current environment
-            "-m", "vllm.entrypoints.openai.api_server",
-            "--model", str(model_path),
-            "--host", self.config.vllm_host,
-            "--port", str(self.config.vllm_port),
-            "--gpu-memory-utilization", str(self.config.vllm_gpu_memory_utilization),
+            str(self.config.server_wrapper_script),
+            "--server-path", str(self.config.llama_server_path),
+            "--model-file", str(model_file_path),
+            "--host", self.config.server_host,
+            "--port", str(self.config.server_port),
         ]
-
-        # Optional max model length
-        if self.config.vllm_max_model_len:
-            cmd.extend(["--max-model-len", str(self.config.vllm_max_model_len)])
 
         return cmd
 
-    def start_server(self, model_name: Optional[str] = None, timeout: int = 300) -> None:
+    def start_server(self, model_name: Optional[str] = None, gguf_file: Optional[str] = None, timeout: int = 120) -> None:
         """
-        Start vLLM server.
+        Start llama-server.
 
         Args:
-            model_name: Model to load. If None, uses config's default model.
+            model_name: Model directory name. If None, uses config's default model.
+            gguf_file: GGUF file name within the model directory. If None, uses config's default.
             timeout: Maximum seconds to wait for server to become ready.
 
         Raises:
             RuntimeError: If server fails to start or become ready.
-            ValueError: If model is not downloaded.
+            ValueError: If model is not downloaded or llama-server binary not found.
         """
         if model_name is None:
             model_name = self.config.model_name
+
+        if gguf_file is None:
+            gguf_file = self.config.gguf_file
+
+        # Check if llama-server binary exists
+        if not self.config.llama_server_path.exists():
+            raise ValueError(
+                f"llama-server binary not found at: {self.config.llama_server_path}\n"
+                "Please compile llama.cpp first or configure the correct path."
+            )
 
         # Check if model is downloaded
         if not self.model_manager.is_model_downloaded(model_name):
@@ -97,18 +102,28 @@ class LLMRuntime:
 
         # Check if server is already running
         if self.is_server_running():
-            logger.warning("vLLM server is already running")
+            logger.warning("llama-server is already running")
             return
 
-        model_path = self.model_manager.get_model_path(model_name)
-        cmd = self._get_vllm_command(model_path)
+        # Get model directory and find GGUF file
+        model_dir = self.model_manager.get_model_path(model_name)
+        model_file_path = model_dir / gguf_file
 
-        logger.info(f"Starting vLLM server with model: {model_name}")
+        if not model_file_path.exists():
+            raise ValueError(
+                f"GGUF model file not found: {model_file_path}\n"
+                f"Available files in {model_dir}: {list(model_dir.glob('*.gguf'))}"
+            )
+
+        cmd = self._get_server_command(model_file_path)
+
+        logger.info(f"Starting llama-server with model: {model_name}")
+        logger.info(f"GGUF file: {gguf_file}")
         logger.debug(f"Command: {' '.join(cmd)}")
 
         try:
-            # Start vLLM server as subprocess
-            self.vllm_process = subprocess.Popen(
+            # Start llama-server as subprocess
+            self.server_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -116,21 +131,21 @@ class LLMRuntime:
                 bufsize=1,  # Line buffered
             )
 
-            logger.info("vLLM server process started, waiting for readiness...")
+            logger.info("llama-server process started, waiting for readiness...")
 
             # Wait for server to become ready
             start_time = time.time()
             while time.time() - start_time < timeout:
                 if self.is_server_ready():
-                    logger.info("vLLM server is ready!")
+                    logger.info("llama-server is ready!")
                     self._initialize_client()
                     return
 
                 # Check if process has terminated
-                if self.vllm_process.poll() is not None:
-                    stderr = self.vllm_process.stderr.read() if self.vllm_process.stderr else "No error output"
+                if self.server_process.poll() is not None:
+                    stderr = self.server_process.stderr.read() if self.server_process.stderr else "No error output"
                     raise RuntimeError(
-                        f"vLLM server process terminated unexpectedly:\n{stderr}"
+                        f"llama-server process terminated unexpectedly:\n{stderr}"
                     )
 
                 time.sleep(2)
@@ -138,69 +153,78 @@ class LLMRuntime:
             # Timeout reached
             self.stop_server()
             raise RuntimeError(
-                f"vLLM server failed to become ready within {timeout} seconds"
+                f"llama-server failed to become ready within {timeout} seconds"
             )
 
         except Exception as e:
             self.stop_server()
-            raise RuntimeError(f"Failed to start vLLM server: {e}") from e
+            raise RuntimeError(f"Failed to start llama-server: {e}") from e
 
     def stop_server(self) -> None:
-        """Stop vLLM server gracefully."""
-        if self.vllm_process is None:
-            logger.debug("No vLLM server process to stop")
+        """Stop llama-server gracefully."""
+        if self.server_process is None:
+            logger.debug("No llama-server process to stop")
             return
 
-        logger.info("Stopping vLLM server...")
+        logger.info("Stopping llama-server...")
 
         try:
             # Try graceful shutdown first
-            self.vllm_process.send_signal(signal.SIGTERM)
+            self.server_process.send_signal(signal.SIGTERM)
             try:
-                self.vllm_process.wait(timeout=10)
+                self.server_process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 # Force kill if graceful shutdown fails
                 logger.warning("Graceful shutdown timed out, force killing...")
-                self.vllm_process.kill()
-                self.vllm_process.wait()
+                self.server_process.kill()
+                self.server_process.wait()
 
-            logger.info("vLLM server stopped")
+            logger.info("llama-server stopped")
 
         except Exception as e:
-            logger.error(f"Error stopping vLLM server: {e}")
+            logger.error(f"Error stopping llama-server: {e}")
 
         finally:
-            self.vllm_process = None
+            self.server_process = None
             self.client = None
 
     def is_server_running(self) -> bool:
         """
-        Check if vLLM server process is running.
+        Check if llama-server is running and accessible.
+
+        This checks if the server is responding to health checks, which works
+        regardless of whether the server was started by this process or another.
 
         Returns:
-            True if server process is running, False otherwise.
+            True if server is running and accessible, False otherwise.
         """
-        return self.vllm_process is not None and self.vllm_process.poll() is None
+        # First check if we have a local process reference
+        if self.server_process is not None and self.server_process.poll() is None:
+            return True
+
+        # If we don't have a local process, check if server is accessible via HTTP
+        # This handles the case where the server was started in another terminal/process
+        return self.is_server_ready()
 
     def is_server_ready(self) -> bool:
         """
-        Check if vLLM server is ready to accept requests.
+        Check if llama-server is ready to accept requests.
 
         Returns:
             True if server is ready, False otherwise.
         """
         try:
-            health_url = f"{self.config.get_vllm_url()}/health"
+            health_url = f"{self.config.get_server_url()}/health"
             response = requests.get(health_url, timeout=5)
             return response.status_code == 200
         except Exception:
             return False
 
     def _initialize_client(self) -> None:
-        """Initialize OpenAI client for vLLM server."""
+        """Initialize OpenAI client for llama-server."""
         self.client = OpenAI(
             base_url=self.config.get_openai_api_base(),
-            api_key="EMPTY",  # vLLM doesn't require API key
+            api_key="EMPTY",  # llama-server doesn't require API key
         )
 
     def generate(
@@ -231,7 +255,7 @@ class LLMRuntime:
             RuntimeError: If server is not running or request fails.
         """
         if not self.is_server_running():
-            raise RuntimeError("vLLM server is not running")
+            raise RuntimeError("llama-server is not running")
 
         if self.client is None:
             self._initialize_client()
@@ -250,8 +274,7 @@ class LLMRuntime:
             'stop': params.get('stop', None),
         }
 
-        # vLLM-specific parameters (if using vLLM directly)
-        # For OpenAI API compatibility, some params may not be available
+        # llama-server-specific parameters
         extra_body = {}
         if 'top_k' in params:
             extra_body['top_k'] = params['top_k']
@@ -299,7 +322,7 @@ class LLMRuntime:
             RuntimeError: If server is not running or request fails.
         """
         if not self.is_server_running():
-            raise RuntimeError("vLLM server is not running")
+            raise RuntimeError("llama-server is not running")
 
         if self.client is None:
             self._initialize_client()
@@ -318,7 +341,7 @@ class LLMRuntime:
             'stop': params.get('stop', None),
         }
 
-        # vLLM-specific parameters
+        # llama-server-specific parameters
         extra_body = {}
         if 'top_k' in params:
             extra_body['top_k'] = params['top_k']

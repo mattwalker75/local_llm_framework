@@ -53,14 +53,15 @@ usage: llf [-h] [-d PATH] [-c FILE] [--cache-dir PATH] [--log-level LEVEL]
            [--version]
            COMMAND ...
 
-Local LLM Framework - Run LLMs locally with vLLM
+Local LLM Framework - Run LLMs locally with llama.cpp
 
 positional arguments:
   COMMAND               Available commands (default: chat)
     chat                Start interactive chat with LLM
-    download            Download a model from HuggingFace Hub
+    download            Download a model from HuggingFace Hub (GGUF format)
     list                List all downloaded models
     info                Show detailed model information
+    server              Manage llama-server
 
 options:
   -h, --help            show this help message and exit
@@ -73,12 +74,25 @@ options:
   --version             show program's version number and exit
 
 Examples:
+  # Chat commands
   llf                              Start interactive chat (default)
-  llf chat                         Start interactive chat
-  llf download                     Download default model
-  llf download --model mistralai/Mistral-7B-Instruct-v0.2
+  llf chat                         Start interactive chat (prompts to start server if not running)
+  llf chat --auto-start-server     Auto-start server if not running (no prompt)
+  llf chat --no-server-start       Exit with error if server not running
+
+  # Server management
+  llf server start                 Start llama-server (stays in foreground)
+  llf server start --daemon        Start server in background
+  llf server status                Check if server is running
+  llf server stop                  Stop running server
+
+  # Model management (GGUF format)
+  llf download                     Download default GGUF model
+  llf download --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf list                         List downloaded models
   llf info                         Show model information
+
+  # Configuration
   llf -d /custom/path              Set custom download directory
   llf --log-level DEBUG            Enable debug logging
 ```
@@ -90,6 +104,7 @@ llf download -h
 llf chat -h
 llf list -h
 llf info -h
+llf server -h
 ```
 
 ## Global Options
@@ -275,6 +290,117 @@ Verification:
   - Has Tokenizer: Yes
   - Has Weights: Yes
   - Valid: Yes
+```
+
+### 5. Server Command
+
+Manage the llama-server inference server independently. LLF runs a local server on `localhost:8000` that can be controlled separately from the chat interface.
+
+**Basic Server Management:**
+
+```bash
+# Start server in foreground (blocks terminal)
+llf server start
+
+# Start server in background (daemon mode)
+llf server start --daemon
+
+# Check server status
+llf server status
+
+# Stop the server
+llf server stop
+
+# Restart the server
+llf server restart
+```
+
+**Server with Model Selection:**
+
+```bash
+# Start server with specific model
+llf server start --model "mistralai/Mistral-7B-Instruct-v0.2"
+
+# Start in background with specific model
+llf server start --daemon --model "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+```
+
+**Chat Command with Server Control:**
+
+The chat command provides flags to control server behavior:
+
+```bash
+# Default: prompts user if server is not running
+llf chat
+
+# Auto-start server if not running (no prompt)
+llf chat --auto-start-server
+
+# Exit with error if server not running (don't start)
+llf chat --no-server-start
+
+# Combine with model selection
+llf chat --model "mistralai/Mistral-7B-Instruct-v0.2" --auto-start-server
+```
+
+**Example Output:**
+
+```bash
+$ llf server status
+✗ Server is not running
+
+$ llf server start --daemon
+Starting llama-server with model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF...
+This may take a minute or two...
+✓ Server started successfully on http://127.0.0.1:8000
+Server is running in daemon mode.
+Use 'llf server stop' to stop the server.
+
+$ llf server status
+✓ Server is running on http://127.0.0.1:8000
+Model: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+$ llf chat --no-server-start
+[Connects to existing server without prompting]
+
+$ llf server stop
+Stopping server...
+✓ Server stopped successfully
+```
+
+**Typical Workflows:**
+
+**Workflow 1: Long-Running Server**
+```bash
+# Start server once
+llf server start --daemon
+
+# Run multiple chat sessions
+llf chat --no-server-start
+# ... exit and return later ...
+llf chat --no-server-start
+
+# Stop when done
+llf server stop
+```
+
+**Workflow 2: Quick Session**
+```bash
+# Let chat command handle everything
+llf chat --auto-start-server
+# ... chat session ...
+# Server automatically stops on exit
+```
+
+**Workflow 3: Development/Testing**
+```bash
+# Start server in foreground to see logs
+llf server start
+
+# In another terminal, run commands
+llf chat --no-server-start
+
+# Ctrl+C in first terminal stops server
 ```
 
 ## Common Use Cases

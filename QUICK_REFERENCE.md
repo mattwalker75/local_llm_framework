@@ -18,6 +18,9 @@ pip install -e .
 | `llf download` | Download default model |
 | `llf list` | List downloaded models |
 | `llf info` | Show model info |
+| `llf server start` | Start llama-server |
+| `llf server stop` | Stop llama-server |
+| `llf server status` | Check server status |
 
 ## Global Options
 
@@ -48,11 +51,31 @@ llf download --token "hf_xxx"                   # Use API token
 | `exit` or `quit` | Exit chat |
 | `Ctrl+C` | Force quit |
 
+## Server Management
+
+```bash
+llf server start                       # Start server (foreground)
+llf server start --daemon              # Start in background
+llf server stop                        # Stop server
+llf server status                      # Check status
+llf server restart                     # Restart server
+
+# Chat with server control
+llf chat                               # Prompts to start if not running
+llf chat --auto-start-server           # Auto-start without prompt
+llf chat --no-server-start             # Exit if server not running
+```
+
 ## Examples
 
 ```bash
 # Quick start
 llf
+
+# Long-running server workflow
+llf server start --daemon
+llf chat --no-server-start
+llf server stop
 
 # Custom model directory
 llf -d ~/llm_models download

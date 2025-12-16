@@ -79,22 +79,35 @@ class ModelManager:
         Returns:
             True if model exists locally and appears valid, False otherwise.
         """
+        if model_name is None:
+            model_name = self.config.model_name
+
         model_path = self.get_model_path(model_name)
 
         if not model_path.exists():
             return False
 
-        # Basic validation: check for common model files
-        # Most models should have at least a config.json
-        required_files = ["config.json"]
-        for file_name in required_files:
-            if not (model_path / file_name).exists():
+        # Check if this is a GGUF model (contains "GGUF" in the name)
+        if "GGUF" in model_name or "gguf" in model_name:
+            # For GGUF models, check for .gguf files
+            gguf_files = list(model_path.glob("*.gguf"))
+            if not gguf_files:
                 logger.warning(
-                    f"Model directory exists but missing {file_name}: {model_path}"
+                    f"GGUF model directory exists but contains no .gguf files: {model_path}"
                 )
                 return False
-
-        return True
+            logger.debug(f"Found GGUF model files: {[f.name for f in gguf_files]}")
+            return True
+        else:
+            # For standard HuggingFace models, check for config.json
+            required_files = ["config.json"]
+            for file_name in required_files:
+                if not (model_path / file_name).exists():
+                    logger.warning(
+                        f"Model directory exists but missing {file_name}: {model_path}"
+                    )
+                    return False
+            return True
 
     def download_model(
         self,
@@ -185,6 +198,18 @@ class ModelManager:
         if not results['exists']:
             return results
 
+        # Check if this is a GGUF model
+        if "GGUF" in model_name or "gguf" in model_name:
+            # For GGUF models, we only check for .gguf files
+            gguf_files = list(model_path.glob("*.gguf"))
+            results['has_weights'] = len(gguf_files) > 0
+            # GGUF models don't need config or tokenizer files (they're embedded)
+            results['has_config'] = True  # Not applicable, mark as True
+            results['has_tokenizer'] = True  # Not applicable, mark as True
+            results['valid'] = results['has_weights']
+            return results
+
+        # For standard HuggingFace models:
         # Check for config.json
         results['has_config'] = (model_path / "config.json").exists()
 

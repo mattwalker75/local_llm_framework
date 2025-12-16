@@ -1,6 +1,6 @@
 # Local LLM Framework (LLF)
 
-A flexible Python framework designed to run Large Language Models (LLMs) locally on your computer using vLLM as the runtime engine.
+A flexible Python framework designed to run Large Language Models (LLMs) locally on your computer using llama.cpp as the runtime engine.
 
 ## Overview
 
@@ -11,18 +11,19 @@ Local LLM Framework (LLF) provides maximum flexibility, zero token costs, and fu
 ## Features
 
 ### Phase 1 (Current)
-- ✅ Run modern LLMs locally using vLLM
-- ✅ Automatic model download and management from HuggingFace Hub
+- ✅ Run modern LLMs locally using llama.cpp (llama-server)
+- ✅ Automatic model download and management from HuggingFace Hub (GGUF format)
 - ✅ Interactive CLI chat interface
 - ✅ Production-quality modular architecture
-- ✅ Comprehensive unit testing (90% coverage)
+- ✅ Comprehensive unit testing (88% coverage)
 - ✅ Clean installation and uninstallation process
-- ✅ Support for Qwen3-Coder-30B-A3B-Instruct (default model)
+- ✅ Support for Qwen2.5-Coder-7B-Instruct-GGUF (default model)
 - ✅ Configurable inference parameters
+- ✅ Independent server management (start/stop/status/restart)
+- ✅ OpenAI-compatible API interface
 
 ### Future Phases (Planned)
 - 🔮 GUI interface
-- 🔮 OpenAI-compatible API server
 - 🔮 Voice input/output
 - 🔮 Internet access capabilities
 - 🔮 Tool execution (commands, filesystem access)
@@ -31,28 +32,52 @@ Local LLM Framework (LLF) provides maximum flexibility, zero token costs, and fu
 ## System Requirements
 
 ### Hardware
-- **RAM:** Minimum 32GB recommended (default 30B model requires ~20GB+ VRAM/RAM)
-- **Storage:** 50GB+ free space for models
-- **GPU:** Optional but recommended (CUDA-compatible for best performance)
-  - CPU-only mode supported but slower
+- **RAM:** Minimum 8GB recommended (7B quantized model requires ~4-6GB RAM)
+- **Storage:** 10GB+ free space for models (quantized GGUF models are much smaller)
+- **GPU:** Optional (llama.cpp supports Metal on macOS, CUDA on Linux/Windows)
+  - CPU-only mode works well with quantized models
 
 ### Software
 - **Python:** 3.11 or higher
+- **llama.cpp:** Compiled with llama-server binary (see setup instructions below)
 - **Operating System:**
-  - macOS (Apple Silicon or Intel)
+  - macOS (Apple Silicon or Intel) ✅ Fully supported
   - Linux (Ubuntu 20.04+, other distributions)
   - Windows (via WSL2 recommended)
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Compile llama.cpp (One-Time Setup)
+
+**IMPORTANT:** You need to compile llama.cpp first to get the llama-server binary.
 
 ```bash
+# Clone llama.cpp repository (in parent directory of local_llm_framework)
+cd ..
+git clone https://github.com/ggml-org/llama.cpp
+cd llama.cpp
+
+# Compile llama.cpp
+mkdir build
+cd build
+cmake ..
+cmake --build . --config Release
+
+# Verify llama-server binary exists
+ls bin/llama-server  # Should show the binary
+```
+
+**Note:** By default, LLF expects llama-server at `../llama.cpp/build/bin/llama-server`. You can configure a different path in the config file if needed.
+
+### 2. Clone the Repository
+
+```bash
+cd ../  # Go back to parent directory
 git clone <repository-url>
 cd local_llm_framework
 ```
 
-### 2. Create Virtual Environment
+### 3. Create Virtual Environment
 
 **IMPORTANT:** LLF must be installed and run inside a Python virtual environment.
 
@@ -66,22 +91,21 @@ source llf_venv/bin/activate  # On macOS/Linux
 llf_venv\Scripts\activate  # On Windows
 ```
 
-### 3. Verify Virtual Environment is Active
+### 4. Verify Virtual Environment is Active
 
 ```bash
 # Should show path to llf_venv
 echo $VIRTUAL_ENV
 ```
 
-### 4. Install Dependencies
+### 5. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
 This will install:
-- vLLM (LLM runtime engine)
-- OpenAI Python client (for vLLM compatibility)
+- OpenAI Python client (for llama-server compatibility)
 - HuggingFace Hub (for model downloads)
 - Rich (CLI interface)
 - Pytest and coverage tools (for testing)
@@ -164,6 +188,51 @@ llf --log-level DEBUG chat
 llf --version
 ```
 
+### Server Management
+
+LLF runs a local llama-server on `localhost:8000` to serve model inference requests. You can manage this server independently:
+
+```bash
+# Start the server independently (runs in foreground)
+llf server start
+
+# Start the server in background (daemon mode)
+llf server start --daemon
+
+# Start server with a specific model
+llf server start --model "mistralai/Mistral-7B-Instruct-v0.2"
+
+# Check server status
+llf server status
+
+# Stop the server
+llf server stop
+
+# Restart the server
+llf server restart
+```
+
+**Chat with Server Auto-Start Control:**
+
+```bash
+# Default: prompts to start server if not running
+llf chat
+
+# Auto-start server without prompting
+llf chat --auto-start-server
+
+# Exit with error if server not running
+llf chat --no-server-start
+```
+
+**Typical Workflow:**
+
+1. Start server in background: `llf server start --daemon`
+2. Run multiple chat sessions: `llf chat --no-server-start`
+3. Stop server when done: `llf server stop`
+
+This allows you to keep the server running while executing multiple commands or chat sessions against it.
+
 ### Interactive Chat Commands
 
 Once in the chat interface:
@@ -196,9 +265,11 @@ For detailed usage information, see [USAGE.md](USAGE.md)
 ### Default Settings
 
 LLF uses sensible defaults:
-- **Model:** Qwen/Qwen3-Coder-30B-A3B-Instruct
+- **Model:** Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+- **GGUF File:** qwen2.5-coder-7b-instruct-q4_k_m.gguf (Q4_K_M quantization)
 - **Model Directory:** `./models/`
 - **Cache Directory:** `./.cache/`
+- **llama-server Path:** `../llama.cpp/build/bin/llama-server`
 - **Temperature:** 0.7
 - **Max Tokens:** 2048
 
@@ -208,7 +279,9 @@ Create a `config.json` file:
 
 ```json
 {
-  "model_name": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+  "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+  "llama_server_path": "/custom/path/to/llama-server",
   "inference_params": {
     "temperature": 0.7,
     "max_tokens": 2048
@@ -251,7 +324,7 @@ local_llm_framework/
 │   ├── __init__.py            # Package initialization
 │   ├── cli.py                 # CLI interface module
 │   ├── config.py              # Configuration management
-│   ├── llm_runtime.py         # vLLM runtime management
+│   ├── llm_runtime.py         # llama-server runtime management
 │   ├── logging_config.py      # Logging configuration
 │   └── model_manager.py       # Model download and management
 ├── tests/                      # Unit tests (90% coverage)
@@ -319,8 +392,8 @@ These limitations are intentional for Phase 1 and will be addressed in future re
 ### v0.1.0 (Phase 1) - Current
 - Initial release
 - CLI-based interaction
-- Automatic model management
-- vLLM integration
+- Automatic model management (GGUF format)
+- llama.cpp/llama-server integration
 - Comprehensive testing
 
 ---

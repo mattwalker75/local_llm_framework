@@ -9,7 +9,7 @@ import sys
 from io import StringIO
 
 from llf.config import Config
-from llf.cli import CLI, download_command, list_command, info_command
+from llf.cli import CLI, download_command, list_command, info_command, server_command
 
 
 @pytest.fixture
@@ -101,9 +101,25 @@ class TestCLI:
 
         assert result is True
 
+    @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
-    def test_start_server_success(self, mock_print, cli):
-        """Test successful server start."""
+    def test_start_server_success_with_prompt(self, mock_print, mock_prompt, cli):
+        """Test successful server start with interactive prompt."""
+        cli.runtime.is_server_running = Mock(return_value=False)
+        cli.runtime.start_server = Mock()
+        mock_prompt.return_value = 'y'
+
+        result = cli.start_server()
+
+        assert result is True
+        cli.runtime.start_server.assert_called_once()
+        mock_prompt.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    def test_start_server_auto_start(self, mock_print):
+        """Test server auto-start without prompt."""
+        config = Config()
+        cli = CLI(config, auto_start_server=True)
         cli.runtime.is_server_running = Mock(return_value=False)
         cli.runtime.start_server = Mock()
 
@@ -113,10 +129,35 @@ class TestCLI:
         cli.runtime.start_server.assert_called_once()
 
     @patch('llf.cli.console.print')
-    def test_start_server_failure(self, mock_print, cli):
+    def test_start_server_no_server_start(self, mock_print):
+        """Test server start with --no-server-start flag."""
+        config = Config()
+        cli = CLI(config, no_server_start=True)
+        cli.runtime.is_server_running = Mock(return_value=False)
+
+        result = cli.start_server()
+
+        assert result is False
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_start_server_user_declines(self, mock_print, mock_prompt, cli):
+        """Test server start when user declines prompt."""
+        cli.runtime.is_server_running = Mock(return_value=False)
+        mock_prompt.return_value = 'n'
+
+        result = cli.start_server()
+
+        assert result is False
+        mock_prompt.assert_called_once()
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_start_server_failure(self, mock_print, mock_prompt, cli):
         """Test server start failure."""
         cli.runtime.is_server_running = Mock(return_value=False)
         cli.runtime.start_server = Mock(side_effect=Exception("Start failed"))
+        mock_prompt.return_value = 'y'
 
         result = cli.start_server()
 
@@ -282,7 +323,7 @@ class TestCLICommands:
         from llf.cli import main
 
         mock_config = MagicMock()
-        mock_config.model_name = 'Qwen/Qwen3-Coder-30B-A3B-Instruct'
+        mock_config.model_name = 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF'
         mock_get_config.return_value = mock_config
         mock_cli_instance = MagicMock()
         mock_cli_class.return_value = mock_cli_instance
@@ -294,7 +335,7 @@ class TestCLICommands:
             result = main()
 
         # Verify default model was NOT overridden
-        assert mock_config.model_name == 'Qwen/Qwen3-Coder-30B-A3B-Instruct'
+        assert mock_config.model_name == 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF'
         assert result == 0
         mock_cli_instance.run.assert_called_once()
 
@@ -421,3 +462,235 @@ class TestCLICommands:
 
         assert result == 0
         mock_manager.get_model_info.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_status_running(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server status command when server is running."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = True
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.model_name = 'test/model'
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'status'
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.is_server_running.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_status_not_running(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server status command when server is not running."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = False
+
+        args = MagicMock()
+        args.action = 'status'
+
+        result = server_command(args)
+
+        assert result == 1
+        mock_runtime.is_server_running.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_start_success(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server start command success."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = False
+
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.model_name = 'test/model'
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'start'
+        args.daemon = True  # Use daemon to avoid sleep loop
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.start_server.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_start_already_running(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server start command when already running."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = True
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'start'
+        args.daemon = True
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.start_server.assert_not_called()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_start_downloads_model(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server start downloads model if needed."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = False
+
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = False
+        mock_manager.download_model.return_value = None
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.model_name = 'test/model'
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'start'
+        args.daemon = True
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_manager.download_model.assert_called_once()
+        mock_runtime.start_server.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_stop_success(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server stop command success."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = True
+
+        args = MagicMock()
+        args.action = 'stop'
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.stop_server.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_stop_not_running(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server stop command when not running."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = False
+
+        args = MagicMock()
+        args.action = 'stop'
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.stop_server.assert_not_called()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_restart_success(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server restart command success."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = True
+
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.model_name = 'test/model'
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'restart'
+
+        result = server_command(args)
+
+        assert result == 0
+        mock_runtime.stop_server.assert_called_once()
+        mock_runtime.start_server.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_with_model_override(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server command with --model parameter."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.return_value = False
+
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+
+        mock_config_instance = MagicMock()
+        mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config.return_value = mock_config_instance
+
+        args = MagicMock()
+        args.action = 'start'
+        args.model = 'custom/model'
+        args.daemon = True
+
+        result = server_command(args)
+
+        assert result == 0
+        assert mock_config_instance.model_name == 'custom/model'
+        mock_runtime.start_server.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.LLMRuntime')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_server_command_error_handling(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
+        """Test server command error handling."""
+        mock_runtime = MagicMock()
+        mock_runtime_class.return_value = mock_runtime
+        mock_runtime.is_server_running.side_effect = Exception("Server error")
+
+        args = MagicMock()
+        args.action = 'status'
+
+        result = server_command(args)
+
+        assert result == 1
