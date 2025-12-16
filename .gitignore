@@ -49,3 +49,8 @@ htmlcov/
 # Distribution
 *.spec
 
+# LLF-specific
+models/
+.cache/
+*.json.bak
+

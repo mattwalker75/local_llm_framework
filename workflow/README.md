@@ -37,6 +37,9 @@ with which prompts I passed to the AI.
          deactivate
          ```
 
+  * Install python packages
+    * pip install -r requirements.txt
+
 ----------------------------
 
 ### Below are the workflow that I went through to create the Pong Game
@@ -70,4 +73,70 @@ with which prompts I passed to the AI.
       d.  Should streaming responses be supported in CLI?
       e.  Should this eventually be packaged as a pip-installable tool?
 
+#### INITIAL DEVELOPMENT
+1.  Setup virtual environment ( python -m venv llf_venv )
+2.  Copy/Pasted PRD document into Claude Code for initial coding
+3.  Commands to use:
+      a.  Unit testing
+            *  pytest
+            *  pytest --cov=.
+      b.  Download a model
+            *  python -m llf.cli download
+      c.  Start chatting
+            *  python -m llf.cli   
+4.  Work on troubleshooting any issues and making sure unit testing
+    is working
+5.  Got a command line tool called "bin/llf" working with the 
+    following ability
+      a.  Configurable via a llf/config.py file
+      b.  Set a default LLM of Qwen/Qwen3-Coder-30B-A3B-Instruct
+      c.  Download LLM's to a local "models" directory
+      d.  Provide online help with -h
+      e.  Download LLM's from huggingface
+           a.  You can specify a specific model or use default
+      f.  List the downloaded LLM models
+      g.  Show info for the specific models
+      h.  Start the local LLM server using the LLM you specify
+      i.  Perform chat with LLM via the client program
+      j.  If you start the chat program, and the server is not
+          started, then it will start it
+6.  Found a painful bug.  Come to find out a Macbook can not
+    properly run vllm to host an LLM model.  To use vllm, I would
+    need to be running Linux on an Intel platfrom.  So I had to
+    take the following steps
+      a.  I had to use the Llama server code in the following
+          repo to host the LLM so I can use the OpenAI library
+          interface
+             - https://github.com/ggml-org/llama.cpp
+      b.  Here are the steps I performed to get the server working
+             -  cd llama.cpp
+             -  mkdir build
+             -  cd build
+             -  cmake ..
+             -  cmake --build . --config Release
+      c.  I wrote the following script to start the server:
+             - test_server.sh
+      d.  I wrote the following test client script:
+             - test_client.py
+      e.  Have to use LLM's in a GGUF format for the Llama server
+             - You can download the GGUF version from huggingface
+             - See if you can convert existing to GGUF
+7.  Need to have Claude completely rework the server side code to
+    accept parameters in a config file that satisfies the requirements
+    of the test_server.sh script.  Technically having a simple shell 
+    script would completely acceptable for the server.  Also need to
+    update the "llf" command to take this major server change into 
+    account.
+8.  We want to have a basic working server and basic working client
+    before considering the branch complete along with working unit 
+    tests.
+9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Enable the ability to paste a multi-line document as user input
+1.  Wnat to be able to copy the content of a PDF and paste it into the user
+    input window.
+
+     
+
+      
 

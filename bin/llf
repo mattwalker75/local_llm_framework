@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+"""
+Local LLM Framework - Executable entry point
+
+This script provides a clean command-line interface for LLF.
+It can be run directly without needing 'python -m'.
+"""
+
+import sys
+import os
+
+# Add the parent directory to the path so we can import llf
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+from llf.cli import main
+
+if __name__ == '__main__':
+    sys.exit(main())
