@@ -1,0 +1,76 @@
+
+I passed the following prompt to ChatGTP to generate a Product
+Requirement Document (PRD):
+
+Help me make a Production Requirements Document (PRD) for an app that
+I will vide code with Claude Code.  I am going to build a very flexible
+LLM Framework that enables you to run an LLM locally on your local 
+computer hardware to enable for the ultimate LLM flexibility without 
+having to worry about token costs for executing third party API's for 
+LLM access.  The following bullets are the objectives and guidelines 
+centered around the application.
+
+Program Name:  Local LLM Framework (LLF)
+Program Purpose:  Help run LLM's local on your computer while enabling different 
+                  methods to acces it.  The first method to focus on will be 
+                  via the CLI. 
+Programming Language:  Python
+LLM Runtime:  vllm
+
+Libraries:  Choose the best libraries for the specific tasks and needs.
+            If there are multiple libraries that can perform the task,
+            then you are allowed to consult the Internet to best determine
+            which library to pick
+Testing:  All code should have Unit Tests defined with a minimum goal of
+          80% code coverage
+Installation:  Track all required libraries in a requirements.txt file
+               that can be installed via the pip command
+Documentation:  Provide documentation on how to install, configure ( if
+                appliable ), play, and uninstall the game
+
+High Level Steps:
+   - Come up with method to download an LLM locally
+      - Will want to download the following LLM:  Qwen3-Coder
+   - Provide a CLI method to access the LLM to send and receive requests
+     to the LLM
+   - Determine proper architecture to use ( pick one below )
+      - Write python code to run the LLM as a service process locally and
+        have the user run a small client that sends and receives requests
+        to the LLM running as a service
+      - Write a single python program that that takes input from the user
+        and executes the LLM to generate a response all in the same program
+
+Before making any architectural decisions, note that the following funcationality
+is going to be developed in the future, but is considered out of scope for
+this part of development:
+   - Enable the use of different LLM's via a configuration file
+      - This enables the ability to download multiple LLM's and use a 
+        configuration file to control which LLM the app is using / pointing to
+   - Options for Users to call/execute the LLM 
+      - Enhance existing CLI 
+      - Through a GUI interface
+      - Via an API call
+   - Additional functionality via modules you can enable and disable
+      - Enable functionality to "hear" and "talk to" the LLM
+         - Text to Audio functionality to convert LLM text responses to 
+           audio for the end user to hear
+         - Audio to Text funcationality to convert the end user input from 
+           their voice to text to send to the LLM
+   - Additional functionality via tools you can enable and disable
+      - Ability to run commands locally on the computer
+         - Define what commands the LLM can execute via a configuration file
+      - Ability to create, read, update, and delete files
+         - Define what directories the LLM can access to create, read, update,
+           and delete files in along with their sub-directories
+         - This will be critical to use the LLM for coding
+      - Ability to access the Internet to access data
+
+Additional Notes:  
+   - Since vllm provides OpenAI compatible API's, we can use OpenAI Python
+     libraries to access the LLM
+
+You can ask me any needed questions to help think through the application
+to full y build out the PRD document.  Provide the PRD document in a form
+that I can simply copy from here and paste into Claude Code for coding.
+
+
