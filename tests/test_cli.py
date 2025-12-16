@@ -215,7 +215,8 @@ class TestCLI:
     def test_interactive_loop_chat(self, mock_print, mock_prompt, cli):
         """Test interactive loop with chat message."""
         mock_prompt.side_effect = ["Hello", "exit"]
-        cli.runtime.chat = Mock(return_value="Hi there!")
+        # Mock streaming response
+        cli.runtime.chat = Mock(return_value=iter(["Hi", " there", "!"]))
 
         cli.interactive_loop()
 
@@ -225,6 +226,8 @@ class TestCLI:
         assert len(call_args) >= 1
         assert call_args[0]['role'] == 'user'
         assert call_args[0]['content'] == 'Hello'
+        # Verify stream parameter was passed
+        assert cli.runtime.chat.call_args[1]['stream'] is True
 
     @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
@@ -238,12 +241,103 @@ class TestCLI:
         # Should handle error and continue
         assert mock_prompt.call_count == 2
 
+    @patch('builtins.input')
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_interactive_loop_multiline_input(self, mock_print, mock_prompt, mock_input, cli):
+        """Test interactive loop with multiline input (START/END)."""
+        # First prompt returns "START", then input() collects lines until "END"
+        mock_prompt.side_effect = ["START", "exit"]
+        mock_input.side_effect = [
+            "Line 1 of multiline content",
+            "Line 2 of multiline content",
+            "Line 3 of multiline content",
+            "END"
+        ]
+        cli.runtime.chat = Mock(return_value=iter(["Got your", " multiline input!"]))
+
+        cli.interactive_loop()
+
+        # Verify chat was called with multiline content
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args[0][0]
+        assert len(call_args) >= 1
+        assert call_args[0]['role'] == 'user'
+        # Should have joined the three lines with newlines
+        expected_content = "Line 1 of multiline content\nLine 2 of multiline content\nLine 3 of multiline content"
+        assert call_args[0]['content'] == expected_content
+
+    @patch('builtins.input')
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_interactive_loop_multiline_empty(self, mock_print, mock_prompt, mock_input, cli):
+        """Test interactive loop with empty multiline input."""
+        # START followed immediately by END
+        mock_prompt.side_effect = ["START", "exit"]
+        mock_input.side_effect = ["END"]
+        cli.runtime.chat = Mock()
+
+        cli.interactive_loop()
+
+        # Chat should not be called with empty input
+        cli.runtime.chat.assert_not_called()
+
+    @patch('builtins.input')
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_interactive_loop_multiline_case_insensitive(self, mock_print, mock_prompt, mock_input, cli):
+        """Test that START and END are case-insensitive."""
+        # Test with lowercase "start"
+        mock_prompt.side_effect = ["start", "exit"]
+        mock_input.side_effect = [
+            "Some content",
+            "end"  # lowercase end
+        ]
+        cli.runtime.chat = Mock(return_value=iter(["Response"]))
+
+        cli.interactive_loop()
+
+        # Should still work with lowercase
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args[0][0]
+        assert call_args[0]['content'] == "Some content"
+
+    @patch('builtins.input')
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    def test_interactive_loop_multiline_eof(self, mock_print, mock_prompt, mock_input, cli):
+        """Test multiline input handles EOFError gracefully."""
+        mock_prompt.side_effect = ["START", "exit"]
+        # Simulate Ctrl+D (EOF) during multiline input
+        mock_input.side_effect = [
+            "Line 1",
+            EOFError()
+        ]
+        cli.runtime.chat = Mock(return_value=iter(["Response"]))
+
+        cli.interactive_loop()
+
+        # Should capture the line before EOF
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args[0][0]
+        assert call_args[0]['content'] == "Line 1"
+
     def test_shutdown(self, cli):
-        """Test shutdown."""
+        """Test shutdown when server was started by this instance."""
         cli.runtime.stop_server = Mock()
+        cli.started_server = True  # Simulate that this instance started the server
         cli.shutdown()
 
         cli.runtime.stop_server.assert_called_once()
+
+    def test_shutdown_no_stop(self, cli):
+        """Test shutdown when server was NOT started by this instance."""
+        cli.runtime.stop_server = Mock()
+        cli.started_server = False  # Server was already running
+        cli.shutdown()
+
+        # Should NOT stop the server
+        cli.runtime.stop_server.assert_not_called()
 
     @patch.object(CLI, 'shutdown')
     @patch.object(CLI, 'interactive_loop')
@@ -301,6 +395,7 @@ class TestCLICommands:
         from llf.cli import main
 
         mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
         mock_get_config.return_value = mock_config
         mock_cli_instance = MagicMock()
         mock_cli_class.return_value = mock_cli_instance
@@ -323,6 +418,7 @@ class TestCLICommands:
         from llf.cli import main
 
         mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
         mock_config.model_name = 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF'
         mock_get_config.return_value = mock_config
         mock_cli_instance = MagicMock()
@@ -346,6 +442,7 @@ class TestCLICommands:
         from llf.cli import main
 
         mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
         mock_get_config.return_value = mock_config
         mock_cli_instance = MagicMock()
         mock_cli_class.return_value = mock_cli_instance
@@ -694,3 +791,272 @@ class TestCLICommands:
         result = server_command(args)
 
         assert result == 1
+
+
+class TestCLIQuestionMode:
+    """Test CLI non-interactive question mode."""
+
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_basic(self, mock_start, mock_ensure, cli):
+        """Test basic CLI question mode."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+        cli.runtime.chat = Mock(return_value="This is the answer")
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 0
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args
+        # Verify message structure
+        assert call_args[0][0][0]['role'] == 'user'
+        assert call_args[0][0][0]['content'] == "What is 2+2?"
+        # Verify stream=False for CLI mode
+        assert call_args[1]['stream'] is False
+
+    @patch.object(CLI, 'ensure_model_ready')
+    def test_cli_question_model_not_ready(self, mock_ensure, cli):
+        """Test CLI question mode when model not ready."""
+        mock_ensure.return_value = False
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 1
+
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_server_fails(self, mock_start, mock_ensure, cli):
+        """Test CLI question mode when server fails to start."""
+        mock_ensure.return_value = True
+        mock_start.return_value = False
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 1
+
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_chat_error(self, mock_start, mock_ensure, cli):
+        """Test CLI question mode when chat fails."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+        cli.runtime.chat = Mock(side_effect=Exception("Chat error"))
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 1
+
+    @patch.object(CLI, 'cli_question')
+    def test_run_with_cli_question(self, mock_cli_question, cli):
+        """Test run() method with CLI question parameter."""
+        mock_cli_question.return_value = 0
+
+        exit_code = cli.run(cli_question="What is the meaning of life?")
+
+        assert exit_code == 0
+        mock_cli_question.assert_called_once_with("What is the meaning of life?")
+
+    @patch.object(CLI, 'interactive_loop')
+    @patch.object(CLI, 'start_server')
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'print_welcome')
+    @patch.object(CLI, 'shutdown')
+    def test_run_without_cli_question(self, mock_shutdown, mock_welcome, mock_ensure,
+                                       mock_start, mock_loop, cli):
+        """Test run() method without CLI question (interactive mode)."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+
+        exit_code = cli.run(cli_question=None)
+
+        assert exit_code == 0
+        mock_welcome.assert_called_once()
+        mock_loop.assert_called_once()
+        mock_shutdown.assert_called_once()
+
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_cli_argument(self, mock_get_config, mock_cli_class):
+        """Test main function with --cli argument."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf chat --cli "What is AI?"
+        test_args = ['llf', 'chat', '--cli', 'What is AI?']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify CLI.run was called with the question
+        mock_cli_instance.run.assert_called_once()
+        call_args = mock_cli_instance.run.call_args
+        assert call_args[1]['cli_question'] == 'What is AI?'
+        assert result == 0
+
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_cli_and_model(self, mock_get_config, mock_cli_class):
+        """Test main function with --cli and --model arguments."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf chat --cli "What is AI?" --model "custom/model"
+        test_args = ['llf', 'chat', '--cli', 'What is AI?', '--model', 'custom/model']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify model was overridden
+        assert mock_config.model_name == 'custom/model'
+        # Verify CLI.run was called with the question
+        call_args = mock_cli_instance.run.call_args
+        assert call_args[1]['cli_question'] == 'What is AI?'
+        assert result == 0
+
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_cli_and_auto_start(self, mock_get_config, mock_cli_class):
+        """Test main function with --cli and --auto-start-server arguments."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf chat --cli "What is AI?" --auto-start-server
+        test_args = ['llf', 'chat', '--cli', 'What is AI?', '--auto-start-server']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify CLI was initialized with auto_start_server=True
+        call_args = mock_cli_class.call_args
+        assert call_args[1]['auto_start_server'] is True
+        # Verify question was passed
+        run_call_args = mock_cli_instance.run.call_args
+        assert run_call_args[1]['cli_question'] == 'What is AI?'
+        assert result == 0
+
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_cli_and_no_server_start(self, mock_get_config, mock_cli_class):
+        """Test main function with --cli and --no-server-start arguments."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf chat --cli "What is AI?" --no-server-start
+        test_args = ['llf', 'chat', '--cli', 'What is AI?', '--no-server-start']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify CLI was initialized with no_server_start=True
+        call_args = mock_cli_class.call_args
+        assert call_args[1]['no_server_start'] is True
+        # Verify question was passed
+        run_call_args = mock_cli_instance.run.call_args
+        assert run_call_args[1]['cli_question'] == 'What is AI?'
+        assert result == 0
+
+
+class TestLogging:
+    """Test logging configuration."""
+
+    @patch('llf.cli.setup_logging')
+    @patch('llf.cli.disable_external_loggers')
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_log_file(self, mock_get_config, mock_cli_class, mock_disable, mock_setup_logging):
+        """Test main function with --log-file argument."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf --log-file /tmp/llf.log chat
+        test_args = ['llf', '--log-file', '/tmp/llf.log', 'chat']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify setup_logging was called with log_file
+        mock_setup_logging.assert_called_once()
+        call_args = mock_setup_logging.call_args
+        assert call_args[1]['level'] == 'INFO'  # from config
+        assert call_args[1]['log_file'] == Path('/tmp/llf.log')
+        assert result == 0
+
+    @patch('llf.cli.setup_logging')
+    @patch('llf.cli.disable_external_loggers')
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_with_log_level_and_log_file(self, mock_get_config, mock_cli_class, mock_disable, mock_setup_logging):
+        """Test main function with both --log-level and --log-file."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf --log-level DEBUG --log-file /var/log/llf.log chat
+        test_args = ['llf', '--log-level', 'DEBUG', '--log-file', '/var/log/llf.log', 'chat']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify setup_logging was called with both parameters
+        mock_setup_logging.assert_called_once()
+        call_args = mock_setup_logging.call_args
+        assert call_args[1]['level'] == 'DEBUG'
+        assert call_args[1]['log_file'] == Path('/var/log/llf.log')
+        assert result == 0
+
+    @patch('llf.cli.setup_logging')
+    @patch('llf.cli.disable_external_loggers')
+    @patch('llf.cli.CLI')
+    @patch('llf.cli.get_config')
+    def test_main_without_log_file(self, mock_get_config, mock_cli_class, mock_disable, mock_setup_logging):
+        """Test main function without --log-file (console only)."""
+        from llf.cli import main
+
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'  # Default from config
+        mock_get_config.return_value = mock_config
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.run.return_value = 0
+
+        # Simulate: llf chat (no log file)
+        test_args = ['llf', 'chat']
+        with patch.object(sys, 'argv', test_args):
+            result = main()
+
+        # Verify setup_logging was called with log_file=None
+        mock_setup_logging.assert_called_once()
+        call_args = mock_setup_logging.call_args
+        assert call_args[1]['level'] == 'INFO'
+        assert call_args[1]['log_file'] is None
+        assert result == 0

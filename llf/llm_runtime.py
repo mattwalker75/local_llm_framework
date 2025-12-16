@@ -10,6 +10,7 @@ Future: Can be extended to support different backends, streaming, and batch proc
 import subprocess
 import time
 import signal
+import psutil
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import requests
@@ -160,24 +161,76 @@ class LLMRuntime:
             self.stop_server()
             raise RuntimeError(f"Failed to start llama-server: {e}") from e
 
+    def _find_llama_server_process(self) -> Optional[psutil.Process]:
+        """
+        Find the llama-server process by looking for running processes.
+
+        Returns:
+            psutil.Process if found, None otherwise.
+        """
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    # Check if this is a llama-server process
+                    cmdline = proc.info['cmdline']
+                    if cmdline and any('llama-server' in str(arg) for arg in cmdline):
+                        # Verify it's running on our configured port
+                        port = str(self.config.server_port)
+                        if any(port in str(arg) for arg in cmdline):
+                            logger.debug(f"Found llama-server process: PID={proc.pid}")
+                            return proc
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+        except Exception as e:
+            logger.debug(f"Error searching for llama-server process: {e}")
+        return None
+
     def stop_server(self) -> None:
         """Stop llama-server gracefully."""
-        if self.server_process is None:
-            logger.debug("No llama-server process to stop")
+        # If we have a local process reference, use it
+        if self.server_process is not None:
+            logger.info("Stopping llama-server (local process)...")
+            try:
+                # Try graceful shutdown first
+                self.server_process.send_signal(signal.SIGTERM)
+                try:
+                    self.server_process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    # Force kill if graceful shutdown fails
+                    logger.warning("Graceful shutdown timed out, force killing...")
+                    self.server_process.kill()
+                    self.server_process.wait()
+
+                logger.info("llama-server stopped")
+
+            except Exception as e:
+                logger.error(f"Error stopping llama-server: {e}")
+
+            finally:
+                self.server_process = None
+                self.client = None
             return
 
-        logger.info("Stopping llama-server...")
+        # Otherwise, try to find and kill the process
+        logger.info("Searching for llama-server process...")
+        proc = self._find_llama_server_process()
+
+        if proc is None:
+            logger.debug("No llama-server process found to stop")
+            return
+
+        logger.info(f"Found llama-server process (PID={proc.pid}), stopping...")
 
         try:
             # Try graceful shutdown first
-            self.server_process.send_signal(signal.SIGTERM)
+            proc.send_signal(signal.SIGTERM)
             try:
-                self.server_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+                proc.wait(timeout=10)
+            except psutil.TimeoutExpired:
                 # Force kill if graceful shutdown fails
                 logger.warning("Graceful shutdown timed out, force killing...")
-                self.server_process.kill()
-                self.server_process.wait()
+                proc.kill()
+                proc.wait()
 
             logger.info("llama-server stopped")
 
@@ -304,8 +357,9 @@ class LLMRuntime:
         self,
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
+        stream: bool = False,
         **kwargs
-    ) -> str:
+    ):
         """
         Generate chat completion from conversation messages.
 
@@ -313,10 +367,12 @@ class LLMRuntime:
             messages: List of message dicts with 'role' and 'content' keys.
                      Example: [{'role': 'user', 'content': 'Hello!'}]
             model: Model name (for multi-model setups). If None, uses loaded model.
+            stream: If True, returns an iterator of response chunks. If False, returns complete text.
             **kwargs: Additional parameters (same as generate()).
 
         Returns:
-            Generated response text.
+            If stream=False: Generated response text (str).
+            If stream=True: Iterator yielding response chunks (str).
 
         Raises:
             RuntimeError: If server is not running or request fails.
@@ -339,6 +395,7 @@ class LLMRuntime:
             'max_tokens': params.get('max_tokens', 2048),
             'top_p': params.get('top_p', 0.9),
             'stop': params.get('stop', None),
+            'stream': stream,
         }
 
         # llama-server-specific parameters
@@ -352,16 +409,23 @@ class LLMRuntime:
             openai_params['extra_body'] = extra_body
 
         try:
-            logger.debug(f"Generating chat completion with {len(messages)} messages")
+            logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream})")
 
             # Use chat completion API
             response = self.client.chat.completions.create(**openai_params)
 
-            # Extract response text
-            response_text = response.choices[0].message.content
-
-            logger.debug(f"Generated {len(response_text)} characters")
-            return response_text
+            if stream:
+                # Return iterator for streaming
+                def stream_generator():
+                    for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                return stream_generator()
+            else:
+                # Extract response text
+                response_text = response.choices[0].message.content
+                logger.debug(f"Generated {len(response_text)} characters")
+                return response_text
 
         except Exception as e:
             logger.error(f"Chat generation failed: {e}")

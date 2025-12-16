@@ -1,0 +1,19 @@
+I sent the following prompt to Claude to request the ability to 
+pass input on the CLI so I don't have to go into interactive mode
+and can just better run it from a script:
+
+Lets add the functionality to allow the ability to pass in your question
+to the LLM via a command line parameter.  This would mean you do not
+have to go into an interactive prompt engagement with the LLM.  This
+would enable the ability to interact with the LLM via an automated script.
+
+Maybe do something like this:  llf chat --cli "YOUR QUESTION HERE"
+
+It would be good to have it also support the existing auto server start, no 
+server start, and model flag like it currently does for the interactive 
+method.  Obviously with the CLI method, you can not do a streaming response,
+which is fine.  Still want to keep the streaming response for interactive
+mode.
+
+Remember to update all unit tests when complete
+

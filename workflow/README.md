@@ -42,7 +42,7 @@ with which prompts I passed to the AI.
 
 ----------------------------
 
-### Below are the workflow that I went through to create the Pong Game
+### Below are the workflow that I went through to create a Local LLM framework
 
 #### INITIALIZE APPLICATION REPO
 1.  Create a new repo, download the repo, and create a new branch to work in
@@ -135,6 +135,18 @@ with which prompts I passed to the AI.
 #### Enable the ability to paste a multi-line document as user input
 1.  Wnat to be able to copy the content of a PDF and paste it into the user
     input window.
+2.  I sent the following prompt to Claude to try to get the multi-line
+    input working
+       -  2_Multi_Line_Input_CLI.txt
+3.  Need to remember to remind Claude to add unit tests
+4.  Modified code to enable streaming of text from the LLM instead of
+    posting it all when complete
+5.  Want to be able to send a request via a command line parameter instead
+    of going into interactive mode.  I will create use the following prompt:
+       -  3_Input_as_Parm.txt
+6.  Add logging ability
+7.  Fix issues with server shutting down in daemon mode after the chat is 
+    complete
 
      
 
