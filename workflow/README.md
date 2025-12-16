@@ -37,6 +37,9 @@ with which prompts I passed to the AI.
          deactivate
          ```
 
+  * Install python packages
+    * pip install -r requirements.txt
+
 ----------------------------
 
 ### Below are the workflow that I went through to create the Pong Game
@@ -69,5 +72,33 @@ with which prompts I passed to the AI.
       c.  Should conversations be stateful or stateless?
       d.  Should streaming responses be supported in CLI?
       e.  Should this eventually be packaged as a pip-installable tool?
+
+#### INITIAL DEVELOPMENT
+1.  Setup virtual environment ( python -m venv llf_venv )
+2.  Copy/Pasted PRD document into Claude Code for initial coding
+3.  Commands to use:
+      a.  Unit testing
+            *  pytest
+            *  pytest --cov=.
+      b.  Download a model
+            *  python -m llf.cli download
+      c.  Start chatting
+            *  python -m llf.cli   
+4.  Work on troubleshooting any issues and making sure unit testing
+    is working
+5.  Got a command line tool called "bin/llf" working with the 
+    following ability
+      a.  Configurable via a llf/config.py file
+      b.  Set a default LLM of Qwen/Qwen3-Coder-30B-A3B-Instruct
+      c.  Download LLM's to a local "models" directory
+      d.  Provide online help with -h
+      e.  Download LLM's from huggingface
+           a.  You can specify a specific model or use default
+      f.  List the downloaded LLM models
+      g.  Show info for the specific models
+      h.  Start the local LLM server using the LLM you specify
+      i.  Perform chat with LLM via the client program
+      j.  If you start the chat program, and the server is not
+          started, then it will start it
 
 
