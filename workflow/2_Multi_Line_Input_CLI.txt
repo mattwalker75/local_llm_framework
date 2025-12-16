@@ -1,0 +1,9 @@
+I sent the following prompt to Claude to request the ability to 
+pass in multi-lines of text to the AI:
+
+we need to add the ability to add multi lines as user input to the LLM.  Since we are working with a regular terminal, I understand this could be challenging.  Maybe something like this:
+
+If you need to provide a multi line input to the LLM, then type START on the first line and then either type out your paragraphs and then type END on the last line.  This would signal to the system that everything between the START and END should be processed as a single request to the LLM.
+
+We want to be able to copy the content of documents, such as PDF docs, and paste them into the chat for the LLM to review
+

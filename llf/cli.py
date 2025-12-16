@@ -50,6 +50,7 @@ class CLI:
         self.running = False
         self.auto_start_server = auto_start_server
         self.no_server_start = no_server_start
+        self.started_server = False  # Track if this instance started the server
 
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -71,6 +72,8 @@ class CLI:
 **Mode:** Interactive Chat
 
 Type your messages and press Enter to send.
+For multiline input, type `START`, paste your content, then type `END`.
+
 Commands:
 - `exit` or `quit` - Exit the application
 - `help` - Show this help message
@@ -94,6 +97,15 @@ Press Ctrl+C to exit at any time.
 # Chat Mode
 
 Simply type your message and press Enter to chat with the LLM.
+
+# Multiline Input
+
+To provide multiline input (e.g., paste document content):
+1. Type `START` and press Enter
+2. Paste or type your content (can be multiple lines)
+3. Type `END` on a new line and press Enter
+
+This is useful for pasting content from PDFs, documents, or code files.
         """
         console.print(Panel(Markdown(help_text), title="Help", border_style="blue"))
 
@@ -150,6 +162,8 @@ Simply type your message and press Enter to chat with the LLM.
             True if server started successfully, False otherwise.
         """
         if self.runtime.is_server_running():
+            # Server is already running (started by another process)
+            self.started_server = False
             return True
 
         # Check server control flags
@@ -176,6 +190,7 @@ Simply type your message and press Enter to chat with the LLM.
         try:
             self.runtime.start_server()
             console.print("[green]Server started successfully![/green]")
+            self.started_server = True  # Mark that we started the server
             return True
         except Exception as e:
             console.print(f"[red]Failed to start server: {e}[/red]")
@@ -194,6 +209,24 @@ Simply type your message and press Enter to chat with the LLM.
 
                 if not user_input.strip():
                     continue
+
+                # Check for multiline input mode
+                if user_input.strip().upper() == "START":
+                    console.print("[dim]Multiline input mode. Type your content and END on a new line when done.[/dim]")
+                    lines = []
+                    while True:
+                        try:
+                            line = input()
+                            if line.strip().upper() == "END":
+                                break
+                            lines.append(line)
+                        except EOFError:
+                            break
+                    user_input = "\n".join(lines)
+
+                    if not user_input.strip():
+                        console.print("[yellow]Empty multiline input, skipping.[/yellow]")
+                        continue
 
                 # Handle commands
                 command = user_input.strip().lower()
@@ -216,7 +249,7 @@ Simply type your message and press Enter to chat with the LLM.
                     continue
 
                 # Generate response
-                console.print("[bold blue]Assistant:[/bold blue]", end=" ")
+                console.print("[bold blue]Assistant:[/bold blue] ", end="")
 
                 try:
                     # Build conversation context
@@ -225,17 +258,24 @@ Simply type your message and press Enter to chat with the LLM.
                         'content': user_input
                     })
 
-                    # Generate response using chat API
-                    response = self.runtime.chat(conversation_history)
+                    # Generate response using streaming chat API
+                    stream = self.runtime.chat(conversation_history, stream=True)
 
-                    # Add to history
+                    # Collect response chunks for history
+                    response_chunks = []
+                    for chunk in stream:
+                        console.print(chunk, end="", markup=False)
+                        response_chunks.append(chunk)
+
+                    # Complete the line
+                    console.print()
+
+                    # Combine chunks and add to history
+                    full_response = "".join(response_chunks)
                     conversation_history.append({
                         'role': 'assistant',
-                        'content': response
+                        'content': full_response
                     })
-
-                    # Display response
-                    console.print(response)
 
                 except Exception as e:
                     console.print(f"[red]Error generating response: {e}[/red]")
@@ -249,19 +289,67 @@ Simply type your message and press Enter to chat with the LLM.
                 console.print(f"[red]Error: {e}[/red]")
                 logger.error(f"Interactive loop error: {e}")
 
-    def shutdown(self) -> None:
-        """Cleanup and shutdown."""
-        logger.info("Shutting down CLI...")
-        self.runtime.stop_server()
-
-    def run(self) -> int:
+    def cli_question(self, question: str) -> int:
         """
-        Run the CLI application.
+        Handle non-interactive CLI question mode.
+
+        Args:
+            question: The question to ask the LLM.
 
         Returns:
             Exit code (0 for success, non-zero for errors).
         """
         try:
+            # Ensure model is downloaded
+            if not self.ensure_model_ready():
+                return 1
+
+            # Start server
+            if not self.start_server():
+                return 1
+
+            # Build message for LLM
+            messages = [{'role': 'user', 'content': question}]
+
+            # Generate response (non-streaming for CLI mode)
+            response = self.runtime.chat(messages, stream=False)
+
+            # Print response
+            console.print(response)
+
+            return 0
+
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            logger.error(f"CLI question error: {e}")
+            return 1
+
+    def shutdown(self) -> None:
+        """Cleanup and shutdown."""
+        logger.info("Shutting down CLI...")
+        # Only stop the server if this CLI instance started it
+        if self.started_server:
+            logger.info("Stopping server (started by this instance)...")
+            self.runtime.stop_server()
+        else:
+            logger.info("Server was not started by this instance, leaving it running...")
+
+    def run(self, cli_question: Optional[str] = None) -> int:
+        """
+        Run the CLI application.
+
+        Args:
+            cli_question: Optional question for non-interactive CLI mode.
+
+        Returns:
+            Exit code (0 for success, non-zero for errors).
+        """
+        try:
+            # CLI mode: single question and exit
+            if cli_question:
+                return self.cli_question(cli_question)
+
+            # Interactive mode
             self.print_welcome()
 
             # Ensure model is downloaded
@@ -511,12 +599,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Chat commands
+  # Chat commands (interactive mode)
   llf                              Start interactive chat (default)
   llf chat                         Start interactive chat (prompts to start server if not running)
   llf chat --auto-start-server     Auto-start server if not running (no prompt)
   llf chat --no-server-start       Exit with error if server not running
   llf chat --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  # CLI mode (non-interactive, for scripting)
+  llf chat --cli "What is 2+2?"                    Ask a single question and exit
+  llf chat --cli "Explain Python" --auto-start-server
+  llf chat --cli "Code review" --model custom/model
 
   # Server management
   llf server start                 Start llama-server (stays in foreground)
@@ -536,6 +629,8 @@ Examples:
   # Configuration
   llf -d /custom/path              Set custom download directory
   llf --log-level DEBUG            Enable debug logging
+  llf --log-file llf.log           Log to file (in addition to console)
+  llf --log-level DEBUG --log-file /var/log/llf.log
 
 Note: Requires llama.cpp compiled with llama-server binary.
 For setup instructions, see: https://github.com/ggml-org/llama.cpp
@@ -567,9 +662,16 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
+        default=None,
         metavar='LEVEL',
-        help='Set logging level (default: INFO)'
+        help='Set logging level (default: from config or INFO)'
+    )
+
+    parser.add_argument(
+        '--log-file',
+        type=Path,
+        metavar='PATH',
+        help='Path to log file. If specified, logs to both console and file.'
     )
 
     parser.add_argument(
@@ -605,6 +707,11 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         '--no-server-start',
         action='store_true',
         help='Do not start server if not running (exit with error instead)'
+    )
+    chat_parser.add_argument(
+        '--cli',
+        metavar='QUESTION',
+        help='Non-interactive mode: ask a single question and exit (for scripting)'
     )
 
     # Download command
@@ -673,15 +780,19 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     # Parse arguments
     args = parser.parse_args()
 
-    # Setup logging
-    setup_logging(level=args.log_level)
-    disable_external_loggers()
-
-    # Load or create config
+    # Load or create config first (to get log_level if not specified on CLI)
     if args.config:
         config = get_config(args.config)
     else:
         config = get_config()
+
+    # Determine log level: CLI argument takes precedence over config
+    log_level = args.log_level if args.log_level else getattr(config, 'log_level', 'INFO')
+
+    # Setup logging
+    log_file = getattr(args, 'log_file', None)
+    setup_logging(level=log_level, log_file=log_file)
+    disable_external_loggers()
 
     # Override config with command-line arguments
     if args.download_dir:
@@ -710,9 +821,12 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         auto_start = getattr(args, 'auto_start_server', False)
         no_start = getattr(args, 'no_server_start', False)
 
+        # Get CLI question if provided
+        cli_question = getattr(args, 'cli', None)
+
         # Default to chat
         cli = CLI(config, auto_start_server=auto_start, no_server_start=no_start)
-        return cli.run()
+        return cli.run(cli_question=cli_question)
     else:
         parser.print_help()
         return 0

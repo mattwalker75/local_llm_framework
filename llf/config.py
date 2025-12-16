@@ -51,7 +51,8 @@ class Config:
     }
 
     # Logging settings
-    LOG_LEVEL: str = "INFO"
+    #LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "ERROR"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     def __init__(self, config_file: Optional[Path] = None):

@@ -335,6 +335,72 @@ class TestLLMRuntime:
         assert call_args[1]['temperature'] == 0.3
         assert call_args[1]['top_p'] == 0.95
 
+    @patch('llf.llm_runtime.OpenAI')
+    def test_chat_streaming(self, mock_openai_class, runtime):
+        """Test chat with streaming enabled."""
+        runtime.server_process = MagicMock()
+        runtime.server_process.poll.return_value = None
+
+        mock_client = MagicMock()
+
+        # Mock streaming response chunks
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = "Hello"
+
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = " world"
+
+        chunk3 = MagicMock()
+        chunk3.choices = [MagicMock()]
+        chunk3.choices[0].delta.content = "!"
+
+        mock_client.chat.completions.create.return_value = [chunk1, chunk2, chunk3]
+        runtime.client = mock_client
+
+        messages = [{"role": "user", "content": "Hello"}]
+        stream = runtime.chat(messages, stream=True)
+
+        # Collect streamed chunks
+        chunks = list(stream)
+        assert chunks == ["Hello", " world", "!"]
+
+        # Verify stream parameter was passed
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args[1]['stream'] is True
+
+    @patch('llf.llm_runtime.OpenAI')
+    def test_chat_streaming_with_none_content(self, mock_openai_class, runtime):
+        """Test chat streaming handles chunks with no content."""
+        runtime.server_process = MagicMock()
+        runtime.server_process.poll.return_value = None
+
+        mock_client = MagicMock()
+
+        # Mock streaming response with some None content chunks
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = None  # Empty chunk
+
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = "Hello"
+
+        chunk3 = MagicMock()
+        chunk3.choices = [MagicMock()]
+        chunk3.choices[0].delta.content = None  # Empty chunk
+
+        mock_client.chat.completions.create.return_value = [chunk1, chunk2, chunk3]
+        runtime.client = mock_client
+
+        messages = [{"role": "user", "content": "Hello"}]
+        stream = runtime.chat(messages, stream=True)
+
+        # Should only yield non-None chunks
+        chunks = list(stream)
+        assert chunks == ["Hello"]
+
     def test_context_manager(self, runtime):
         """Test context manager stops server on exit."""
         runtime.stop_server = Mock()
