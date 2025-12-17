@@ -163,58 +163,58 @@ class TestCLI:
 
         assert result is False
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_exit(self, mock_print, mock_prompt, cli):
+    def test_interactive_loop_exit(self, mock_print, mock_input, cli):
         """Test interactive loop with exit command."""
-        mock_prompt.side_effect = ["exit"]
+        mock_input.side_effect = ["exit"]
 
         cli.interactive_loop()
 
         # After exit, running should be False
         # Note: The loop sets running=True at start, then breaks on 'exit'
         # The running flag tracks whether we're IN the loop, not whether we exited
-        assert mock_prompt.call_count == 1
+        assert mock_input.call_count == 1
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
     @patch.object(CLI, 'print_help')
-    def test_interactive_loop_help(self, mock_help, mock_print, mock_prompt, cli):
+    def test_interactive_loop_help(self, mock_help, mock_print, mock_input, cli):
         """Test interactive loop with help command."""
-        mock_prompt.side_effect = ["help", "exit"]
+        mock_input.side_effect = ["help", "exit"]
 
         cli.interactive_loop()
 
         mock_help.assert_called_once()
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
     @patch.object(CLI, 'print_info')
-    def test_interactive_loop_info(self, mock_info, mock_print, mock_prompt, cli):
+    def test_interactive_loop_info(self, mock_info, mock_print, mock_input, cli):
         """Test interactive loop with info command."""
-        mock_prompt.side_effect = ["info", "exit"]
+        mock_input.side_effect = ["info", "exit"]
 
         cli.interactive_loop()
 
         mock_info.assert_called_once()
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
     @patch('llf.cli.console.clear')
     @patch.object(CLI, 'print_welcome')
-    def test_interactive_loop_clear(self, mock_welcome, mock_clear, mock_print, mock_prompt, cli):
+    def test_interactive_loop_clear(self, mock_welcome, mock_clear, mock_print, mock_input, cli):
         """Test interactive loop with clear command."""
-        mock_prompt.side_effect = ["clear", "exit"]
+        mock_input.side_effect = ["clear", "exit"]
 
         cli.interactive_loop()
 
         mock_clear.assert_called_once()
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_chat(self, mock_print, mock_prompt, cli):
+    def test_interactive_loop_chat(self, mock_print, mock_input, cli):
         """Test interactive loop with chat message."""
-        mock_prompt.side_effect = ["Hello", "exit"]
+        mock_input.side_effect = ["Hello", "exit"]
         # Mock streaming response
         cli.runtime.chat = Mock(return_value=iter(["Hi", " there", "!"]))
 
@@ -229,30 +229,30 @@ class TestCLI:
         # Verify stream parameter was passed
         assert cli.runtime.chat.call_args[1]['stream'] is True
 
-    @patch('llf.cli.Prompt.ask')
+    @patch('builtins.input')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_chat_error(self, mock_print, mock_prompt, cli):
+    def test_interactive_loop_chat_error(self, mock_print, mock_input, cli):
         """Test interactive loop with chat error."""
-        mock_prompt.side_effect = ["Hello", "exit"]
+        mock_input.side_effect = ["Hello", "exit"]
         cli.runtime.chat = Mock(side_effect=Exception("Chat failed"))
 
         cli.interactive_loop()
 
         # Should handle error and continue
-        assert mock_prompt.call_count == 2
+        assert mock_input.call_count == 2
 
     @patch('builtins.input')
-    @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_multiline_input(self, mock_print, mock_prompt, mock_input, cli):
+    def test_interactive_loop_multiline_input(self, mock_print, mock_input, cli):
         """Test interactive loop with multiline input (START/END)."""
-        # First prompt returns "START", then input() collects lines until "END"
-        mock_prompt.side_effect = ["START", "exit"]
+        # First input returns "START", then input() collects lines until "END"
         mock_input.side_effect = [
+            "START",
             "Line 1 of multiline content",
             "Line 2 of multiline content",
             "Line 3 of multiline content",
-            "END"
+            "END",
+            "exit"
         ]
         cli.runtime.chat = Mock(return_value=iter(["Got your", " multiline input!"]))
 
@@ -268,13 +268,11 @@ class TestCLI:
         assert call_args[0]['content'] == expected_content
 
     @patch('builtins.input')
-    @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_multiline_empty(self, mock_print, mock_prompt, mock_input, cli):
+    def test_interactive_loop_multiline_empty(self, mock_print, mock_input, cli):
         """Test interactive loop with empty multiline input."""
         # START followed immediately by END
-        mock_prompt.side_effect = ["START", "exit"]
-        mock_input.side_effect = ["END"]
+        mock_input.side_effect = ["START", "END", "exit"]
         cli.runtime.chat = Mock()
 
         cli.interactive_loop()
@@ -283,15 +281,15 @@ class TestCLI:
         cli.runtime.chat.assert_not_called()
 
     @patch('builtins.input')
-    @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_multiline_case_insensitive(self, mock_print, mock_prompt, mock_input, cli):
+    def test_interactive_loop_multiline_case_insensitive(self, mock_print, mock_input, cli):
         """Test that START and END are case-insensitive."""
         # Test with lowercase "start"
-        mock_prompt.side_effect = ["start", "exit"]
         mock_input.side_effect = [
+            "start",
             "Some content",
-            "end"  # lowercase end
+            "end",  # lowercase end
+            "exit"
         ]
         cli.runtime.chat = Mock(return_value=iter(["Response"]))
 
@@ -303,15 +301,15 @@ class TestCLI:
         assert call_args[0]['content'] == "Some content"
 
     @patch('builtins.input')
-    @patch('llf.cli.Prompt.ask')
     @patch('llf.cli.console.print')
-    def test_interactive_loop_multiline_eof(self, mock_print, mock_prompt, mock_input, cli):
+    def test_interactive_loop_multiline_eof(self, mock_print, mock_input, cli):
         """Test multiline input handles EOFError gracefully."""
-        mock_prompt.side_effect = ["START", "exit"]
         # Simulate Ctrl+D (EOF) during multiline input
         mock_input.side_effect = [
+            "START",
             "Line 1",
-            EOFError()
+            EOFError(),  # This breaks out of multiline mode
+            "exit"  # Need to exit the main loop
         ]
         cli.runtime.chat = Mock(return_value=iter(["Response"]))
 

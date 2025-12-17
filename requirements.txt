@@ -1,9 +1,6 @@
 # Core dependencies for Local LLM Framework
 
-# LLM Runtime
-vllm>=0.6.0
-
-# OpenAI API client (for vLLM compatibility)
+# OpenAI API client (for llama.cpp and external API compatibility)
 openai>=1.0.0
 
 # Model downloading
@@ -27,7 +24,3 @@ pytest-mock>=3.12.0
 black>=24.0.0
 flake8>=7.0.0
 mypy>=1.8.0
-
-# Try Ollama server due to issues with vllm on my mac
-llama-cpp-python[server]
-llama_cpp

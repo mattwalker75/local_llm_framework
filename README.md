@@ -1,10 +1,10 @@
 # Local LLM Framework (LLF)
 
-A flexible Python framework designed to run Large Language Models (LLMs) locally on your computer using llama.cpp as the runtime engine.
+A flexible Python framework designed to run Large Language Models (LLMs) locally using llama.cpp, or connect to external LLM APIs (OpenAI, Anthropic, etc.).
 
 ## Overview
 
-Local LLM Framework (LLF) provides maximum flexibility, zero token costs, and full local control while exposing LLMs through multiple access methods. Phase 1 focuses exclusively on CLI-based interaction with plans for future expansion into API servers, GUIs, and advanced features.
+Local LLM Framework (LLF) provides maximum flexibility - run models locally for zero token costs and full privacy, or seamlessly switch to external APIs when needed. Phase 1 focuses on CLI-based interaction with plans for future expansion into API servers, GUIs, and advanced features.
 
 **Current Version:** 0.1.0 (Phase 1)
 
@@ -12,14 +12,16 @@ Local LLM Framework (LLF) provides maximum flexibility, zero token costs, and fu
 
 ### Phase 1 (Current)
 - ✅ Run modern LLMs locally using llama.cpp (llama-server)
+- ✅ Connect to external LLM APIs (OpenAI, Anthropic, etc.)
+- ✅ Seamless switching between local and external LLMs via config
 - ✅ Automatic model download and management from HuggingFace Hub (GGUF format)
-- ✅ Interactive CLI chat interface
+- ✅ Interactive CLI chat interface with colored output
 - ✅ Production-quality modular architecture
-- ✅ Comprehensive unit testing (88% coverage)
+- ✅ Comprehensive unit testing (100% test passing rate)
 - ✅ Clean installation and uninstallation process
-- ✅ Support for Qwen2.5-Coder-7B-Instruct-GGUF (default model)
-- ✅ Configurable inference parameters
-- ✅ Independent server management (start/stop/status/restart)
+- ✅ Support for Qwen2.5-Coder-7B-Instruct-GGUF (default local model)
+- ✅ Configurable inference parameters per API
+- ✅ Independent server management (start/stop/status/restart for local LLM)
 - ✅ OpenAI-compatible API interface
 
 ### Future Phases (Planned)
@@ -98,17 +100,32 @@ llf_venv\Scripts\activate  # On Windows
 echo $VIRTUAL_ENV
 ```
 
-### 5. Install Dependencies
+### 5. Install LLF Package
+
+**Important:** Use `pip install -e .` (NOT `python setup.py install`)
 
 ```bash
-pip install -r requirements.txt
+# Install in editable mode (recommended)
+pip install -e .
 ```
 
-This will install:
-- OpenAI Python client (for llama-server compatibility)
+**What this does:**
+- Reads `setup.py` and installs all dependencies from `requirements.txt`
+- Creates the `llf` command (entry point)
+- Installs in "editable" mode - code changes take effect immediately
+- Modern, recommended approach (running `setup.py` directly is deprecated)
+
+**Installed dependencies:**
+- OpenAI Python client (for llama-server and external API compatibility)
 - HuggingFace Hub (for model downloads)
 - Rich (CLI interface)
+- Requests, psutil (HTTP requests and process management)
 - Pytest and coverage tools (for testing)
+
+**Optional: Install with dev tools:**
+```bash
+pip install -e .[dev]  # Includes pytest, flake8, mypy, black
+```
 
 ## Usage
 
@@ -118,8 +135,8 @@ This will install:
 # Activate virtual environment
 source llf_venv/bin/activate
 
-# Install LLF command (one-time setup)
-pip install -e .
+# Verify LLF command is available
+llf --version
 
 # Run LLF
 llf
@@ -262,35 +279,79 @@ For detailed usage information, see [USAGE.md](USAGE.md)
 
 ## Configuration
 
-### Default Settings
+### Default Settings (Local LLM)
 
-LLF uses sensible defaults:
+LLF uses sensible defaults for local llama.cpp runtime:
 - **Model:** Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 - **GGUF File:** qwen2.5-coder-7b-instruct-q4_k_m.gguf (Q4_K_M quantization)
 - **Model Directory:** `./models/`
 - **Cache Directory:** `./.cache/`
 - **llama-server Path:** `../llama.cpp/build/bin/llama-server`
+- **API Base URL:** `http://127.0.0.1:8000/v1`
 - **Temperature:** 0.7
 - **Max Tokens:** 2048
 
-### Custom Configuration
+### Local LLM Configuration
 
-Create a `config.json` file:
+Create a `config.json` file for local llama.cpp:
 
 ```json
 {
-  "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-  "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-  "llama_server_path": "/custom/path/to/llama-server",
+  "local_llm_server": {
+    "llama_server_path": "../llama.cpp/build/bin/llama-server",
+    "server_host": "127.0.0.1",
+    "server_port": 8000,
+    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+  },
+  "llm_endpoint": {
+    "api_base_url": "http://127.0.0.1:8000/v1",
+    "api_key": "EMPTY",
+    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+  },
   "inference_params": {
     "temperature": 0.7,
-    "max_tokens": 2048
+    "max_tokens": 2048,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.1
   },
   "log_level": "INFO"
 }
 ```
 
-Use it: `python -m llf.cli --config config.json`
+### External API Configuration (OpenAI)
+
+To use OpenAI or other external APIs, simply change the endpoint configuration:
+
+```json
+{
+  "llm_endpoint": {
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "sk-proj-YOUR-OPENAI-API-KEY",
+    "model_name": "gpt-4"
+  },
+  "inference_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 0.9
+  },
+  "log_level": "INFO"
+}
+```
+
+**Note:** External APIs don't support llama.cpp-specific parameters like `top_k` and `repetition_penalty`. See example config files in [config_examples/](config_examples/):
+- `config_examples/config.local.example` - For local llama-server
+- `config_examples/config.openai.example` - For OpenAI API
+- `config_examples/config.anthropic.example` - For Anthropic API
+
+**Quick setup:**
+```bash
+cp config_examples/config.local.example config.json    # For local LLM
+# OR
+cp config_examples/config.openai.example config.json   # For OpenAI
+```
+
+Use configuration: `llf --config config.json chat`
 
 ## Testing
 

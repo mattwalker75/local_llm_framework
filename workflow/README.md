@@ -161,6 +161,13 @@ with which prompts I passed to the AI.
     Here was the prompt that I used along with a screen shot of the current
     interface:
        -  4_Create_Mockup.txt
+     NOTE:  Here is the generated image from ChatGPT
+       -  ChatGPT_image.png
+6.  Provided the generated screenshot to Claude with a prompt to make the 
+    appropriate updates.
+7.  Test it all and make sure everything works and that unit testing is 
+    complete
+8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 
 

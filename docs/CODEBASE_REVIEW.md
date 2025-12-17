@@ -72,19 +72,19 @@ The framework now properly supports external APIs like OpenAI and Anthropic alon
 
 #### Example Config Files Created/Updated
 
-**[config.local.example](config.local.example)** - For local llama-server
+**[config_examples/config.local.example](config_examples/config.local.example)** - For local llama-server
 - Added step-by-step setup instructions
 - Inline comments explaining each parameter
 - Notes on llama.cpp-specific parameters
 - Instructions for switching to external APIs
 
-**[config.openai.example](config.openai.example)** - For OpenAI API
+**[config_examples/config.openai.example](config_examples/config.openai.example)** - For OpenAI API
 - Setup instructions with API key placeholder
 - Notes on which parameters to EXCLUDE (top_k, repetition_penalty)
 - Guidance on `max_tokens` vs `max_completion_tokens`
 - Instructions for switching back to local LLM
 
-**[config.anthropic.example](config.anthropic.example)** - For Anthropic API
+**[config_examples/config.anthropic.example](config_examples/config.anthropic.example)** - For Anthropic API
 - Similar structure to OpenAI example
 - Anthropic-specific model names and configuration
 
@@ -164,7 +164,7 @@ Based on the changes made, test these scenarios:
 ### 1. Local LLM Testing
 ```bash
 # Copy local config
-cp config.local.example config.json
+cp config_examples/config.local.example config.json
 
 # Download model (if not already downloaded)
 llf download
@@ -179,7 +179,7 @@ llf chat
 ### 2. OpenAI API Testing
 ```bash
 # Copy OpenAI config
-cp config.openai.example config.json
+cp config_examples/config.openai.example config.json
 
 # Edit config.json: add your OpenAI API key
 # Edit config.json: set model_name to a valid model
@@ -216,9 +216,9 @@ llf chat --cli "Explain Python"
 ### Flexibility by Design
 
 **Switching between APIs is trivial**:
-- Local LLM: `cp config.local.example config.json`
-- OpenAI: `cp config.openai.example config.json`
-- Anthropic: `cp config.anthropic.example config.json`
+- Local LLM: `cp config_examples/config.local.example config.json`
+- OpenAI: `cp config_examples/config.openai.example config.json`
+- Anthropic: `cp config_examples/config.anthropic.example config.json`
 
 **No code changes needed** - just config file swap!
 
@@ -241,9 +241,9 @@ The new parameter pass-through approach means:
 5. `llf/logging_config.py` - Removed vLLM reference, added comments
 
 ### Configuration Files
-6. `config.local.example` - Comprehensive rewrite with inline docs
-7. `config.openai.example` - Comprehensive rewrite with inline docs
-8. `config.anthropic.example` - Created with inline docs
+6. `config_examples/config.local.example` - Comprehensive rewrite with inline docs
+7. `config_examples/config.openai.example` - Comprehensive rewrite with inline docs
+8. `config_examples/config.anthropic.example` - Created with inline docs
 
 ### Documentation
 9. `CODEBASE_REVIEW.md` - This document

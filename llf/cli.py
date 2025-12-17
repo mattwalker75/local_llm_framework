@@ -56,7 +56,7 @@ class CLI:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _signal_handler(self, signum, frame):
+    def _signal_handler(self, _signum, _frame):
         """Handle shutdown signals gracefully."""
         console.print("\n[yellow]Shutting down...[/yellow]")
         self.running = False
@@ -92,11 +92,7 @@ Press Ctrl+C to exit at any time.
 - `exit`, `quit` - Exit the application
 - `help` - Show this help message
 - `info` - Show model and system information
-- `clear` - Clear the screen
-
-# Chat Mode
-
-Simply type your message and press Enter to chat with the LLM.
+- `clear` - Clear the screen and conversation history
 
 # Multiline Input
 
@@ -106,6 +102,10 @@ To provide multiline input (e.g., paste document content):
 3. Type `END` on a new line and press Enter
 
 This is useful for pasting content from PDFs, documents, or code files.
+
+# Chat Mode
+
+Simply type your message and press Enter to chat with the LLM.
         """
         console.print(Panel(Markdown(help_text), title="Help", border_style="blue"))
 
@@ -219,10 +219,16 @@ This is useful for pasting content from PDFs, documents, or code files.
         self.running = True
         conversation_history = []
 
+        # Print initial separator before first user input
+        console.print("[dim]" + "─" * 60 + "[/dim]")
+
         while self.running:
             try:
+                # Print "You:" label on separate line with blank line after
+                console.print("\n[green]You[/green]:\n")
+
                 # Get user input
-                user_input = Prompt.ask("\n[bold green]You[/bold green]")
+                user_input = input()
 
                 if not user_input.strip():
                     continue
@@ -249,7 +255,7 @@ This is useful for pasting content from PDFs, documents, or code files.
                 command = user_input.strip().lower()
 
                 if command in ['exit', 'quit']:
-                    console.print("[yellow]Goodbye![/yellow]")
+                    console.print("\n[yellow]Goodbye![/yellow]")
                     break
 
                 if command == 'help':
@@ -263,10 +269,14 @@ This is useful for pasting content from PDFs, documents, or code files.
                 if command == 'clear':
                     console.clear()
                     self.print_welcome()
+                    conversation_history = []  # Clear conversation history
                     continue
 
-                # Generate response
-                console.print("[bold blue]Assistant:[/bold blue] ", end="")
+                # Print separator line
+                console.print("[dim]" + "─" * 60 + "[/dim]")
+
+                # Generate response with extra line after "Assistant:"
+                console.print("\n[yellow]Assistant[/yellow]:\n")
 
                 try:
                     # Build conversation context
@@ -293,6 +303,9 @@ This is useful for pasting content from PDFs, documents, or code files.
                         'role': 'assistant',
                         'content': full_response
                     })
+
+                    # Print separator line after response
+                    console.print("\n[dim]" + "─" * 60 + "[/dim]")
 
                 except Exception as e:
                     console.print(f"[red]Error generating response: {e}[/red]")

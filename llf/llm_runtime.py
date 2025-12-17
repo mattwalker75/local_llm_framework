@@ -12,7 +12,7 @@ import time
 import signal
 import psutil
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 import requests
 
 from openai import OpenAI
@@ -511,6 +511,6 @@ class LLMRuntime:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         """Context manager exit - ensures server is stopped."""
         self.stop_server()
