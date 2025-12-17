@@ -7,7 +7,6 @@ Design: Built to support multiple models and model sources (HuggingFace, local p
 Future: Can be extended to support model versioning, updates, and cleanup.
 """
 
-import os
 from pathlib import Path
 from typing import Optional, Dict
 import shutil

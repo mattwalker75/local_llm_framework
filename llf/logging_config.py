@@ -150,15 +150,15 @@ def disable_external_loggers(libraries: Optional[list] = None) -> None:
         libraries: List of library names to quiet. If None, uses common defaults.
     """
     if libraries is None:
-        # Common noisy libraries
+        # Common noisy libraries that produce verbose output
         libraries = [
-            'transformers',
-            'torch',
-            'vllm',
-            'openai',
-            'httpx',
-            'httpcore',
-            'urllib3',
+            'transformers',       # HuggingFace transformers library
+            'torch',             # PyTorch deep learning framework
+            'openai',            # OpenAI API client
+            'httpx',             # HTTP client used by openai
+            'httpcore',          # HTTP transport for httpx
+            'urllib3',           # HTTP library used by requests
+            'huggingface_hub',   # HuggingFace model hub client
         ]
 
     for lib in libraries:

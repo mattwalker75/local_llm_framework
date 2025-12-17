@@ -69,8 +69,11 @@ class TestLLMRuntime:
         assert "--port" in cmd
         assert "8000" in cmd
 
-    def test_is_server_running_false(self, runtime):
+    @patch.object(LLMRuntime, 'is_server_ready')
+    def test_is_server_running_false(self, mock_ready, runtime):
         """Test is_server_running when no server."""
+        # Mock is_server_ready to return False (no HTTP server responding)
+        mock_ready.return_value = False
         assert not runtime.is_server_running()
 
     def test_is_server_running_true(self, runtime):
@@ -81,10 +84,13 @@ class TestLLMRuntime:
 
         assert runtime.is_server_running()
 
-    def test_is_server_running_terminated(self, runtime):
+    @patch.object(LLMRuntime, 'is_server_ready')
+    def test_is_server_running_terminated(self, mock_ready, runtime):
         """Test is_server_running when process terminated."""
         runtime.server_process = MagicMock()
         runtime.server_process.poll.return_value = 1  # Non-None means terminated
+        # Mock is_server_ready to return False (no HTTP server responding)
+        mock_ready.return_value = False
 
         assert not runtime.is_server_running()
 
@@ -409,3 +415,79 @@ class TestLLMRuntime:
             pass
 
         runtime.stop_server.assert_called_once()
+
+    def test_list_models_success(self, runtime):
+        """Test listing models successfully."""
+        # Mock the OpenAI client
+        mock_client = MagicMock()
+
+        # Mock model objects
+        mock_model1 = MagicMock()
+        mock_model1.id = "gpt-4"
+        mock_model1.object = "model"
+        mock_model1.created = 1687882410
+        mock_model1.owned_by = "openai"
+
+        mock_model2 = MagicMock()
+        mock_model2.id = "gpt-3.5-turbo"
+        mock_model2.object = "model"
+        mock_model2.created = 1677610602
+        mock_model2.owned_by = "openai"
+
+        # Mock the models.list() response
+        mock_response = MagicMock()
+        mock_response.data = [mock_model1, mock_model2]
+        mock_client.models.list.return_value = mock_response
+
+        runtime.client = mock_client
+
+        models = runtime.list_models()
+
+        assert len(models) == 2
+        assert models[0]['id'] == "gpt-4"
+        assert models[0]['object'] == "model"
+        assert models[0]['owned_by'] == "openai"
+        assert models[1]['id'] == "gpt-3.5-turbo"
+
+    def test_list_models_empty(self, runtime):
+        """Test listing models when none available."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = []
+        mock_client.models.list.return_value = mock_response
+
+        runtime.client = mock_client
+
+        models = runtime.list_models()
+
+        assert len(models) == 0
+
+    def test_list_models_initializes_client(self, runtime):
+        """Test that list_models initializes client if needed."""
+        runtime.client = None
+        runtime._initialize_client = Mock()
+
+        # Mock the client after initialization
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = []
+        mock_client.models.list.return_value = mock_response
+
+        def init_client():
+            runtime.client = mock_client
+        runtime._initialize_client.side_effect = init_client
+
+        models = runtime.list_models()
+
+        runtime._initialize_client.assert_called_once()
+        assert models == []
+
+    def test_list_models_failure(self, runtime):
+        """Test list_models when API call fails."""
+        mock_client = MagicMock()
+        mock_client.models.list.side_effect = Exception("API Error")
+
+        runtime.client = mock_client
+
+        with pytest.raises(RuntimeError, match="Failed to list models"):
+            runtime.list_models()
