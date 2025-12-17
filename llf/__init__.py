@@ -1,9 +1,15 @@
 """
 Local LLM Framework (LLF)
 
-A Python framework for running Large Language Models locally using vLLM.
+A Python framework for running Large Language Models locally using llama.cpp
+or connecting to external LLM APIs (OpenAI, Anthropic, etc.).
 
-Phase 1: CLI-based interaction with local LLMs
+Current Features:
+- CLI-based interaction with local or remote LLMs
+- Model management (download, verify, delete from HuggingFace)
+- Flexible configuration (JSON-based, supports multiple LLM backends)
+- Chat and completion APIs with streaming support
+
 Future: API server, GUI, voice I/O, tool execution
 """
 

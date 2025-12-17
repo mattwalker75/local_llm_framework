@@ -147,6 +147,23 @@ with which prompts I passed to the AI.
 6.  Add logging ability
 7.  Fix issues with server shutting down in daemon mode after the chat is 
     complete
+8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Cleanup text based interaction and see if we can pip questions to CLI
+1.  Want to enable the ability to pipe data into the LLM and get a response.
+    This would be an enhancement to the llf chat --cli option
+2.  Put configs in a standalone configuration file that I can go in and
+    manually update
+3.  Get the CLI to work with external LLM's, such as ChatGPT
+4.  Update documentation and perform some basic code cleanup
+5.  Work with ChatGPT to generate some mockup ideas for how the interactive
+    text interface should look like.  This is PURELY to get some ideas.
+    Here was the prompt that I used along with a screen shot of the current
+    interface:
+       -  4_Create_Mockup.txt
+
+
+
 
      
 

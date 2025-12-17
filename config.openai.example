@@ -1,0 +1,52 @@
+{
+  "_comment": "===== LLF Configuration for OpenAI API =====",
+  "_usage": "To use this config: cp config.openai.example config.json",
+
+  "_setup_instructions": {
+    "step1": "Copy this file to config.json",
+    "step2": "Replace YOUR-OPENAI-API-KEY below with your actual OpenAI API key",
+    "step3": "(Optional) Run 'llf server list_models' to see all available OpenAI models",
+    "step4": "(Optional) Update model_name below if you want a different model",
+    "note": "When using external APIs, model downloads and server start/stop commands are automatically skipped"
+  },
+
+  "_local_llm_server_comment": "===== Local Server Settings (NOT USED for OpenAI) =====",
+  "_local_llm_server_note": "These settings are only used when running a local llama-server. Keep them here for easy switching between local and external APIs.",
+  "local_llm_server": {
+    "llama_server_path": "../llama.cpp/build/bin/llama-server",
+    "server_host": "127.0.0.1",
+    "server_port": 8000,
+    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+  },
+
+  "_llm_endpoint_comment": "===== OpenAI API Configuration =====",
+  "llm_endpoint": {
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "sk-proj-YOUR-OPENAI-API-KEY",
+    "model_name": "gpt-4",
+    "_model_alternatives": "Popular models: gpt-4, gpt-4-turbo, gpt-3.5-turbo, gpt-4o"
+  },
+
+  "_paths_comment": "===== Storage Directories =====",
+  "model_dir": "models",
+  "cache_dir": ".cache",
+
+  "_logging_comment": "===== Logging Configuration =====",
+  "_logging_levels": "Options: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+  "log_level": "ERROR",
+
+  "_inference_params_comment": "===== Inference Parameters =====",
+  "_inference_params_important": "IMPORTANT: Only include parameters supported by OpenAI API!",
+  "_inference_params_excluded": "Excluded llama.cpp-only params: top_k, repetition_penalty (not supported by OpenAI)",
+  "_inference_params_note_max_tokens": "For newer models (gpt-4o, gpt-4-turbo), use 'max_completion_tokens' instead of 'max_tokens'",
+  "inference_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 0.9
+  },
+
+  "_switching_back_to_local": {
+    "instructions": "To switch back to local LLM: cp config.local.example config.json",
+    "note": "Or edit llm_endpoint.api_base_url to point to http://127.0.0.1:8000/v1"
+  }
+}

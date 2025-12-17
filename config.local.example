@@ -1,0 +1,67 @@
+{
+  "_comment": "===== LLF Configuration for Local LLM (llama.cpp/llama-server) =====",
+  "_usage": "To use this config: cp config.local.example config.json",
+
+  "_setup_instructions": {
+    "step1": "Ensure llama.cpp is built (see README for instructions)",
+    "step2": "Copy this file to config.json",
+    "step3": "Download a model: llf download",
+    "step4": "(Optional) Update model_name and gguf_file below if using a different model",
+    "step5": "Start chatting: llf chat"
+  },
+
+  "_local_llm_server_comment": "===== Local llama-server Configuration =====",
+  "_local_llm_server_note": "These settings control the local llama-server process when LLF starts it",
+  "local_llm_server": {
+    "llama_server_path": "../llama.cpp/build/bin/llama-server",
+    "_llama_server_path_note": "Path to llama-server binary (relative to project root)",
+    "server_host": "127.0.0.1",
+    "_server_host_note": "127.0.0.1 = localhost only, 0.0.0.0 = accessible on network",
+    "server_port": 8000,
+    "_server_port_note": "Port for llama-server to listen on",
+    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+    "_gguf_file_note": "GGUF model file to load (quantized format for llama.cpp)"
+  },
+
+  "_llm_endpoint_comment": "===== LLM Endpoint Configuration =====",
+  "_llm_endpoint_note": "Points to local llama-server (matches server_host and server_port above)",
+  "llm_endpoint": {
+    "api_base_url": "http://127.0.0.1:8000/v1",
+    "_api_base_url_note": "OpenAI-compatible API endpoint (local server)",
+    "api_key": "EMPTY",
+    "_api_key_note": "No authentication needed for local server",
+    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+    "_model_name_note": "HuggingFace model repo name (used for downloads)"
+  },
+
+  "_paths_comment": "===== Storage Directories =====",
+  "model_dir": "models",
+  "_model_dir_note": "Where downloaded models are stored",
+  "cache_dir": ".cache",
+  "_cache_dir_note": "Cache directory for temporary files",
+
+  "_logging_comment": "===== Logging Configuration =====",
+  "_logging_levels": "Options: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+  "log_level": "ERROR",
+
+  "_inference_params_comment": "===== Inference Parameters =====",
+  "_inference_params_note": "These control how the LLM generates responses",
+  "inference_params": {
+    "temperature": 0.7,
+    "_temperature_note": "Randomness (0.0 = deterministic, 2.0 = very creative)",
+    "max_tokens": 2048,
+    "_max_tokens_note": "Maximum response length in tokens",
+    "top_p": 0.9,
+    "_top_p_note": "Nucleus sampling (0.0-1.0, higher = more diversity)",
+    "top_k": 50,
+    "_top_k_note": "Top-k sampling (llama.cpp only, not supported by OpenAI)",
+    "repetition_penalty": 1.1,
+    "_repetition_penalty_note": "Penalty for repeating tokens (llama.cpp only, 1.0 = no penalty)"
+  },
+
+  "_switching_to_external_api": {
+    "instructions": "To switch to OpenAI: cp config.openai.example config.json",
+    "or_anthropic": "To switch to Anthropic: cp config.anthropic.example config.json",
+    "note": "Example configs have proper parameter sets for each API"
+  }
+}

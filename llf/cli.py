@@ -137,9 +137,18 @@ This is useful for pasting content from PDFs, documents, or code files.
         """
         Ensure model is downloaded and ready.
 
+        For external APIs (OpenAI, Anthropic, etc.), this check is skipped
+        since models are hosted remotely.
+
         Returns:
             True if model is ready, False otherwise.
         """
+        # Skip model download check if using external API
+        if self.config.is_using_external_api():
+            logger.debug("Using external API, skipping model download check")
+            return True
+
+        # For local LLM, ensure model is downloaded
         if not self.model_manager.is_model_downloaded():
             console.print(f"[yellow]Model {self.config.model_name} is not downloaded.[/yellow]")
             console.print("[yellow]Downloading model... This may take a while.[/yellow]")
@@ -158,9 +167,17 @@ This is useful for pasting content from PDFs, documents, or code files.
         """
         Start LLM server.
 
+        For external APIs (OpenAI, Anthropic, etc.), this is skipped
+        since no local server is needed.
+
         Returns:
-            True if server started successfully, False otherwise.
+            True if server started successfully or not needed, False otherwise.
         """
+        # Skip server start if using external API
+        if self.config.is_using_external_api():
+            logger.debug("Using external API, skipping local server start")
+            return True
+
         if self.runtime.is_server_running():
             # Server is already running (started by another process)
             self.started_server = False
@@ -293,6 +310,9 @@ This is useful for pasting content from PDFs, documents, or code files.
         """
         Handle non-interactive CLI question mode.
 
+        Supports piped input: if stdin has data, it will be appended to the question.
+        Example: cat file.txt | llf chat --cli "Summarize this"
+
         Args:
             question: The question to ask the LLM.
 
@@ -300,6 +320,14 @@ This is useful for pasting content from PDFs, documents, or code files.
             Exit code (0 for success, non-zero for errors).
         """
         try:
+            # Check if stdin has piped data
+            if not sys.stdin.isatty():
+                stdin_data = sys.stdin.read().strip()
+                if stdin_data:
+                    # Append stdin data to question as context
+                    question = f"{question}\n\n{stdin_data}"
+                    logger.debug(f"Appended {len(stdin_data)} bytes from stdin to question")
+
             # Ensure model is downloaded
             if not self.ensure_model_ready():
                 return 1
@@ -585,6 +613,41 @@ def server_command(args) -> int:
             console.print(f"[green]✓ Server restarted successfully on {config.get_server_url()}[/green]")
             return 0
 
+        elif args.action == 'list_models':
+            # List available models from the endpoint
+            console.print(f"[cyan]Querying models from {config.api_base_url}...[/cyan]")
+            try:
+                models = runtime.list_models()
+
+                if not models:
+                    console.print("[yellow]No models found[/yellow]")
+                    return 0
+
+                console.print(f"\n[green]✓ Found {len(models)} model(s):[/green]\n")
+
+                # Display models in a table
+                from rich.table import Table
+                table = Table(show_header=True, header_style="bold cyan")
+                table.add_column("Model ID", style="green")
+                table.add_column("Type", style="dim")
+                table.add_column("Owner", style="dim")
+
+                for model in models:
+                    table.add_row(
+                        model.get('id', 'N/A'),
+                        model.get('object', 'N/A'),
+                        model.get('owned_by', 'N/A')
+                    )
+
+                console.print(table)
+                console.print(f"\n[dim]To use a model, update the 'model_name' in config.json under 'llm_endpoint'[/dim]")
+                return 0
+
+            except Exception as e:
+                console.print(f"[red]Failed to list models: {e}[/red]")
+                console.print("[yellow]Tip: Make sure the API endpoint is accessible and configured correctly[/yellow]")
+                return 1
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         logger.error(f"Server command error: {e}")
@@ -610,6 +673,7 @@ Examples:
   llf chat --cli "What is 2+2?"                    Ask a single question and exit
   llf chat --cli "Explain Python" --auto-start-server
   llf chat --cli "Code review" --model custom/model
+  cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
   # Server management
   llf server start                 Start llama-server (stays in foreground)
@@ -618,6 +682,7 @@ Examples:
   llf server stop                  Stop running server
   llf server status                Check if server is running
   llf server restart               Restart server with current model
+  llf server list_models           List available models from configured endpoint
 
   # Model management (GGUF format)
   llf download                     Download default GGUF model
@@ -763,7 +828,7 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     )
     server_parser.add_argument(
         'action',
-        choices=['start', 'stop', 'status', 'restart'],
+        choices=['start', 'stop', 'status', 'restart', 'list_models'],
         help='Server action to perform'
     )
     server_parser.add_argument(

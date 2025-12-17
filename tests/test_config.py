@@ -19,19 +19,29 @@ class TestConfig:
     """Test Config class."""
 
     def test_default_initialization(self):
-        """Test config initialization with defaults."""
-        config = Config()
+        """Test config initialization with defaults (when no config.json exists)."""
+        # Temporarily rename config.json if it exists so we can test defaults
+        config_backup = None
+        if Config.DEFAULT_CONFIG_FILE.exists():
+            config_backup = Config.DEFAULT_CONFIG_FILE.with_suffix('.json.test_backup')
+            Config.DEFAULT_CONFIG_FILE.rename(config_backup)
 
-        assert config.model_name == Config.DEFAULT_MODEL_NAME
-        assert config.model_alias == Config.DEFAULT_MODEL_ALIAS
-        assert config.gguf_file == Config.DEFAULT_GGUF_FILE
-        assert config.model_dir == Config.DEFAULT_MODEL_DIR
-        assert config.cache_dir == Config.DEFAULT_CACHE_DIR
-        assert config.llama_server_path == Config.DEFAULT_LLAMA_SERVER_PATH
-        assert config.server_wrapper_script == Config.SERVER_WRAPPER_SCRIPT
-        assert config.inference_params == Config.DEFAULT_INFERENCE_PARAMS
-        assert config.server_host == Config.SERVER_HOST
-        assert config.server_port == Config.SERVER_PORT
+        try:
+            config = Config()
+
+            assert config.model_name == Config.DEFAULT_MODEL_NAME
+            assert config.gguf_file == Config.DEFAULT_GGUF_FILE
+            assert config.model_dir == Config.DEFAULT_MODEL_DIR
+            assert config.cache_dir == Config.DEFAULT_CACHE_DIR
+            assert config.llama_server_path == Config.DEFAULT_LLAMA_SERVER_PATH
+            assert config.server_wrapper_script == Config.SERVER_WRAPPER_SCRIPT
+            assert config.inference_params == Config.DEFAULT_INFERENCE_PARAMS
+            assert config.server_host == Config.SERVER_HOST
+            assert config.server_port == Config.SERVER_PORT
+        finally:
+            # Restore config.json if it was backed up
+            if config_backup and config_backup.exists():
+                config_backup.rename(Config.DEFAULT_CONFIG_FILE)
 
     def test_directories_created(self):
         """Test that directories are created on init."""
@@ -44,7 +54,6 @@ class TestConfig:
         """Test loading config from file."""
         config_data = {
             'model_name': 'custom/model',
-            'model_alias': 'custom',
             'gguf_file': 'custom-model.gguf',
             'model_dir': str(temp_dir / 'custom_models'),
             'cache_dir': str(temp_dir / 'custom_cache'),
@@ -65,7 +74,6 @@ class TestConfig:
         config = Config(config_file)
 
         assert config.model_name == 'custom/model'
-        assert config.model_alias == 'custom'
         assert config.gguf_file == 'custom-model.gguf'
         assert config.model_dir == temp_dir / 'custom_models'
         assert config.cache_dir == temp_dir / 'custom_cache'
@@ -94,7 +102,6 @@ class TestConfig:
         assert config.server_port == 7000
 
         # Should have defaults for others
-        assert config.model_alias == Config.DEFAULT_MODEL_ALIAS
         assert config.server_host == Config.SERVER_HOST
 
     def test_load_nonexistent_file(self, temp_dir):
@@ -131,26 +138,64 @@ class TestConfig:
         assert url == f"http://{config.server_host}:{config.server_port}"
 
     def test_get_openai_api_base(self):
-        """Test getting OpenAI API base URL."""
+        """Test getting OpenAI API base URL (local server)."""
         config = Config()
         base = config.get_openai_api_base()
 
         assert base == f"http://{config.server_host}:{config.server_port}/v1"
+
+    def test_get_openai_api_base_external(self, temp_dir):
+        """Test getting OpenAI API base URL with external API configured."""
+        config_data = {
+            'api_base_url': 'https://api.openai.com/v1'
+        }
+
+        config_file = temp_dir / 'config.json'
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+        base = config.get_openai_api_base()
+
+        # Should use configured api_base_url instead of local server
+        assert base == 'https://api.openai.com/v1'
+
+    def test_api_key_configuration(self, temp_dir):
+        """Test API key configuration for external services."""
+        config_data = {
+            'api_key': 'sk-test-key-12345'
+        }
+
+        config_file = temp_dir / 'config.json'
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        assert config.api_key == 'sk-test-key-12345'
 
     def test_to_dict(self):
         """Test converting config to dictionary."""
         config = Config()
         config_dict = config.to_dict()
 
-        assert config_dict['model_name'] == config.model_name
-        assert config_dict['model_alias'] == config.model_alias
-        assert config_dict['gguf_file'] == config.gguf_file
+        # Test nested structure - server-side settings
+        assert 'local_llm_server' in config_dict
+        assert config_dict['local_llm_server']['llama_server_path'] == str(config.llama_server_path)
+        assert config_dict['local_llm_server']['server_host'] == config.server_host
+        assert config_dict['local_llm_server']['server_port'] == config.server_port
+        assert config_dict['local_llm_server']['gguf_file'] == config.gguf_file
+
+        # Test nested structure - client-side settings
+        assert 'llm_endpoint' in config_dict
+        assert config_dict['llm_endpoint']['api_base_url'] == config.api_base_url
+        assert config_dict['llm_endpoint']['api_key'] == config.api_key
+        assert config_dict['llm_endpoint']['model_name'] == config.model_name
+
+        # Test top-level settings
         assert config_dict['model_dir'] == str(config.model_dir)
         assert config_dict['cache_dir'] == str(config.cache_dir)
-        assert config_dict['llama_server_path'] == str(config.llama_server_path)
         assert config_dict['inference_params'] == config.inference_params
-        assert config_dict['server_host'] == config.server_host
-        assert config_dict['server_port'] == config.server_port
 
     def test_save_to_file(self, temp_dir):
         """Test saving config to file."""
@@ -163,12 +208,12 @@ class TestConfig:
 
         assert save_file.exists()
 
-        # Load and verify
+        # Load and verify - should use nested structure
         with open(save_file, 'r') as f:
             loaded_data = json.load(f)
 
-        assert loaded_data['model_name'] == "saved/model"
-        assert loaded_data['server_port'] == 8888
+        assert loaded_data['llm_endpoint']['model_name'] == "saved/model"
+        assert loaded_data['local_llm_server']['server_port'] == 8888
 
     def test_save_creates_parent_dirs(self, temp_dir):
         """Test that save_to_file creates parent directories."""

@@ -1,0 +1,8 @@
+
+I passed the following prompt to ChatGTP to generate some mockups of
+possible interface modifications to the interactive terminal interface:
+
+< Uploaded a screen shot of the current app and how it looks >
+
+This is an image of a terminal based interactive app that is used to work with an LLM. The ONLY functionality currently is being able to send text response. Purely from a visualization perspective can you provide some possible mockups to give me some ideas on how I should change this? Initially, it would be nice to somehow have the conversation between the user and the LLM should be better separated and easier to read.
+

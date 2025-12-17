@@ -1,0 +1,36 @@
+{
+  "_comment": "LLF Configuration for Anthropic API (Claude)",
+  "_usage": "Copy this to config.json to use Anthropic: cp config.anthropic.example config.json",
+  "_setup": [
+    "1. Copy this file to config.json",
+    "2. Replace YOUR-ANTHROPIC-API-KEY with your actual API key",
+    "3. Optionally run 'llf server list_models' to see available models",
+    "4. Update model_name if desired (defaults to claude-3-opus-20240229)"
+  ],
+
+  "local_llm_server": {
+    "_comment": "Local server settings - not used for Anthropic but kept for config structure",
+    "llama_server_path": "../llama.cpp/build/bin/llama-server",
+    "server_host": "127.0.0.1",
+    "server_port": 8000,
+    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+  },
+
+  "llm_endpoint": {
+    "api_base_url": "https://api.anthropic.com/v1",
+    "api_key": "sk-ant-YOUR-ANTHROPIC-API-KEY",
+    "model_name": "claude-3-opus-20240229"
+  },
+
+  "model_dir": "models",
+  "cache_dir": ".cache",
+
+  "log_level": "ERROR",
+
+  "_inference_params_comment": "Note: top_k and repetition_penalty are NOT included - Anthropic doesn't support them",
+  "inference_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 0.9
+  }
+}

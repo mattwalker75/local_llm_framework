@@ -274,10 +274,16 @@ class LLMRuntime:
             return False
 
     def _initialize_client(self) -> None:
-        """Initialize OpenAI client for llama-server."""
+        """
+        Initialize OpenAI client.
+
+        Uses configurable api_base_url and api_key from config.
+        This allows connecting to external APIs (OpenAI, Anthropic, etc.)
+        or local llama-server.
+        """
         self.client = OpenAI(
             base_url=self.config.get_openai_api_base(),
-            api_key="EMPTY",  # llama-server doesn't require API key
+            api_key=self.config.api_key,
         )
 
     def generate(
@@ -307,33 +313,47 @@ class LLMRuntime:
         Raises:
             RuntimeError: If server is not running or request fails.
         """
-        if not self.is_server_running():
+        # ===== Server Availability Check =====
+        # Only check if local llama-server is running when using local LLM
+        # Skip this check for external APIs (OpenAI, Anthropic, etc.) since they don't need local server
+        if not self.config.is_using_external_api() and not self.is_server_running():
             raise RuntimeError("llama-server is not running")
 
         if self.client is None:
             self._initialize_client()
 
-        # Merge config defaults with kwargs
+        # ===== Parameter Handling =====
+        # Start with config file parameters, then override with any kwargs passed to this method
         params = self.config.inference_params.copy()
         params.update(kwargs)
 
-        # Extract OpenAI-compatible parameters
+        # Build the API request parameters, starting with required fields
         openai_params = {
             'model': model or self.config.model_name,
             'prompt': prompt,
-            'temperature': params.get('temperature', 0.7),
-            'max_tokens': params.get('max_tokens', 2048),
-            'top_p': params.get('top_p', 0.9),
-            'stop': params.get('stop', None),
         }
 
-        # llama-server-specific parameters
-        extra_body = {}
-        if 'top_k' in params:
-            extra_body['top_k'] = params['top_k']
-        if 'repetition_penalty' in params:
-            extra_body['repetition_penalty'] = params['repetition_penalty']
+        # ===== llama.cpp-Specific Parameters =====
+        # These parameters are only supported by llama-server, not external APIs (OpenAI, Anthropic, etc.)
+        # We put them in 'extra_body' to keep them separate from standard OpenAI parameters
+        extra_body_params = {'top_k', 'repetition_penalty'}
 
+        # ===== Pass Through All Parameters =====
+        # This approach allows config files to control EXACTLY which parameters are sent
+        # - For local llama-server: include max_tokens, top_k, repetition_penalty, etc.
+        # - For OpenAI: include max_tokens or max_completion_tokens (depending on model), but NOT top_k
+        # - For other APIs: include whatever parameters they support
+        extra_body = {}
+        for key, value in params.items():
+            if key in extra_body_params:
+                # llama.cpp-specific params go in extra_body
+                extra_body[key] = value
+            else:
+                # All other params (temperature, max_tokens, max_completion_tokens, top_p, etc.)
+                # are passed directly to the API
+                openai_params[key] = value
+
+        # Add extra_body to request if we have llama.cpp-specific parameters
         if extra_body:
             openai_params['extra_body'] = extra_body
 
@@ -377,34 +397,48 @@ class LLMRuntime:
         Raises:
             RuntimeError: If server is not running or request fails.
         """
-        if not self.is_server_running():
+        # ===== Server Availability Check =====
+        # Only check if local llama-server is running when using local LLM
+        # Skip this check for external APIs (OpenAI, Anthropic, etc.) since they don't need local server
+        if not self.config.is_using_external_api() and not self.is_server_running():
             raise RuntimeError("llama-server is not running")
 
         if self.client is None:
             self._initialize_client()
 
-        # Merge config defaults with kwargs
+        # ===== Parameter Handling =====
+        # Start with config file parameters, then override with any kwargs passed to this method
         params = self.config.inference_params.copy()
         params.update(kwargs)
 
-        # Extract OpenAI-compatible parameters
+        # Build the API request parameters, starting with required fields
         openai_params = {
             'model': model or self.config.model_name,
             'messages': messages,
-            'temperature': params.get('temperature', 0.7),
-            'max_tokens': params.get('max_tokens', 2048),
-            'top_p': params.get('top_p', 0.9),
-            'stop': params.get('stop', None),
             'stream': stream,
         }
 
-        # llama-server-specific parameters
-        extra_body = {}
-        if 'top_k' in params:
-            extra_body['top_k'] = params['top_k']
-        if 'repetition_penalty' in params:
-            extra_body['repetition_penalty'] = params['repetition_penalty']
+        # ===== llama.cpp-Specific Parameters =====
+        # These parameters are only supported by llama-server, not external APIs (OpenAI, Anthropic, etc.)
+        # We put them in 'extra_body' to keep them separate from standard OpenAI parameters
+        extra_body_params = {'top_k', 'repetition_penalty'}
 
+        # ===== Pass Through All Parameters =====
+        # This approach allows config files to control EXACTLY which parameters are sent
+        # - For local llama-server: include max_tokens, top_k, repetition_penalty, etc.
+        # - For OpenAI: include max_tokens or max_completion_tokens (depending on model), but NOT top_k
+        # - For other APIs: include whatever parameters they support
+        extra_body = {}
+        for key, value in params.items():
+            if key in extra_body_params:
+                # llama.cpp-specific params go in extra_body
+                extra_body[key] = value
+            else:
+                # All other params (temperature, max_tokens, max_completion_tokens, top_p, etc.)
+                # are passed directly to the API
+                openai_params[key] = value
+
+        # Add extra_body to request if we have llama.cpp-specific parameters
         if extra_body:
             openai_params['extra_body'] = extra_body
 
@@ -430,6 +464,48 @@ class LLMRuntime:
         except Exception as e:
             logger.error(f"Chat generation failed: {e}")
             raise RuntimeError(f"Failed to generate chat completion: {e}") from e
+
+    def list_models(self) -> list:
+        """
+        List available models from the LLM endpoint.
+
+        Queries the OpenAI-compatible /v1/models endpoint to retrieve
+        available models. Works with both local llama-server and external
+        APIs (OpenAI, Anthropic, etc.).
+
+        Returns:
+            List of model dictionaries containing model information.
+            Each dict typically contains 'id', 'object', 'created', 'owned_by'.
+
+        Raises:
+            RuntimeError: If the API call fails.
+        """
+        logger.info(f"Listing models from {self.config.api_base_url}")
+
+        try:
+            # Ensure client is initialized
+            if self.client is None:
+                self._initialize_client()
+
+            # Call the models.list() API
+            models_response = self.client.models.list()
+
+            # Convert to list of dicts
+            models = []
+            for model in models_response.data:
+                models.append({
+                    'id': model.id,
+                    'object': model.object,
+                    'created': model.created,
+                    'owned_by': model.owned_by
+                })
+
+            logger.info(f"Found {len(models)} available models")
+            return models
+
+        except Exception as e:
+            logger.error(f"Failed to list models: {e}")
+            raise RuntimeError(f"Failed to list models from {self.config.api_base_url}: {e}") from e
 
     def __enter__(self):
         """Context manager entry."""

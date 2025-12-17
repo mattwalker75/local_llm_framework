@@ -796,13 +796,17 @@ class TestCLICommands:
 class TestCLIQuestionMode:
     """Test CLI non-interactive question mode."""
 
+    @patch('sys.stdin')
     @patch.object(CLI, 'ensure_model_ready')
     @patch.object(CLI, 'start_server')
-    def test_cli_question_basic(self, mock_start, mock_ensure, cli):
+    def test_cli_question_basic(self, mock_start, mock_ensure, mock_stdin, cli):
         """Test basic CLI question mode."""
         mock_ensure.return_value = True
         mock_start.return_value = True
         cli.runtime.chat = Mock(return_value="This is the answer")
+
+        # Mock stdin to simulate normal terminal (no pipe)
+        mock_stdin.isatty.return_value = True
 
         exit_code = cli.cli_question("What is 2+2?")
 
@@ -815,37 +819,110 @@ class TestCLIQuestionMode:
         # Verify stream=False for CLI mode
         assert call_args[1]['stream'] is False
 
+    @patch('sys.stdin')
     @patch.object(CLI, 'ensure_model_ready')
-    def test_cli_question_model_not_ready(self, mock_ensure, cli):
+    def test_cli_question_model_not_ready(self, mock_ensure, mock_stdin, cli):
         """Test CLI question mode when model not ready."""
         mock_ensure.return_value = False
+        mock_stdin.isatty.return_value = True
 
         exit_code = cli.cli_question("What is 2+2?")
 
         assert exit_code == 1
 
+    @patch('sys.stdin')
     @patch.object(CLI, 'ensure_model_ready')
     @patch.object(CLI, 'start_server')
-    def test_cli_question_server_fails(self, mock_start, mock_ensure, cli):
+    def test_cli_question_server_fails(self, mock_start, mock_ensure, mock_stdin, cli):
         """Test CLI question mode when server fails to start."""
         mock_ensure.return_value = True
         mock_start.return_value = False
+        mock_stdin.isatty.return_value = True
 
         exit_code = cli.cli_question("What is 2+2?")
 
         assert exit_code == 1
 
+    @patch('sys.stdin')
     @patch.object(CLI, 'ensure_model_ready')
     @patch.object(CLI, 'start_server')
-    def test_cli_question_chat_error(self, mock_start, mock_ensure, cli):
+    def test_cli_question_chat_error(self, mock_start, mock_ensure, mock_stdin, cli):
         """Test CLI question mode when chat fails."""
         mock_ensure.return_value = True
         mock_start.return_value = True
         cli.runtime.chat = Mock(side_effect=Exception("Chat error"))
+        mock_stdin.isatty.return_value = True
 
         exit_code = cli.cli_question("What is 2+2?")
 
         assert exit_code == 1
+
+    @patch('sys.stdin')
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_with_stdin(self, mock_start, mock_ensure, mock_stdin, cli):
+        """Test CLI question mode with piped stdin data."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+        cli.runtime.chat = Mock(return_value="This is the answer")
+
+        # Mock stdin to simulate piped input
+        mock_stdin.isatty.return_value = False  # Indicates piped input
+        mock_stdin.read.return_value = "File contents here\nMore data"
+
+        exit_code = cli.cli_question("Summarize this")
+
+        assert exit_code == 0
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args
+        # Verify question includes both the prompt and stdin data
+        content = call_args[0][0][0]['content']
+        assert "Summarize this" in content
+        assert "File contents here" in content
+        assert "More data" in content
+
+    @patch('sys.stdin')
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_without_stdin(self, mock_start, mock_ensure, mock_stdin, cli):
+        """Test CLI question mode without piped input (normal terminal)."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+        cli.runtime.chat = Mock(return_value="This is the answer")
+
+        # Mock stdin to simulate terminal (no pipe)
+        mock_stdin.isatty.return_value = True  # Indicates terminal
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 0
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args
+        # Verify only the question is sent
+        content = call_args[0][0][0]['content']
+        assert content == "What is 2+2?"
+
+    @patch('sys.stdin')
+    @patch.object(CLI, 'ensure_model_ready')
+    @patch.object(CLI, 'start_server')
+    def test_cli_question_empty_stdin(self, mock_start, mock_ensure, mock_stdin, cli):
+        """Test CLI question mode with empty stdin pipe."""
+        mock_ensure.return_value = True
+        mock_start.return_value = True
+        cli.runtime.chat = Mock(return_value="This is the answer")
+
+        # Mock stdin with empty data
+        mock_stdin.isatty.return_value = False
+        mock_stdin.read.return_value = "   "  # Only whitespace
+
+        exit_code = cli.cli_question("What is 2+2?")
+
+        assert exit_code == 0
+        cli.runtime.chat.assert_called_once()
+        call_args = cli.runtime.chat.call_args
+        # Verify only the question is sent (empty stdin should be ignored)
+        content = call_args[0][0][0]['content']
+        assert content == "What is 2+2?"
 
     @patch.object(CLI, 'cli_question')
     def test_run_with_cli_question(self, mock_cli_question, cli):
