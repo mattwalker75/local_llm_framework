@@ -25,6 +25,8 @@ def config(temp_dir):
     config.model_dir = temp_dir / "models"
     config.cache_dir = temp_dir / ".cache"
     config.model_name = "test/model"
+    # Simulate that local_llm_server was configured for tests
+    config._has_local_server_section = True
     return config
 
 
@@ -119,6 +121,7 @@ class TestCLI:
     def test_start_server_auto_start(self, mock_print):
         """Test server auto-start without prompt."""
         config = Config()
+        config._has_local_server_section = True  # Simulate local server configured
         cli = CLI(config, auto_start_server=True)
         cli.runtime.is_server_running = Mock(return_value=False)
         cli.runtime.start_server = Mock()

@@ -204,6 +204,21 @@ Simply type your message and press Enter to chat with the LLM.
             logger.debug("Using external API, skipping local server start")
             return True
 
+        # Check if local server is configured
+        if not self.config.has_local_server_config():
+            console.print(
+                "[red]Error: Cannot start chat session[/red]\n"
+                "Local LLM server is not configured and no server is running.\n\n"
+                "Options:\n"
+                "  1. Configure a local server:\n"
+                "     [cyan]cp config_examples/config.local.gguf.example config.json[/cyan]\n"
+                "  2. Use an external API (OpenAI, Anthropic):\n"
+                "     [cyan]cp config_examples/config.openai.example config.json[/cyan]\n"
+                "  3. Start server manually if configured:\n"
+                "     [cyan]llf server start[/cyan]"
+            )
+            return False
+
         if self.runtime.is_server_running():
             # Server is already running (started by another process)
             self.started_server = False
@@ -581,6 +596,26 @@ def server_command(args) -> int:
     """
     config = get_config()
 
+    # Commands that require local server configuration
+    local_server_required = ['start', 'stop', 'restart', 'status']
+
+    # Check if local server is configured for commands that require it
+    if args.action in local_server_required and args.action != 'status':
+        # status gets special handling below
+        if not config.has_local_server_config():
+            console.print(
+                "[yellow]A local LLM server is not configured.[/yellow]\n"
+                f"Command '[cyan]llf server {args.action}[/cyan]' requires a local llama-server setup.\n\n"
+                "To use a local server:\n"
+                "  1. Compile llama.cpp (see README)\n"
+                "  2. Configure local_llm_server section in config.json\n"
+                "  3. Use: [cyan]cp config_examples/config.local.gguf.example config.json[/cyan]\n\n"
+                "Or use a cloud API instead:\n"
+                "  • OpenAI: [cyan]cp config_examples/config.openai.example config.json[/cyan]\n"
+                "  • Anthropic: [cyan]cp config_examples/config.anthropic.example config.json[/cyan]"
+            )
+            return 1
+
     # Override model settings if specified via CLI flags
     if hasattr(args, 'huggingface_model') and args.huggingface_model:
         config.model_name = args.huggingface_model
@@ -595,6 +630,13 @@ def server_command(args) -> int:
 
     try:
         if args.action == 'status':
+            # Check if local server is configured
+            if not config.has_local_server_config():
+                console.print("[yellow]Local LLM server is not configured[/yellow]")
+                console.print(f"Using external API: [cyan]{config.api_base_url}[/cyan]")
+                console.print(f"Model: [cyan]{config.model_name}[/cyan]")
+                return 0
+
             # Check server status
             if runtime.is_server_running():
                 console.print(f"[green]✓[/green] Server is running on {config.get_server_url()}")
@@ -687,7 +729,10 @@ def server_command(args) -> int:
 
         elif args.action == 'list_models':
             # List available models from the endpoint
-            console.print(f"[cyan]Querying models from {config.api_base_url}...[/cyan]")
+            if config.has_local_server_config():
+                console.print(f"[cyan]Querying models from local server: {config.api_base_url}...[/cyan]")
+            else:
+                console.print(f"[cyan]Querying models from external API: {config.api_base_url}...[/cyan]")
             try:
                 models = runtime.list_models()
 
