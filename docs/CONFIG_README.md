@@ -67,7 +67,25 @@ These settings configure the local llama-server when you start it. Only needed f
   - Default: `8000`
   - Change if port 8000 is already in use
 
-**Note**: These should match the URL in `api_base_url` for local usage.
+- **`server_params`** (Optional): Additional parameters to pass to llama-server
+  - Format: Dictionary of key-value pairs
+  - These are passed directly to the llama-server CLI as `--key value`
+  - **To see all available options, run:** `../llama.cpp/build/bin/llama-server -h`
+
+  **Common examples:**
+  ```json
+  "server_params": {
+    "ctx-size": 8192,        // Context window size (default ~2048)
+    "n-gpu-layers": 35,      // GPU layers (0=CPU only, -1=all layers)
+    "threads": 8,            // CPU threads for inference
+    "batch-size": 512,       // Batch size for prompt processing
+    "flash-attn": true       // Enable flash attention (if supported)
+  }
+  ```
+
+  **This section is completely optional.** If omitted, llama-server uses its default values.
+
+**Note**: `server_host` and `server_port` should match the URL in `api_base_url` for local usage.
 
 ### API Settings
 

@@ -34,6 +34,19 @@
     "_important_note": "This config is for safetensors format (standard HuggingFace models)",
     "_path_example": "Full path: models/Qwen--Qwen2.5-Coder-7B-Instruct/ (contains safetensors files)",
 
+    "_server_params_comment": "===== Additional llama-server Parameters (Optional) =====",
+    "_server_params_note": "Pass any additional parameters to llama-server. These are passed as command-line arguments.",
+    "_server_params_help": "To see all available options, run: ../llama.cpp/build/bin/llama-server -h",
+    "server_params": {
+      "ctx-size": 8192,
+      "_ctx_size_note": "Context window size (default is usually 512-2048, increase for longer conversations)",
+      "n-gpu-layers": 35,
+      "_n_gpu_layers_note": "Number of layers to offload to GPU (0 = CPU only, -1 = all layers)",
+      "threads": 8,
+      "_threads_note": "Number of CPU threads to use for inference"
+    },
+    "_server_params_optional": "The server_params section is completely optional. Remove it to use llama-server defaults.",
+
     "_popular_models": {
       "qwen_7b": "Qwen/Qwen2.5-Coder-7B-Instruct (recommended, good balance)",
       "llama3_8b": "meta-llama/Meta-Llama-3-8B-Instruct",

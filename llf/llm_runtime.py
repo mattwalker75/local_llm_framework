@@ -69,6 +69,11 @@ class LLMRuntime:
             "--port", str(self.config.server_port),
         ]
 
+        # Add additional server parameters if configured
+        if self.config.server_params:
+            for key, value in self.config.server_params.items():
+                cmd.extend(["--server-arg", key, str(value)])
+
         return cmd
 
     def start_server(self, model_name: Optional[str] = None, gguf_file: Optional[str] = None, timeout: int = 120) -> None:

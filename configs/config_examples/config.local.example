@@ -39,7 +39,13 @@
     "_full_path_examples": {
       "example1": "gguf_file: 'model.gguf' → searches in models/{model_name}/model.gguf",
       "example2": "model_dir: 'my_models', gguf_file: 'model.gguf' → searches in models/my_models/model.gguf"
-    }
+    },
+
+    "_server_params_comment": "===== Additional llama-server Parameters (Optional) =====",
+    "_server_params_note": "Pass any additional parameters to llama-server. These are passed as command-line arguments.",
+    "_server_params_help": "To see all available options, run: ../llama.cpp/build/bin/llama-server -h",
+    "_server_params_optional": "The server_params section is completely optional. Remove it or leave empty {} to use llama-server defaults.",
+    "_server_params_example": "server_params: { 'ctx-size': 8192, 'n-gpu-layers': 35, 'threads': 8 }"
   },
 
   "_llm_endpoint_comment": "===== LLM Endpoint Configuration =====",

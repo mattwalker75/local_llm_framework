@@ -167,9 +167,39 @@ with which prompts I passed to the AI.
     appropriate updates.
 7.  Test it all and make sure everything works and that unit testing is 
     complete
-8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+8.  All configurations are stored in a config.json file
+9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+#### Added a bunch of misc functionality
+1.  Enable the app to not require local_llm_server entry in the config.json
+    file if you are using an external LLM
+2.  Modify the config.json to be able to support both HuggingFace and GGUF
+    formatted LLM's
+3.  Created example config.json files to use as references for different 
+    configurations
+4.  Created a script called convert_huggingface_llm_2_gguf.sh that will convert
+    a downloaded HuggingFace LLM to a GGUF image so it can be ran from the
+    internal Llama server
+5.  Created a config_prompt.json file that can optionally be used to pass 
+    different types of prompts to the LLM with your request, such as System, 
+    Master, and Assistant prompts.
+6.  A number of misc tweaks
+7.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+#### Create an optional GUI frontend
+1.  Create a GUI frontend that can be enabled and started with the "llf gui enable"
+    option.  I passed the following prompt for Claude to do the coding:
+       -  5_GUI.txt
+2.  It provided a GUI that can be accessed via a web browser.  Adding some minor 
+    tweaks to the web based GUI.  All functionality I have in the CLI I want in
+    the GUI.  Including the ability to modify the .json config files
+3.  You can pass in optional server parameters to the locally running Llama server
+    via additional "server_params" added to the "local_llm_server" in the 
+    config.json file.  These parameters are 100% optional 
+4.  Moving configuration files and their associated examples to a configs directory
+5.  Creatinga  backup location in the configs directory to backup config files when
+    needed
+6.  Add the ability in the GUI to backup the configuration files 
 
 
      

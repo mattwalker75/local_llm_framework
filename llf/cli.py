@@ -814,6 +814,12 @@ Examples:
   llf model info                   Show default model information
   llf model info --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 
+  # GUI interface
+  llf gui                          Start web-based GUI (default port: 7860)
+  llf gui --port 8080              Start GUI on custom port
+  llf gui --share                  Create public share link for remote access
+  llf gui --no-browser             Start GUI without opening browser
+
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
   llf --log-level DEBUG --log-file debug.log chat      Log chat session to file
@@ -1026,6 +1032,33 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help='Run server in background (daemon mode)'
     )
 
+    # GUI command
+    gui_parser = subparsers.add_parser(
+        'gui',
+        help='Start web-based GUI interface',
+        description='Launch a web-based graphical interface for managing the LLM framework.'
+    )
+
+    gui_parser.add_argument(
+        '--port',
+        type=int,
+        default=7860,
+        metavar='PORT',
+        help='Port to run the web server on (default: 7860)'
+    )
+
+    gui_parser.add_argument(
+        '--share',
+        action='store_true',
+        help='Create a public share link (for remote access)'
+    )
+
+    gui_parser.add_argument(
+        '--no-browser',
+        action='store_true',
+        help='Do not automatically open browser'
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -1127,6 +1160,31 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
             return 0
     elif args.command == 'server':
         return server_command(args)
+    elif args.command == 'gui':
+        # Start GUI interface
+        from .gui import start_gui
+
+        console.print("[cyan]Starting LLM Framework GUI...[/cyan]")
+        console.print(f"Opening web interface on port {args.port}")
+
+        if args.share:
+            console.print("[yellow]Creating public share link...[/yellow]")
+
+        try:
+            start_gui(
+                config=config,
+                prompt_config=prompt_config,
+                share=args.share,
+                server_port=args.port,
+                inbrowser=not args.no_browser
+            )
+            return 0
+        except KeyboardInterrupt:
+            console.print("\n[yellow]GUI shutting down...[/yellow]")
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error starting GUI: {e}[/red]")
+            return 1
     elif args.command == 'chat' or args.command is None:
         # Override model settings if specified via CLI flags
         if hasattr(args, 'huggingface_model') and args.huggingface_model:

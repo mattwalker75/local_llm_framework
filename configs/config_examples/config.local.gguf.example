@@ -35,6 +35,25 @@
 
     "_full_path_example": "Full path will be: models/custom_models/my-model.gguf",
 
+    "_server_params_comment": "===== Additional llama-server Parameters (Optional) =====",
+    "_server_params_note": "Pass any additional parameters to llama-server. These are passed as command-line arguments.",
+    "_server_params_help": "To see all available options, run: ../llama.cpp/build/bin/llama-server -h",
+    "server_params": {
+      "ctx-size": 8192,
+      "_ctx_size_note": "Context window size (default is usually 512-2048, increase for longer conversations)",
+      "n-gpu-layers": 35,
+      "_n_gpu_layers_note": "Number of layers to offload to GPU (0 = CPU only, -1 = all layers)",
+      "threads": 8,
+      "_threads_note": "Number of CPU threads to use for inference"
+    },
+    "_server_params_examples": {
+      "example1": "Large context: 'ctx-size': 16384",
+      "example2": "GPU acceleration: 'n-gpu-layers': -1 (all layers)",
+      "example3": "Flash attention: 'flash-attn': true",
+      "example4": "Batch size: 'batch-size': 512"
+    },
+    "_server_params_optional": "The server_params section is completely optional. Remove it to use llama-server defaults.",
+
     "_common_use_cases": {
       "example1": "Downloaded GGUF from a URL: model_dir: 'my_downloads', gguf_file: 'llama-2-7b.gguf'",
       "example2": "Custom quantized model: model_dir: 'custom_quants', gguf_file: 'model-q4_k_m.gguf'",

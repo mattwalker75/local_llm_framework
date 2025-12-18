@@ -6,7 +6,7 @@
 # It provides a simple interface for the LLF framework to manage the server.
 #
 # Usage:
-#   start_llama_server.sh --server-path PATH --model-file PATH [--host HOST] [--port PORT]
+#   start_llama_server.sh --server-path PATH --model-file PATH [--host HOST] [--port PORT] [--server-arg KEY VALUE ...]
 #
 
 set -e
@@ -16,6 +16,7 @@ HOST="0.0.0.0"
 PORT="8000"
 SERVER_PATH=""
 MODEL_FILE=""
+declare -a SERVER_ARGS=()
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -36,15 +37,30 @@ while [[ $# -gt 0 ]]; do
             PORT="$2"
             shift 2
             ;;
+        --server-arg)
+            # Collect additional server arguments as key-value pairs
+            # Format: --server-arg KEY VALUE
+            if [[ $# -lt 3 ]]; then
+                echo "Error: --server-arg requires KEY and VALUE"
+                exit 1
+            fi
+            SERVER_ARGS+=("--$2" "$3")
+            shift 3
+            ;;
         -h|--help)
-            echo "Usage: $0 --server-path PATH --model-file PATH [--host HOST] [--port PORT]"
+            echo "Usage: $0 --server-path PATH --model-file PATH [--host HOST] [--port PORT] [--server-arg KEY VALUE ...]"
             echo ""
             echo "Options:"
-            echo "  --server-path PATH   Path to llama-server binary (required)"
-            echo "  --model-file PATH    Path to GGUF model file (required)"
-            echo "  --host HOST          Host to bind to (default: 0.0.0.0)"
-            echo "  --port PORT          Port to bind to (default: 8000)"
-            echo "  -h, --help           Show this help message"
+            echo "  --server-path PATH         Path to llama-server binary (required)"
+            echo "  --model-file PATH          Path to GGUF model file (required)"
+            echo "  --host HOST                Host to bind to (default: 0.0.0.0)"
+            echo "  --port PORT                Port to bind to (default: 8000)"
+            echo "  --server-arg KEY VALUE     Additional llama-server argument (can be repeated)"
+            echo "                             Example: --server-arg ctx-size 8192"
+            echo "  -h, --help                 Show this help message"
+            echo ""
+            echo "To see all available llama-server options, run:"
+            echo "  \$SERVER_PATH -h"
             exit 0
             ;;
         *)
@@ -90,6 +106,16 @@ echo "  Server: $SERVER_PATH"
 echo "  Model:  $MODEL_FILE"
 echo "  Host:   $HOST"
 echo "  Port:   $PORT"
+
+# Display additional server arguments if any
+if [ ${#SERVER_ARGS[@]} -gt 0 ]; then
+    echo "  Additional args:"
+    for ((i=0; i<${#SERVER_ARGS[@]}; i+=2)); do
+        echo "    ${SERVER_ARGS[i]} ${SERVER_ARGS[i+1]}"
+    done
+fi
+
 echo ""
 
-exec "$SERVER_PATH" --model "$MODEL_FILE" --host "$HOST" --port "$PORT"
+# Execute llama-server with all arguments
+exec "$SERVER_PATH" --model "$MODEL_FILE" --host "$HOST" --port "$PORT" "${SERVER_ARGS[@]}"

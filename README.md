@@ -16,6 +16,8 @@ Local LLM Framework (LLF) provides maximum flexibility - run models locally for 
 - ✅ Seamless switching between local and external LLMs via config
 - ✅ Automatic model download and management from HuggingFace Hub (GGUF format)
 - ✅ Interactive CLI chat interface with colored output
+- ✅ Web-based GUI interface for easy management and chat
+- ✅ Customizable prompt configuration system
 - ✅ Production-quality modular architecture
 - ✅ Comprehensive unit testing (100% test passing rate)
 - ✅ Clean installation and uninstallation process
@@ -25,7 +27,6 @@ Local LLM Framework (LLF) provides maximum flexibility - run models locally for 
 - ✅ OpenAI-compatible API interface
 
 ### Future Phases (Planned)
-- 🔮 GUI interface
 - 🔮 Voice input/output
 - 🔮 Internet access capabilities
 - 🔮 Tool execution (commands, filesystem access)
@@ -255,6 +256,69 @@ llf chat --no-server-start
 3. Stop server when done: `llf server stop`
 
 This allows you to keep the server running while executing multiple commands or chat sessions against it.
+
+### Web-Based GUI Interface
+
+LLF includes a modern web-based GUI interface built with Gradio, providing an intuitive alternative to the command-line interface.
+
+**Start the GUI:**
+
+```bash
+# Start GUI (opens in browser automatically on port 7860)
+llf gui
+
+# Start on custom port
+llf gui --port 8080
+
+# Create public share link (for remote access)
+llf gui --share
+
+# Start without opening browser
+llf gui --no-browser
+```
+
+**GUI Features:**
+
+The GUI provides 5 main tabs:
+
+1. **💬 Chat Tab**
+   - Interactive conversation with your LLM
+   - Conversation history display
+   - Clear chat functionality
+
+2. **🖥️ Server Tab**
+   - View server status
+   - Start/stop/restart local LLM server
+   - Real-time status updates
+
+3. **📦 Models Tab**
+   - List downloaded models
+   - Download models from HuggingFace or URL
+   - View model information
+
+4. **⚙️ Config Tab (Infrastructure)**
+   - View and edit `config.json`
+   - Configure local server settings, API connections, inference parameters
+   - Auto-reload on save
+
+5. **📝 Config Tab (Prompts)**
+   - View and edit `config_prompt.json`
+   - Customize system prompts, conversation format, and message injection
+   - Auto-reload on save
+
+**When to Use GUI vs CLI:**
+
+- **Use GUI** when:
+  - You prefer visual interfaces
+  - Managing configuration files
+  - Monitoring server status in real-time
+  - You need remote access (with --share flag)
+
+- **Use CLI** when:
+  - Automating tasks with scripts
+  - Working in terminal-only environments
+  - Integrating with other command-line tools
+  - You prefer keyboard-based workflows
 
 ### Interactive Chat Commands
 

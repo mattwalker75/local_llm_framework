@@ -492,3 +492,61 @@ class TestLLMRuntime:
 
         with pytest.raises(RuntimeError, match="Failed to list models"):
             runtime.list_models()
+
+    def test_get_server_command_no_params(self, runtime, temp_dir):
+        """Test _get_server_command without server_params."""
+        model_file = temp_dir / "model.gguf"
+
+        cmd = runtime._get_server_command(model_file)
+
+        assert str(runtime.config.server_wrapper_script) in cmd
+        assert "--server-path" in cmd
+        assert str(runtime.config.llama_server_path) in cmd
+        assert "--model-file" in cmd
+        assert str(model_file) in cmd
+        assert "--host" in cmd
+        assert runtime.config.server_host in cmd
+        assert "--port" in cmd
+        assert str(runtime.config.server_port) in cmd
+        # Should not have --server-arg
+        assert "--server-arg" not in cmd
+
+    def test_get_server_command_with_params(self, runtime, temp_dir):
+        """Test _get_server_command with server_params."""
+        model_file = temp_dir / "model.gguf"
+        runtime.config.server_params = {
+            "ctx-size": 8192,
+            "n-gpu-layers": 35,
+            "threads": 8
+        }
+
+        cmd = runtime._get_server_command(model_file)
+
+        # Check basic args
+        assert str(runtime.config.server_wrapper_script) in cmd
+        assert "--model-file" in cmd
+        assert str(model_file) in cmd
+
+        # Check server params are included
+        assert "--server-arg" in cmd
+        assert "ctx-size" in cmd
+        assert "8192" in cmd
+        assert "n-gpu-layers" in cmd
+        assert "35" in cmd
+        assert "threads" in cmd
+        assert "8" in cmd
+
+        # Verify format: --server-arg KEY VALUE pairs
+        for i, arg in enumerate(cmd):
+            if arg == "--server-arg":
+                assert i + 2 < len(cmd), "server-arg should be followed by key and value"
+
+    def test_get_server_command_with_empty_params(self, runtime, temp_dir):
+        """Test _get_server_command with empty server_params."""
+        model_file = temp_dir / "model.gguf"
+        runtime.config.server_params = {}
+
+        cmd = runtime._get_server_command(model_file)
+
+        # Should not have --server-arg
+        assert "--server-arg" not in cmd

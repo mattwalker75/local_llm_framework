@@ -28,7 +28,9 @@ class Config:
 
     # Directory structure
     PROJECT_ROOT: Path = Path(__file__).parent.parent
-    DEFAULT_CONFIG_FILE: Path = PROJECT_ROOT / "config.json"
+    CONFIGS_DIR: Path = PROJECT_ROOT / "configs"
+    DEFAULT_CONFIG_FILE: Path = CONFIGS_DIR / "config.json"
+    CONFIG_BACKUPS_DIR: Path = CONFIGS_DIR / "backups"
     DEFAULT_MODEL_DIR: Path = PROJECT_ROOT / "models"
     DEFAULT_CACHE_DIR: Path = PROJECT_ROOT / ".cache"
 
@@ -79,6 +81,7 @@ class Config:
         self.inference_params = self.DEFAULT_INFERENCE_PARAMS.copy()
         self.log_level = self.LOG_LEVEL
         self.custom_model_dir = None  # Custom model directory (optional)
+        self.server_params = {}  # Additional llama-server parameters (optional)
         self._has_local_server_section = False  # Track if local_llm_server was in config file
 
         # Determine which config file to use
@@ -131,6 +134,10 @@ class Config:
                     self.custom_model_dir = self.model_dir / server_config['model_dir']
                 # GGUF model file to load (quantized model format for llama.cpp)
                 self.gguf_file = server_config.get('gguf_file', self.gguf_file)
+                # Additional llama-server parameters (optional)
+                # These are passed directly to llama-server CLI
+                # Use 'llama-server -h' to see all available options
+                self.server_params = server_config.get('server_params', {})
             else:
                 # Fallback to flat structure for backward compatibility with older config files
                 if 'llama_server_path' in config_data:
@@ -194,6 +201,8 @@ class Config:
         """Create necessary directories if they don't exist."""
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
+        self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
     def get_server_url(self) -> str:
         """
@@ -281,7 +290,7 @@ class Config:
         Returns:
             Dictionary representation of configuration with nested structure.
         """
-        return {
+        config_dict = {
             'local_llm_server': {
                 'llama_server_path': str(self.llama_server_path),
                 'server_host': self.server_host,
@@ -298,6 +307,47 @@ class Config:
             'inference_params': self.inference_params,
             'log_level': self.log_level,
         }
+
+        # Only include server_params if not empty (keep config clean)
+        if self.server_params:
+            config_dict['local_llm_server']['server_params'] = self.server_params
+
+        return config_dict
+
+    def backup_config(self, config_file: Optional[Path] = None) -> Path:
+        """
+        Create a backup of the configuration file.
+
+        Args:
+            config_file: Path to config file to backup. If None, uses DEFAULT_CONFIG_FILE.
+
+        Returns:
+            Path to the backup file.
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist.
+        """
+        from datetime import datetime
+        import shutil
+
+        if config_file is None:
+            config_file = self.DEFAULT_CONFIG_FILE
+
+        if not config_file.exists():
+            raise FileNotFoundError(f"Config file not found: {config_file}")
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"{config_file.stem}_{timestamp}{config_file.suffix}"
+        backup_path = self.CONFIG_BACKUPS_DIR / backup_name
+
+        # Ensure backup directory exists
+        self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Copy file to backup
+        shutil.copy2(config_file, backup_path)
+
+        return backup_path
 
     def save_to_file(self, config_file: Path) -> None:
         """

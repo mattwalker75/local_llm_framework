@@ -21,7 +21,9 @@ class PromptConfig:
 
     # Default configuration file path
     PROJECT_ROOT: Path = Path(__file__).parent.parent
-    DEFAULT_CONFIG_FILE: Path = PROJECT_ROOT / "config_prompt.json"
+    CONFIGS_DIR: Path = PROJECT_ROOT / "configs"
+    DEFAULT_CONFIG_FILE: Path = CONFIGS_DIR / "config_prompt.json"
+    CONFIG_BACKUPS_DIR: Path = CONFIGS_DIR / "backups"
 
     def __init__(self, config_file: Optional[Path] = None):
         """
@@ -172,6 +174,41 @@ class PromptConfig:
             "suffix_messages": self.suffix_messages,
             "custom_format": self.custom_format,
         }
+
+    def backup_config(self, config_file: Optional[Path] = None) -> Path:
+        """
+        Create a backup of the prompt configuration file.
+
+        Args:
+            config_file: Path to config file to backup. If None, uses DEFAULT_CONFIG_FILE.
+
+        Returns:
+            Path to the backup file.
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist.
+        """
+        from datetime import datetime
+        import shutil
+
+        if config_file is None:
+            config_file = self.DEFAULT_CONFIG_FILE
+
+        if not config_file.exists():
+            raise FileNotFoundError(f"Prompt config file not found: {config_file}")
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"{config_file.stem}_{timestamp}{config_file.suffix}"
+        backup_path = self.CONFIG_BACKUPS_DIR / backup_name
+
+        # Ensure backup directory exists
+        self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Copy file to backup
+        shutil.copy2(config_file, backup_path)
+
+        return backup_path
 
     def save_to_file(self, config_file: Path) -> None:
         """

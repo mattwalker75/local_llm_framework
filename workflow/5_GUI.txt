@@ -1,0 +1,13 @@
+
+I passed the following prompt to Claude to begin coding of the GUI interface:
+
+We will now want to create a GUI interface that can optionally be started up and used by users who are not comfortable with using the CLI.  All current CLI functionality needs to remain in place and you should try to use as much of the existing backend code as possible for the GUI interface. 
+
+We should create the following command to bring up the GUI interface:
+
+   llf gui start
+
+The GUI interface should be very intuitive and look very clean and modern.  The existing configuration files ( config_prompt.json and config.json )should be able to be viewed and modified though the GUI interface.  You should be able to take actions against the server, such as starting, stopping, restarting, checking the status, etc. like you can from the "llf server" command base.  You should also be able to work with the models, like you can with the "llf model" commands.  One of the main features of the GUI interface should be the ability to interact with the LLM model, like you can with the "llf chat" command.
+
+Remember to add any addional packages that need to be installed to the requirements.txt file and setup associated unit tests.  Also remember that you need to run this in the Python virtual environment.
+
