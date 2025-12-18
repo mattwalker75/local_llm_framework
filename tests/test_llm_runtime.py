@@ -30,6 +30,7 @@ def config(temp_dir):
     config.server_port = 8000
     config.llama_server_path = temp_dir / "llama-server"
     config.server_wrapper_script = temp_dir / "wrapper.sh"
+    config.custom_model_dir = None  # Ensure tests don't use real config's custom_model_dir
     return config
 
 

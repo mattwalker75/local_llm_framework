@@ -65,10 +65,24 @@ class CLI:
 
     def print_welcome(self) -> None:
         """Print welcome message."""
+        # Try to get the actual loaded model from the running server
+        model_display = self.config.model_name  # Default to config
+
+        # For local servers, query the actual loaded model
+        if not self.config.is_using_external_api() and self.runtime.is_server_running():
+            try:
+                models = self.runtime.list_models()
+                if models and len(models) > 0:
+                    # Use the first model ID from the server
+                    model_display = models[0]['id']
+            except Exception:
+                # If query fails, fall back to config model name
+                pass
+
         welcome_text = f"""
 # Local LLM Framework
 
-**Model:** {self.config.model_name}
+**Model:** {model_display}
 **Mode:** Interactive Chat
 
 Type your messages and press Enter to send.
@@ -114,10 +128,22 @@ Simply type your message and press Enter to chat with the LLM.
         model_info = self.model_manager.get_model_info()
 
         info_lines = [
-            f"**Model:** {model_info['name']}",
+            f"**Configured Model:** {model_info['name']}",
+        ]
+
+        # Show actual loaded model if server is running
+        if not self.config.is_using_external_api() and self.runtime.is_server_running():
+            try:
+                models = self.runtime.list_models()
+                if models and len(models) > 0:
+                    info_lines.append(f"**Loaded Model:** {models[0]['id']}")
+            except Exception:
+                pass
+
+        info_lines.extend([
             f"**Path:** {model_info['path']}",
             f"**Downloaded:** {'Yes' if model_info['downloaded'] else 'No'}",
-        ]
+        ])
 
         if 'size_gb' in model_info:
             info_lines.append(f"**Size:** {model_info['size_gb']} GB")
@@ -391,8 +417,6 @@ Simply type your message and press Enter to chat with the LLM.
                 return self.cli_question(cli_question)
 
             # Interactive mode
-            self.print_welcome()
-
             # Ensure model is downloaded
             if not self.ensure_model_ready():
                 return 1
@@ -400,6 +424,9 @@ Simply type your message and press Enter to chat with the LLM.
             # Start server
             if not self.start_server():
                 return 1
+
+            # Print welcome message AFTER server is running
+            self.print_welcome()
 
             # Run interactive loop
             self.interactive_loop()
@@ -428,24 +455,45 @@ def download_command(args) -> int:
     config = get_config()
     model_manager = ModelManager(config)
 
-    model_name = args.model or config.model_name
-    token = getattr(args, 'token', None)
-
-    console.print(f"[yellow]Downloading model: {model_name}[/yellow]")
-
     try:
-        model_manager.download_model(
-            model_name,
-            force=args.force,
-            token=token
-        )
-        console.print(f"[green]Model downloaded successfully![/green]")
+        # Check if URL download or HuggingFace download
+        if hasattr(args, 'url') and args.url:
+            # URL download
+            console.print(f"[yellow]Downloading from URL: {args.url}[/yellow]")
+            console.print(f"[yellow]Saving as: {args.name}[/yellow]")
 
-        # Show model info
-        info = model_manager.get_model_info(model_name)
-        console.print(f"[cyan]Path: {info['path']}[/cyan]")
-        if 'size_gb' in info:
-            console.print(f"[cyan]Size: {info['size_gb']} GB[/cyan]")
+            model_path = model_manager.download_from_url(
+                url=args.url,
+                name=args.name,
+                force=args.force
+            )
+            console.print(f"[green]Model downloaded successfully![/green]")
+            console.print(f"[cyan]Path: {model_path}[/cyan]")
+
+            # List files in the directory
+            files = list(model_path.glob('*'))
+            if files:
+                console.print(f"[cyan]Downloaded files: {', '.join(f.name for f in files)}[/cyan]")
+
+        else:
+            # HuggingFace download
+            model_name = args.huggingface_model or config.model_name
+            token = getattr(args, 'token', None)
+
+            console.print(f"[yellow]Downloading model: {model_name}[/yellow]")
+
+            model_manager.download_model(
+                model_name,
+                force=args.force,
+                token=token
+            )
+            console.print(f"[green]Model downloaded successfully![/green]")
+
+            # Show model info
+            info = model_manager.get_model_info(model_name)
+            console.print(f"[cyan]Path: {info['path']}[/cyan]")
+            if 'size_gb' in info:
+                console.print(f"[cyan]Size: {info['size_gb']} GB[/cyan]")
 
         return 0
 
@@ -496,7 +544,7 @@ def info_command(args) -> int:
     config = get_config()
     model_manager = ModelManager(config)
 
-    model_name = args.model or config.model_name
+    model_name = args.huggingface_model or config.model_name
     info = model_manager.get_model_info(model_name)
 
     console.print(Panel(
@@ -533,9 +581,14 @@ def server_command(args) -> int:
     """
     config = get_config()
 
-    # Override model if specified
-    if hasattr(args, 'model') and args.model:
-        config.model_name = args.model
+    # Override model settings if specified via CLI flags
+    if hasattr(args, 'huggingface_model') and args.huggingface_model:
+        config.model_name = args.huggingface_model
+        config.custom_model_dir = None  # Clear custom dir when using HF model
+    elif hasattr(args, 'gguf_dir') and args.gguf_dir and hasattr(args, 'gguf_file') and args.gguf_file:
+        # Set custom model directory and GGUF file
+        config.custom_model_dir = config.model_dir / args.gguf_dir
+        config.gguf_file = args.gguf_file
 
     model_manager = ModelManager(config)
     runtime = LLMRuntime(config, model_manager)
@@ -557,8 +610,8 @@ def server_command(args) -> int:
                 console.print(f"[yellow]Server is already running on {config.get_server_url()}[/yellow]")
                 return 0
 
-            # Ensure model is downloaded
-            if not model_manager.is_model_downloaded():
+            # Ensure model is downloaded (only for HuggingFace models, not custom GGUF)
+            if config.custom_model_dir is None and not model_manager.is_model_downloaded():
                 console.print(f"[yellow]Model {config.model_name} is not downloaded.[/yellow]")
                 console.print("[yellow]Downloading model... This may take a while.[/yellow]")
                 try:
@@ -568,7 +621,13 @@ def server_command(args) -> int:
                     console.print(f"[red]Failed to download model: {e}[/red]")
                     return 1
 
-            console.print(f"[yellow]Starting llama-server with model {config.model_name}...[/yellow]")
+            # Display appropriate model info based on configuration
+            if config.custom_model_dir:
+                model_display = f"{config.custom_model_dir.name}/{config.gguf_file}"
+            else:
+                model_display = config.model_name
+
+            console.print(f"[yellow]Starting llama-server with model {model_display}...[/yellow]")
             console.print("[dim]This may take a minute or two...[/dim]")
 
             runtime.start_server()
@@ -680,35 +739,39 @@ Examples:
   llf chat                         Start interactive chat (prompts to start server if not running)
   llf chat --auto-start-server     Auto-start server if not running (no prompt)
   llf chat --no-server-start       Exit with error if server not running
-  llf chat --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf chat --gguf-dir test_gguf --gguf-file my-model.gguf
 
   # CLI mode (non-interactive, for scripting)
   llf chat --cli "What is 2+2?"                    Ask a single question and exit
   llf chat --cli "Explain Python" --auto-start-server
-  llf chat --cli "Code review" --model custom/model
+  llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
   # Server management
   llf server start                 Start llama-server (stays in foreground)
   llf server start --daemon        Start server in background
-  llf server start --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf server start --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
   llf server stop                  Stop running server
   llf server status                Check if server is running
   llf server restart               Restart server with current model
   llf server list_models           List available models from configured endpoint
 
-  # Model management (GGUF format)
-  llf download                     Download default GGUF model
-  llf download --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
-  llf list                         List downloaded models
-  llf info                         Show model information
-  llf info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  # Model management
+  llf model download               Download default HuggingFace model
+  llf model download --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model download --url https://example.com/model.gguf --name my-model
+  llf model list                   List downloaded models
+  llf model info                   Show default model information
+  llf model info --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 
-  # Configuration
-  llf -d /custom/path              Set custom download directory
-  llf --log-level DEBUG            Enable debug logging
-  llf --log-file llf.log           Log to file (in addition to console)
-  llf --log-level DEBUG --log-file /var/log/llf.log
+  # Global Configuration Flags (use with any command)
+  llf --log-level DEBUG chat                           Enable debug logging for chat
+  llf --log-level DEBUG --log-file debug.log chat      Log chat session to file
+  llf server start --log-level DEBUG --log-file server.log  Debug server startup
+  llf -d /custom/models model download                 Download to custom directory
+  llf --config myconfig.json server start              Use different config file
 
 Note: Requires llama.cpp compiled with llama-server binary.
 For setup instructions, see: https://github.com/ggml-org/llama.cpp
@@ -771,11 +834,28 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help='Start interactive chat with LLM',
         description='Start an interactive chat session with the locally running LLM.'
     )
-    chat_parser.add_argument(
-        '--model',
-        metavar='NAME',
-        help='Model to use for chat (e.g., "mistralai/Mistral-7B-Instruct-v0.2"). Must be downloaded first.'
+
+    # Model selection (mutually exclusive)
+    model_group = chat_parser.add_argument_group(
+        'Model Selection',
+        'Specify model location (choose one method)'
     )
+    model_group.add_argument(
+        '--huggingface-model',
+        metavar='NAME',
+        help='HuggingFace model identifier (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"). Uses models/{sanitized_name}/ structure.'
+    )
+    model_group.add_argument(
+        '--gguf-dir',
+        metavar='DIR',
+        help='GGUF model directory within models/ (e.g., "test_gguf"). Must be used with --gguf-file.'
+    )
+    model_group.add_argument(
+        '--gguf-file',
+        metavar='FILE',
+        help='GGUF model filename (e.g., "model.gguf"). Must be used with --gguf-dir.'
+    )
+
     chat_parser.add_argument(
         '--auto-start-server',
         action='store_true',
@@ -792,17 +872,43 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help='Non-interactive mode: ask a single question and exit (for scripting)'
     )
 
-    # Download command
-    download_parser = subparsers.add_parser(
+    # Model command (with subcommands: download, list, info)
+    model_parser = subparsers.add_parser(
+        'model',
+        help='Model management commands',
+        description='Download, list, and manage models for use with LLF.'
+    )
+    model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
+
+    # model download
+    download_parser = model_subparsers.add_parser(
         'download',
-        help='Download a model from HuggingFace Hub',
-        description='Download and cache a model locally for use with LLF.'
+        help='Download a model from HuggingFace Hub or URL',
+        description='Download and cache a model locally for use with LLF from HuggingFace Hub or a direct URL.'
     )
-    download_parser.add_argument(
-        '--model',
+
+    # Download source options (mutually exclusive)
+    download_source = download_parser.add_argument_group(
+        'Download Source',
+        'Specify download source (choose one method)'
+    )
+    download_source.add_argument(
+        '--huggingface-model',
         metavar='NAME',
-        help='Model name to download (e.g., "Qwen/Qwen3-Coder-30B-A3B-Instruct")'
+        help='HuggingFace model identifier (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
     )
+    download_source.add_argument(
+        '--url',
+        metavar='URL',
+        help='Direct URL to GGUF model file (e.g., "https://example.com/model.gguf"). Requires --name.'
+    )
+    download_source.add_argument(
+        '--name',
+        metavar='NAME',
+        help='Local directory name for URL download (e.g., "my-custom-model"). Required with --url.'
+    )
+
+    # Download options
     download_parser.add_argument(
         '--force',
         action='store_true',
@@ -811,26 +917,26 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     download_parser.add_argument(
         '--token',
         metavar='TOKEN',
-        help='HuggingFace API token for private models'
+        help='HuggingFace API token for private models (HuggingFace downloads only)'
     )
 
-    # List command
-    list_parser = subparsers.add_parser(
+    # model list
+    list_parser = model_subparsers.add_parser(
         'list',
         help='List all downloaded models',
         description='Display all models currently downloaded and cached locally.'
     )
 
-    # Info command
-    info_parser = subparsers.add_parser(
+    # model info
+    info_parser = model_subparsers.add_parser(
         'info',
         help='Show detailed model information',
         description='Display detailed information about a specific model including size, location, and verification status.'
     )
     info_parser.add_argument(
-        '--model',
+        '--huggingface-model',
         metavar='NAME',
-        help='Model name to show info for (default: configured default model)'
+        help='HuggingFace model identifier to show info for (default: configured default model)'
     )
 
     # Server command
@@ -844,11 +950,28 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         choices=['start', 'stop', 'status', 'restart', 'list_models'],
         help='Server action to perform'
     )
-    server_parser.add_argument(
-        '--model',
-        metavar='NAME',
-        help='Model to load (for start/restart actions)'
+
+    # Model selection for server
+    server_model_group = server_parser.add_argument_group(
+        'Model Selection',
+        'Specify model location (choose one method, for start/restart actions)'
     )
+    server_model_group.add_argument(
+        '--huggingface-model',
+        metavar='NAME',
+        help='HuggingFace model identifier (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+    server_model_group.add_argument(
+        '--gguf-dir',
+        metavar='DIR',
+        help='GGUF model directory within models/ (e.g., "test_gguf"). Must be used with --gguf-file.'
+    )
+    server_model_group.add_argument(
+        '--gguf-file',
+        metavar='FILE',
+        help='GGUF model filename (e.g., "model.gguf"). Must be used with --gguf-dir.'
+    )
+
     server_parser.add_argument(
         '--daemon',
         action='store_true',
@@ -857,6 +980,63 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
 
     # Parse arguments
     args = parser.parse_args()
+
+    # Validate model selection arguments
+    def validate_model_args(args):
+        """Validate mutually exclusive model arguments."""
+        hf_model = getattr(args, 'huggingface_model', None)
+        gguf_dir = getattr(args, 'gguf_dir', None)
+        gguf_file = getattr(args, 'gguf_file', None)
+
+        # Check if both HF and GGUF specified
+        if hf_model and (gguf_dir or gguf_file):
+            parser.error(
+                "Cannot specify both --huggingface-model and --gguf-dir/--gguf-file.\n"
+                "Use either HuggingFace OR GGUF flags, not both."
+            )
+
+        # Check if only one GGUF flag specified
+        if (gguf_dir and not gguf_file) or (gguf_file and not gguf_dir):
+            parser.error(
+                "--gguf-dir and --gguf-file must be specified together.\n"
+                "Both flags are required for GGUF models."
+            )
+
+    # Validate download arguments
+    def validate_download_args(args):
+        """Validate mutually exclusive download arguments."""
+        hf_model = getattr(args, 'huggingface_model', None)
+        url = getattr(args, 'url', None)
+        name = getattr(args, 'name', None)
+
+        # Check if both HF and URL specified
+        if hf_model and url:
+            parser.error(
+                "Cannot specify both --huggingface-model and --url.\n"
+                "Use either HuggingFace OR URL download, not both."
+            )
+
+        # Check if URL specified without name
+        if url and not name:
+            parser.error(
+                "--url requires --name to specify the local directory name.\n"
+                "Example: llf model download --url <URL> --name my-model"
+            )
+
+        # Check if name specified without URL
+        if name and not url:
+            parser.error(
+                "--name can only be used with --url.\n"
+                "Use --url <URL> --name <NAME> together for URL downloads."
+            )
+
+    # Validate if command uses model arguments
+    if hasattr(args, 'huggingface_model') or hasattr(args, 'gguf_dir'):
+        validate_model_args(args)
+
+    # Validate if command uses download arguments
+    if hasattr(args, 'url'):
+        validate_download_args(args)
 
     # Load or create config first (to get log_level if not specified on CLI)
     if args.config:
@@ -882,18 +1062,28 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         config.cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Handle commands
-    if args.command == 'download':
-        return download_command(args)
-    elif args.command == 'list':
-        return list_command(args)
-    elif args.command == 'info':
-        return info_command(args)
+    if args.command == 'model':
+        # Handle model subcommands
+        if args.action == 'download':
+            return download_command(args)
+        elif args.action == 'list':
+            return list_command(args)
+        elif args.action == 'info':
+            return info_command(args)
+        else:
+            model_parser.print_help()
+            return 0
     elif args.command == 'server':
         return server_command(args)
     elif args.command == 'chat' or args.command is None:
-        # Override model if specified via --model parameter
-        if hasattr(args, 'model') and args.model:
-            config.model_name = args.model
+        # Override model settings if specified via CLI flags
+        if hasattr(args, 'huggingface_model') and args.huggingface_model:
+            config.model_name = args.huggingface_model
+            config.custom_model_dir = None  # Clear custom dir when using HF model
+        elif hasattr(args, 'gguf_dir') and args.gguf_dir and hasattr(args, 'gguf_file') and args.gguf_file:
+            # Set custom model directory and GGUF file
+            config.custom_model_dir = config.model_dir / args.gguf_dir
+            config.gguf_file = args.gguf_file
 
         # Get server control flags
         auto_start = getattr(args, 'auto_start_server', False)

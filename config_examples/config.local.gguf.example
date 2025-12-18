@@ -1,14 +1,16 @@
 {
-  "_comment": "===== LLF Configuration for Local LLM (llama.cpp/llama-server) =====",
-  "_usage": "To use this config: cp config.local.example config.json",
+  "_comment": "===== LLF Configuration for Local LLM with Custom GGUF Directory =====",
+  "_usage": "To use this config: cp config.local.gguf.example config.json",
 
   "_setup_instructions": {
     "step1": "Ensure llama.cpp is built (see README for instructions)",
     "step2": "Copy this file to config.json",
-    "step3": "Download a model: llf download",
-    "step4": "(Optional) Update model_name and gguf_file below if using a different model",
+    "step3": "Place your GGUF model file in models/{model_dir}/ directory",
+    "step4": "Update model_dir and gguf_file below to match your setup",
     "step5": "Start chatting: llf chat"
   },
+
+  "_use_case": "Use this config when you have GGUF models in a custom directory structure (not from HuggingFace)",
 
   "_local_llm_server_comment": "===== Local llama-server Configuration =====",
   "_local_llm_server_note": "These settings control the local llama-server process when LLF starts it",
@@ -22,23 +24,21 @@
     "server_port": 8000,
     "_server_port_note": "Port for llama-server to listen on",
 
-    "_model_location_comment": "===== Model File Location =====",
-    "_model_location_note": "Two ways to specify where your GGUF model file is located:",
+    "_model_location_comment": "===== Custom GGUF Model Location =====",
+    "_model_location_note": "Specify a custom subdirectory in models/ for your GGUF file",
 
-    "_option1_comment": "Option 1: Use HuggingFace model structure (default)",
-    "_option1_note": "Just specify gguf_file - it will be found in models/{model_name}/",
-    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+    "model_dir": "custom_models",
+    "_model_dir_note": "Subdirectory name in models/ (creates path: models/custom_models/)",
+
+    "gguf_file": "my-model.gguf",
     "_gguf_file_note": "GGUF model file name (quantized format for llama.cpp)",
 
-    "_option2_comment": "Option 2: Use custom subdirectory in models/",
-    "_option2_note": "Add 'model_dir' to override the HuggingFace structure",
-    "_option2_example_comment": "Example: model_dir: 'custom_models' looks in models/custom_models/ for gguf_file",
-    "_option2_usage": "Uncomment the line below to use a custom model directory:",
-    "_model_dir_example": "model_dir: 'Qwen--Qwen2.5-Coder-7B-Instruct-GGUF'",
+    "_full_path_example": "Full path will be: models/custom_models/my-model.gguf",
 
-    "_full_path_examples": {
-      "example1": "gguf_file: 'model.gguf' → searches in models/{model_name}/model.gguf",
-      "example2": "model_dir: 'my_models', gguf_file: 'model.gguf' → searches in models/my_models/model.gguf"
+    "_common_use_cases": {
+      "example1": "Downloaded GGUF from a URL: model_dir: 'my_downloads', gguf_file: 'llama-2-7b.gguf'",
+      "example2": "Custom quantized model: model_dir: 'custom_quants', gguf_file: 'model-q4_k_m.gguf'",
+      "example3": "Testing multiple models: model_dir: 'test_models', gguf_file: 'experimental.gguf'"
     }
   },
 
@@ -49,13 +49,13 @@
     "_api_base_url_note": "OpenAI-compatible API endpoint (local server)",
     "api_key": "EMPTY",
     "_api_key_note": "No authentication needed for local server",
-    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    "_model_name_note": "HuggingFace model repo name (used for downloads)"
+    "model_name": "custom-model",
+    "_model_name_note": "Descriptive name for your model (not used for file lookup with model_dir)"
   },
 
   "_paths_comment": "===== Storage Directories =====",
   "model_dir": "models",
-  "_model_dir_note": "Where downloaded models are stored",
+  "_model_dir_note": "Base directory where all models are stored",
   "cache_dir": ".cache",
   "_cache_dir_note": "Cache directory for temporary files",
 
@@ -78,9 +78,9 @@
     "_repetition_penalty_note": "Penalty for repeating tokens (llama.cpp only, 1.0 = no penalty)"
   },
 
-  "_switching_to_external_api": {
-    "instructions": "To switch to OpenAI: cp config.openai.example config.json",
-    "or_anthropic": "To switch to Anthropic: cp config.anthropic.example config.json",
-    "note": "Example configs have proper parameter sets for each API"
+  "_switching_configs": {
+    "to_huggingface": "To use HuggingFace structure: cp config.local.huggingface.example config.json",
+    "to_openai": "To switch to OpenAI: cp config.openai.example config.json",
+    "to_anthropic": "To switch to Anthropic: cp config.anthropic.example config.json"
   }
 }

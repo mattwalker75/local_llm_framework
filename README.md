@@ -184,19 +184,22 @@ llf
 llf chat
 
 # Download the default model
-llf download
+llf model download
 
-# Download a specific model
-llf download --model "mistralai/Mistral-7B-Instruct-v0.2"
+# Download a specific HuggingFace model
+llf model download --huggingface-model "mistralai/Mistral-7B-Instruct-v0.2"
+
+# Download a model from a direct URL
+llf model download --url "https://example.com/model.gguf" --name "my-custom-model"
 
 # List downloaded models
-llf list
+llf model list
 
 # Show model information
-llf info
+llf model info
 
 # Set custom download directory
-llf -d /custom/path download
+llf -d /custom/path model download
 
 # Enable debug logging
 llf --log-level DEBUG chat
@@ -216,8 +219,11 @@ llf server start
 # Start the server in background (daemon mode)
 llf server start --daemon
 
-# Start server with a specific model
-llf server start --model "mistralai/Mistral-7B-Instruct-v0.2"
+# Start server with a specific HuggingFace model
+llf server start --huggingface-model "mistralai/Mistral-7B-Instruct-v0.2"
+
+# Start server with a GGUF model in custom directory
+llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
 
 # Check server status
 llf server status
@@ -271,9 +277,19 @@ Once in the chat interface:
 - `--version` - Show version information
 
 **Download Options:**
-- `--model NAME` - Model name from HuggingFace Hub
+- `--huggingface-model NAME` - HuggingFace model identifier (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+- `--url URL --name NAME` - Download from direct URL (both flags required together)
+  - `--url` - Direct URL to GGUF model file (e.g., "https://example.com/model.gguf")
+  - `--name` - Local directory name for the model (e.g., "my-custom-model")
+  - Cannot be used with `--huggingface-model`
 - `--force` - Force re-download even if model exists
 - `--token TOKEN` - HuggingFace API token for private models
+
+**Model Selection (for server/chat commands):**
+- `--huggingface-model NAME` - Use HuggingFace model structure (models/{sanitized_name}/)
+- `--gguf-dir DIR --gguf-file FILE` - Use GGUF model in custom directory (models/DIR/FILE)
+  - Both flags must be specified together
+  - Example: `--gguf-dir test_gguf --gguf-file my-model.gguf`
 
 For detailed usage information, see [USAGE.md](USAGE.md)
 

@@ -94,27 +94,38 @@ class LLMRuntime:
                 "Please compile llama.cpp first or configure the correct path."
             )
 
-        # Check if model is downloaded
-        if not self.model_manager.is_model_downloaded(model_name):
-            raise ValueError(
-                f"Model {model_name} is not downloaded. "
-                "Please download it first using model_manager.download_model()"
-            )
+        # Check if model is downloaded (skip if using custom model directory)
+        if self.config.custom_model_dir is None:
+            if not self.model_manager.is_model_downloaded(model_name):
+                raise ValueError(
+                    f"Model {model_name} is not downloaded. "
+                    "Please download it first using model_manager.download_model()"
+                )
 
         # Check if server is already running
         if self.is_server_running():
             logger.warning("llama-server is already running")
             return
 
-        # Get model directory and find GGUF file
-        model_dir = self.model_manager.get_model_path(model_name)
-        model_file_path = model_dir / gguf_file
-
-        if not model_file_path.exists():
-            raise ValueError(
-                f"GGUF model file not found: {model_file_path}\n"
-                f"Available files in {model_dir}: {list(model_dir.glob('*.gguf'))}"
-            )
+        # Determine model file path
+        # If custom_model_dir is set, use it directly
+        if self.config.custom_model_dir is not None:
+            model_file_path = self.config.custom_model_dir / gguf_file
+            if not model_file_path.exists():
+                raise ValueError(
+                    f"GGUF model file not found: {model_file_path}\n"
+                    f"Custom model directory: {self.config.custom_model_dir}\n"
+                    f"Available files: {list(self.config.custom_model_dir.glob('*.gguf')) if self.config.custom_model_dir.exists() else 'Directory does not exist'}"
+                )
+        else:
+            # Use HuggingFace model path
+            model_dir = self.model_manager.get_model_path(model_name)
+            model_file_path = model_dir / gguf_file
+            if not model_file_path.exists():
+                raise ValueError(
+                    f"GGUF model file not found: {model_file_path}\n"
+                    f"Available files in {model_dir}: {list(model_dir.glob('*.gguf'))}"
+                )
 
         cmd = self._get_server_command(model_file_path)
 

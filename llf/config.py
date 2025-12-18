@@ -78,6 +78,7 @@ class Config:
         self.api_key = self.API_KEY
         self.inference_params = self.DEFAULT_INFERENCE_PARAMS.copy()
         self.log_level = self.LOG_LEVEL
+        self.custom_model_dir = None  # Custom model directory (optional)
 
         # Determine which config file to use
         config_to_load = None
@@ -122,6 +123,10 @@ class Config:
                 self.server_host = server_config.get('server_host', self.server_host)
                 # Server port number
                 self.server_port = server_config.get('server_port', self.server_port)
+                # Custom model directory (optional) - subdirectory within models/ directory
+                if 'model_dir' in server_config:
+                    # model_dir is relative to models/ directory
+                    self.custom_model_dir = self.model_dir / server_config['model_dir']
                 # GGUF model file to load (quantized model format for llama.cpp)
                 self.gguf_file = server_config.get('gguf_file', self.gguf_file)
             else:
