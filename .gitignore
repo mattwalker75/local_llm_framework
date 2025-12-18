@@ -53,5 +53,6 @@ htmlcov/
 models/
 .cache/
 *.json.bak
-config.json  # User-specific configuration (use config.json.example as template)
+#config.json  # User-specific configuration (use config.json.example as template)
+#config_prompt.json  # User-specific prompt configuration (use examples in config_prompt_examples/)
 

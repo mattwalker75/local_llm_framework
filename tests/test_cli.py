@@ -25,6 +25,8 @@ def config(temp_dir):
     config.model_dir = temp_dir / "models"
     config.cache_dir = temp_dir / ".cache"
     config.model_name = "test/model"
+    # Simulate that local_llm_server was configured for tests
+    config._has_local_server_section = True
     return config
 
 
@@ -119,6 +121,7 @@ class TestCLI:
     def test_start_server_auto_start(self, mock_print):
         """Test server auto-start without prompt."""
         config = Config()
+        config._has_local_server_section = True  # Simulate local server configured
         cli = CLI(config, auto_start_server=True)
         cli.runtime.is_server_running = Mock(return_value=False)
         cli.runtime.start_server = Mock()
@@ -389,7 +392,7 @@ class TestCLICommands:
     @patch('llf.cli.CLI')
     @patch('llf.cli.get_config')
     def test_main_chat_with_model_override(self, mock_get_config, mock_cli_class):
-        """Test main function with chat command and --model parameter."""
+        """Test main function with chat command and --huggingface-model parameter."""
         from llf.cli import main
 
         mock_config = MagicMock()
@@ -399,8 +402,8 @@ class TestCLICommands:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.run.return_value = 0
 
-        # Simulate command line args: llf chat --model "mistralai/Mistral-7B"
-        test_args = ['llf', 'chat', '--model', 'mistralai/Mistral-7B-Instruct-v0.2']
+        # Simulate command line args: llf chat --huggingface-model "mistralai/Mistral-7B"
+        test_args = ['llf', 'chat', '--huggingface-model', 'mistralai/Mistral-7B-Instruct-v0.2']
         with patch.object(sys, 'argv', test_args):
             result = main()
 
@@ -412,7 +415,7 @@ class TestCLICommands:
     @patch('llf.cli.CLI')
     @patch('llf.cli.get_config')
     def test_main_chat_without_model_uses_default(self, mock_get_config, mock_cli_class):
-        """Test main function with chat command but no --model parameter uses default."""
+        """Test main function with chat command but no --huggingface-model parameter uses default."""
         from llf.cli import main
 
         mock_config = MagicMock()
@@ -423,7 +426,7 @@ class TestCLICommands:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.run.return_value = 0
 
-        # Simulate command line args: llf chat (no --model)
+        # Simulate command line args: llf chat (no --huggingface-model)
         test_args = ['llf', 'chat']
         with patch.object(sys, 'argv', test_args):
             result = main()
@@ -436,7 +439,7 @@ class TestCLICommands:
     @patch('llf.cli.CLI')
     @patch('llf.cli.get_config')
     def test_main_default_command_with_model(self, mock_get_config, mock_cli_class):
-        """Test main function with no command (defaults to chat) but with --model parameter."""
+        """Test main function with no command (defaults to chat) but with --huggingface-model parameter."""
         from llf.cli import main
 
         mock_config = MagicMock()
@@ -446,10 +449,10 @@ class TestCLICommands:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.run.return_value = 0
 
-        # Simulate command line args: llf --model "custom/model"
-        # Note: --model must come after command or be a global option
+        # Simulate command line args: llf --huggingface-model "custom/model"
+        # Note: --huggingface-model must come after command or be a global option
         # For now, test with explicit chat command
-        test_args = ['llf', 'chat', '--model', 'custom/model']
+        test_args = ['llf', 'chat', '--huggingface-model', 'custom/model']
         with patch.object(sys, 'argv', test_args):
             result = main()
 
@@ -472,7 +475,9 @@ class TestCLICommands:
         }
 
         args = MagicMock()
-        args.model = None
+        args.url = None
+        args.name = None
+        args.huggingface_model = None
         args.force = False
 
         result = download_command(args)
@@ -490,7 +495,9 @@ class TestCLICommands:
         mock_manager.download_model.side_effect = Exception("Download failed")
 
         args = MagicMock()
-        args.model = None
+        args.url = None
+        args.name = None
+        args.huggingface_model = None
         args.force = False
 
         result = download_command(args)
@@ -749,7 +756,7 @@ class TestCLICommands:
     @patch('llf.cli.ModelManager')
     @patch('llf.cli.get_config')
     def test_server_command_with_model_override(self, mock_config, mock_manager_class, mock_runtime_class, mock_print):
-        """Test server command with --model parameter."""
+        """Test server command with --huggingface-model parameter."""
         mock_runtime = MagicMock()
         mock_runtime_class.return_value = mock_runtime
         mock_runtime.is_server_running.return_value = False
@@ -764,7 +771,9 @@ class TestCLICommands:
 
         args = MagicMock()
         args.action = 'start'
-        args.model = 'custom/model'
+        args.huggingface_model = 'custom/model'
+        args.gguf_dir = None
+        args.gguf_file = None
         args.daemon = True
 
         result = server_command(args)
@@ -977,7 +986,7 @@ class TestCLIQuestionMode:
     @patch('llf.cli.CLI')
     @patch('llf.cli.get_config')
     def test_main_with_cli_and_model(self, mock_get_config, mock_cli_class):
-        """Test main function with --cli and --model arguments."""
+        """Test main function with --cli and --huggingface-model arguments."""
         from llf.cli import main
 
         mock_config = MagicMock()
@@ -987,8 +996,8 @@ class TestCLIQuestionMode:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.run.return_value = 0
 
-        # Simulate: llf chat --cli "What is AI?" --model "custom/model"
-        test_args = ['llf', 'chat', '--cli', 'What is AI?', '--model', 'custom/model']
+        # Simulate: llf chat --cli "What is AI?" --huggingface-model "custom/model"
+        test_args = ['llf', 'chat', '--cli', 'What is AI?', '--huggingface-model', 'custom/model']
         with patch.object(sys, 'argv', test_args):
             result = main()
 

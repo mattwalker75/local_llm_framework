@@ -1,14 +1,16 @@
 {
-  "_comment": "===== LLF Configuration for Local LLM (llama.cpp/llama-server) =====",
-  "_usage": "To use this config: cp config.local.example config.json",
+  "_comment": "===== LLF Configuration for Local LLM with HuggingFace Model Structure =====",
+  "_usage": "To use this config: cp config.local.huggingface.example config.json",
 
   "_setup_instructions": {
     "step1": "Ensure llama.cpp is built (see README for instructions)",
     "step2": "Copy this file to config.json",
-    "step3": "Download a model: llf download",
-    "step4": "(Optional) Update model_name and gguf_file below if using a different model",
+    "step3": "Download a model from HuggingFace: llf model download",
+    "step4": "(Optional) Update model_name below if using a different model",
     "step5": "Start chatting: llf chat"
   },
+
+  "_use_case": "Use this config when downloading models from HuggingFace Hub (recommended for most users)",
 
   "_local_llm_server_comment": "===== Local llama-server Configuration =====",
   "_local_llm_server_note": "These settings control the local llama-server process when LLF starts it",
@@ -22,23 +24,21 @@
     "server_port": 8000,
     "_server_port_note": "Port for llama-server to listen on",
 
-    "_model_location_comment": "===== Model File Location =====",
-    "_model_location_note": "Two ways to specify where your GGUF model file is located:",
+    "_model_location_comment": "===== HuggingFace Model Location =====",
+    "_model_location_note": "Models downloaded from HuggingFace containing safetensors files",
 
-    "_option1_comment": "Option 1: Use HuggingFace model structure (default)",
-    "_option1_note": "Just specify gguf_file - it will be found in models/{model_name}/",
-    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-    "_gguf_file_note": "GGUF model file name (quantized format for llama.cpp)",
+    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct",
+    "_model_dir_note": "HuggingFace model directory in models/ (use -- instead of / from model name)",
+    "_model_dir_example": "For 'Qwen/Qwen2.5-Coder-7B-Instruct' use 'Qwen--Qwen2.5-Coder-7B-Instruct'",
 
-    "_option2_comment": "Option 2: Use custom subdirectory in models/",
-    "_option2_note": "Add 'model_dir' to override the HuggingFace structure",
-    "_option2_example_comment": "Example: model_dir: 'custom_models' looks in models/custom_models/ for gguf_file",
-    "_option2_usage": "Uncomment the line below to use a custom model directory:",
-    "_model_dir_example": "model_dir: 'Qwen--Qwen2.5-Coder-7B-Instruct-GGUF'",
+    "_important_note": "This config is for safetensors format (standard HuggingFace models)",
+    "_path_example": "Full path: models/Qwen--Qwen2.5-Coder-7B-Instruct/ (contains safetensors files)",
 
-    "_full_path_examples": {
-      "example1": "gguf_file: 'model.gguf' → searches in models/{model_name}/model.gguf",
-      "example2": "model_dir: 'my_models', gguf_file: 'model.gguf' → searches in models/my_models/model.gguf"
+    "_popular_models": {
+      "qwen_7b": "Qwen/Qwen2.5-Coder-7B-Instruct (recommended, good balance)",
+      "llama3_8b": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "mistral_7b": "mistralai/Mistral-7B-Instruct-v0.2",
+      "codellama_7b": "codellama/CodeLlama-7b-Instruct-hf"
     }
   },
 
@@ -49,13 +49,13 @@
     "_api_base_url_note": "OpenAI-compatible API endpoint (local server)",
     "api_key": "EMPTY",
     "_api_key_note": "No authentication needed for local server",
-    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    "_model_name_note": "HuggingFace model repo name (used for downloads)"
+    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "_model_name_note": "HuggingFace model repo name (used for downloads, NOT GGUF repos)"
   },
 
   "_paths_comment": "===== Storage Directories =====",
   "model_dir": "models",
-  "_model_dir_note": "Where downloaded models are stored",
+  "_model_dir_note": "Base directory where downloaded models are stored",
   "cache_dir": ".cache",
   "_cache_dir_note": "Cache directory for temporary files",
 
@@ -78,9 +78,10 @@
     "_repetition_penalty_note": "Penalty for repeating tokens (llama.cpp only, 1.0 = no penalty)"
   },
 
-  "_switching_to_external_api": {
-    "instructions": "To switch to OpenAI: cp config.openai.example config.json",
-    "or_anthropic": "To switch to Anthropic: cp config.anthropic.example config.json",
-    "note": "Example configs have proper parameter sets for each API"
+  "_switching_configs": {
+    "to_gguf": "To use GGUF format models: cp config.local.gguf.example config.json",
+    "to_openai": "To switch to OpenAI: cp config.openai.example config.json",
+    "to_anthropic": "To switch to Anthropic: cp config.anthropic.example config.json",
+    "note": "HuggingFace config = safetensors format, GGUF config = GGUF format"
   }
 }

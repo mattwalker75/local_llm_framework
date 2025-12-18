@@ -78,6 +78,8 @@ class Config:
         self.api_key = self.API_KEY
         self.inference_params = self.DEFAULT_INFERENCE_PARAMS.copy()
         self.log_level = self.LOG_LEVEL
+        self.custom_model_dir = None  # Custom model directory (optional)
+        self._has_local_server_section = False  # Track if local_llm_server was in config file
 
         # Determine which config file to use
         config_to_load = None
@@ -112,6 +114,7 @@ class Config:
             # These settings control the local llama-server process when started by LLF
             # Supports both nested 'local_llm_server' structure and flat structure for backward compatibility
             if 'local_llm_server' in config_data:
+                self._has_local_server_section = True  # Mark that local server is configured
                 server_config = config_data['local_llm_server']
                 # Path to llama-server binary
                 if 'llama_server_path' in server_config:
@@ -122,6 +125,10 @@ class Config:
                 self.server_host = server_config.get('server_host', self.server_host)
                 # Server port number
                 self.server_port = server_config.get('server_port', self.server_port)
+                # Custom model directory (optional) - subdirectory within models/ directory
+                if 'model_dir' in server_config:
+                    # model_dir is relative to models/ directory
+                    self.custom_model_dir = self.model_dir / server_config['model_dir']
                 # GGUF model file to load (quantized model format for llama.cpp)
                 self.gguf_file = server_config.get('gguf_file', self.gguf_file)
             else:
@@ -236,6 +243,36 @@ class Config:
         # Any URL without these is assumed to be an external service
         api_url_lower = self.api_base_url.lower()
         return not ('localhost' in api_url_lower or '127.0.0.1' in api_url_lower)
+
+    def has_local_server_config(self) -> bool:
+        """
+        Check if local LLM server is properly configured.
+
+        Returns False if:
+        - No 'local_llm_server' section in config file
+        - Using external API (OpenAI, Anthropic, etc.)
+        - llama-server binary doesn't exist at configured path
+
+        Returns True if:
+        - 'local_llm_server' section present in config file
+        - AND llama-server binary exists
+
+        This should be used to determine if local server operations
+        (start, stop, restart, status) are available.
+
+        Returns:
+            True if local server is configured and ready, False otherwise.
+        """
+        # If no local_llm_server section in config, not configured
+        if not self._has_local_server_section:
+            return False
+
+        # If using external API, no local server needed
+        if self.is_using_external_api():
+            return False
+
+        # Check if llama_server_path exists and is accessible
+        return self.llama_server_path.exists()
 
     def to_dict(self) -> Dict[str, Any]:
         """

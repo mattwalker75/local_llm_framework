@@ -1,0 +1,15 @@
+{
+  "llm_endpoint": {
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "sk-proj-YOUR-OPENAI-API-KEY",
+    "model_name": "gpt-4"
+  },
+  "model_dir": "models",
+  "cache_dir": ".cache",
+  "log_level": "ERROR",
+  "inference_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 0.9
+  }
+}

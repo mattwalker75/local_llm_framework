@@ -10,6 +10,8 @@ Future: Can be extended to support model versioning, updates, and cleanup.
 from pathlib import Path
 from typing import Optional, Dict
 import shutil
+import urllib.request
+import urllib.error
 
 from huggingface_hub import snapshot_download, HfApi
 from huggingface_hub.utils import HfHubHTTPError
@@ -163,6 +165,82 @@ class ModelManager:
         except Exception as e:
             error_msg = f"Unexpected error downloading model {model_name}: {e}"
             logger.error(error_msg)
+            raise ValueError(error_msg) from e
+
+    def download_from_url(
+        self,
+        url: str,
+        name: str,
+        force: bool = False
+    ) -> Path:
+        """
+        Download a model file from a direct URL.
+
+        Args:
+            url: Direct URL to the model file (e.g., GGUF file).
+            name: Local directory name to store the model.
+            force: If True, re-download even if file exists locally.
+
+        Returns:
+            Path to the downloaded model directory.
+
+        Raises:
+            ValueError: If URL download fails.
+        """
+        # Create model directory
+        model_path = self.model_dir / name
+        model_path.mkdir(parents=True, exist_ok=True)
+
+        # Extract filename from URL
+        filename = url.split('/')[-1]
+        if '?' in filename:
+            filename = filename.split('?')[0]  # Remove query parameters
+
+        file_path = model_path / filename
+
+        # Check if already downloaded
+        if not force and file_path.exists():
+            logger.info(f"Model file already exists: {file_path}")
+            return model_path
+
+        logger.info(f"Downloading from URL: {url}")
+        logger.info(f"Destination: {file_path}")
+
+        try:
+            # Download file with progress
+            def reporthook(block_num, block_size, total_size):
+                if total_size > 0:
+                    percent = min(100, block_num * block_size * 100 / total_size)
+                    if block_num % 100 == 0:  # Log every 100 blocks to avoid spam
+                        logger.info(f"Download progress: {percent:.1f}%")
+
+            urllib.request.urlretrieve(url, file_path, reporthook)
+
+            logger.info(f"Model downloaded successfully: {file_path}")
+            return model_path
+
+        except urllib.error.HTTPError as e:
+            error_msg = f"HTTP error downloading from {url}: {e.code} {e.reason}"
+            logger.error(error_msg)
+            # Clean up partial download
+            if file_path.exists():
+                file_path.unlink()
+            raise ValueError(error_msg) from e
+
+        except urllib.error.URLError as e:
+            error_msg = f"URL error downloading from {url}: {e.reason}"
+            logger.error(error_msg)
+            # Clean up partial download
+            if file_path.exists():
+                file_path.unlink()
+            raise ValueError(error_msg) from e
+
+        except Exception as e:
+            error_msg = f"Unexpected error downloading from {url}: {e}"
+            logger.error(error_msg)
+            # Clean up partial download
+            if file_path.exists():
+                file_path.unlink()
             raise ValueError(error_msg) from e
 
     def verify_model(self, model_name: Optional[str] = None) -> Dict[str, bool]:
