@@ -20,6 +20,7 @@ from openai import OpenAI
 from .logging_config import get_logger
 from .config import Config
 from .model_manager import ModelManager
+from .prompt_config import PromptConfig
 
 logger = get_logger(__name__)
 
@@ -35,16 +36,18 @@ class LLMRuntime:
     - Handle errors and timeouts
     """
 
-    def __init__(self, config: Config, model_manager: ModelManager):
+    def __init__(self, config: Config, model_manager: ModelManager, prompt_config: Optional[PromptConfig] = None):
         """
         Initialize LLM runtime.
 
         Args:
             config: Configuration instance.
             model_manager: Model manager instance.
+            prompt_config: Optional prompt configuration for formatting messages.
         """
         self.config = config
         self.model_manager = model_manager
+        self.prompt_config = prompt_config
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[OpenAI] = None
 
@@ -389,6 +392,7 @@ class LLMRuntime:
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
         stream: bool = False,
+        use_prompt_config: bool = True,
         **kwargs
     ):
         """
@@ -397,8 +401,12 @@ class LLMRuntime:
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
                      Example: [{'role': 'user', 'content': 'Hello!'}]
+                     If use_prompt_config=True and a user message is detected, prompt config
+                     will be applied to build the full message list.
             model: Model name (for multi-model setups). If None, uses loaded model.
             stream: If True, returns an iterator of response chunks. If False, returns complete text.
+            use_prompt_config: If True and prompt_config is set, apply prompt formatting to messages.
+                              Set to False to send raw messages without prompt config processing.
             **kwargs: Additional parameters (same as generate()).
 
         Returns:
@@ -417,6 +425,24 @@ class LLMRuntime:
         if self.client is None:
             self._initialize_client()
 
+        # ===== Prompt Configuration Processing =====
+        # Apply prompt config to format/enhance messages if configured
+        processed_messages = messages
+        if use_prompt_config and self.prompt_config:
+            # Check if this is a simple user message that needs full prompt config treatment
+            # (single message or last message is from user)
+            if messages and messages[-1].get('role') == 'user':
+                # Extract user message and conversation history
+                user_message = messages[-1]['content']
+                conversation_history = messages[:-1] if len(messages) > 1 else None
+
+                # Build complete message list with prompt config
+                processed_messages = self.prompt_config.build_messages(
+                    user_message=user_message,
+                    conversation_history=conversation_history
+                )
+            # else: messages are already in full format, use as-is
+
         # ===== Parameter Handling =====
         # Start with config file parameters, then override with any kwargs passed to this method
         params = self.config.inference_params.copy()
@@ -425,7 +451,7 @@ class LLMRuntime:
         # Build the API request parameters, starting with required fields
         openai_params = {
             'model': model or self.config.model_name,
-            'messages': messages,
+            'messages': processed_messages,
             'stream': stream,
         }
 

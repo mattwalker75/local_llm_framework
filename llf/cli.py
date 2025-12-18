@@ -23,6 +23,7 @@ from .logging_config import setup_logging, get_logger, disable_external_loggers
 from .config import Config, get_config
 from .model_manager import ModelManager
 from .llm_runtime import LLMRuntime
+from .prompt_config import PromptConfig, get_prompt_config
 
 logger = get_logger(__name__)
 console = Console()
@@ -35,18 +36,20 @@ class CLI:
     Provides interactive prompt loop and command handling.
     """
 
-    def __init__(self, config: Config, auto_start_server: bool = False, no_server_start: bool = False):
+    def __init__(self, config: Config, prompt_config: Optional[PromptConfig] = None, auto_start_server: bool = False, no_server_start: bool = False):
         """
         Initialize CLI.
 
         Args:
             config: Configuration instance.
+            prompt_config: Optional prompt configuration for formatting LLM messages.
             auto_start_server: Automatically start server if not running.
             no_server_start: Do not start server if not running (exit with error).
         """
         self.config = config
+        self.prompt_config = prompt_config
         self.model_manager = ModelManager(config)
-        self.runtime = LLMRuntime(config, self.model_manager)
+        self.runtime = LLMRuntime(config, self.model_manager, prompt_config)
         self.running = False
         self.auto_start_server = auto_start_server
         self.no_server_start = no_server_start
@@ -1089,6 +1092,10 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     else:
         config = get_config()
 
+    # Load prompt configuration (optional)
+    # Use default config_prompt.json if it exists, otherwise no prompt config
+    prompt_config = get_prompt_config()
+
     # Determine log level: CLI argument takes precedence over config
     log_level = args.log_level if args.log_level else getattr(config, 'log_level', 'INFO')
 
@@ -1138,7 +1145,7 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         cli_question = getattr(args, 'cli', None)
 
         # Default to chat
-        cli = CLI(config, auto_start_server=auto_start, no_server_start=no_start)
+        cli = CLI(config, prompt_config=prompt_config, auto_start_server=auto_start, no_server_start=no_start)
         return cli.run(cli_question=cli_question)
     else:
         parser.print_help()
