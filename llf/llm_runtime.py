@@ -73,7 +73,8 @@ class LLMRuntime:
             "--port", str(self.config.server_port),
         ]
 
-        # Add additional server parameters if configured
+        # Add additional server parameters if configured (e.g., ctx-size, n-gpu-layers, threads)
+        # These are passed through to llama-server via the wrapper script
         if self.config.server_params:
             for key, value in self.config.server_params.items():
                 cmd.extend(["--server-arg", key, str(value)])
