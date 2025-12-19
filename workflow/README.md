@@ -228,7 +228,7 @@ with which prompts I passed to the AI.
 
 #### Create a basic framework for extended compontents
 1.  Create a section to work with memory  
-       - Create "llf memory"  ( Call it "Memory Management" )
+       - Create "llf datastore"  ( Call it "Data Store Management" )
        - This section will be for custom memory sources used by the
          LLM for data lookups, such as a RAG data source
 2.  Create a section to work with modules
@@ -241,6 +241,9 @@ with which prompts I passed to the AI.
        - This section will be for tools that extends the LLM
          capability, such as enabling internet search access and
          the ability to access files locally on your computer
+12.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Perform major testing and resolve all bugs and update docs
 
 
 

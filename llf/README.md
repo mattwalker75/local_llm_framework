@@ -1,2 +1,2 @@
-This will have the program code in it
+The program code
 
