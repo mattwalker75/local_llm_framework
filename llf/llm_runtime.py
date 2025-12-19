@@ -51,21 +51,25 @@ class LLMRuntime:
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[OpenAI] = None
 
-    def _get_server_command(self, model_file_path: Path) -> List[str]:
+    def _get_server_command(self, model_file_path: Path, server_host: Optional[str] = None) -> List[str]:
         """
         Build llama-server command using wrapper script.
 
         Args:
             model_file_path: Path to the GGUF model file.
+            server_host: Host to bind server to. If None, uses config.server_host.
 
         Returns:
             Command as list of strings.
         """
+        # Use provided server_host or fall back to config
+        host = server_host if server_host is not None else self.config.server_host
+
         cmd = [
             str(self.config.server_wrapper_script),
             "--server-path", str(self.config.llama_server_path),
             "--model-file", str(model_file_path),
-            "--host", self.config.server_host,
+            "--host", host,
             "--port", str(self.config.server_port),
         ]
 
@@ -76,7 +80,7 @@ class LLMRuntime:
 
         return cmd
 
-    def start_server(self, model_name: Optional[str] = None, gguf_file: Optional[str] = None, timeout: int = 120) -> None:
+    def start_server(self, model_name: Optional[str] = None, gguf_file: Optional[str] = None, timeout: int = 120, server_host: Optional[str] = None) -> None:
         """
         Start llama-server.
 
@@ -84,6 +88,8 @@ class LLMRuntime:
             model_name: Model directory name. If None, uses config's default model.
             gguf_file: GGUF file name within the model directory. If None, uses config's default.
             timeout: Maximum seconds to wait for server to become ready.
+            server_host: Host to bind server to. If None, uses config.server_host.
+                        Use "0.0.0.0" for network access, "127.0.0.1" for localhost only.
 
         Raises:
             RuntimeError: If server fails to start or become ready.
@@ -135,10 +141,13 @@ class LLMRuntime:
                     f"Available files in {model_dir}: {list(model_dir.glob('*.gguf'))}"
                 )
 
-        cmd = self._get_server_command(model_file_path)
+        cmd = self._get_server_command(model_file_path, server_host=server_host)
 
+        # Determine actual host being used for logging
+        actual_host = server_host if server_host is not None else self.config.server_host
         logger.info(f"Starting llama-server with model: {model_name}")
         logger.info(f"GGUF file: {gguf_file}")
+        logger.info(f"Binding to: {actual_host}:{self.config.server_port}")
         logger.debug(f"Command: {' '.join(cmd)}")
 
         try:

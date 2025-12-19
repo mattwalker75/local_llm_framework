@@ -9,6 +9,12 @@ from pathlib import Path
 from llf.prompt_config import PromptConfig, get_prompt_config
 
 
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Create temporary directory for tests."""
+    return tmp_path
+
+
 class TestPromptConfig:
     """Test PromptConfig class."""
 
@@ -171,3 +177,60 @@ class TestGetPromptConfig:
 
         # Different instances due to force reload
         assert config1 is not config2
+
+    def test_backup_config_success(self, temp_dir):
+        """Test successful prompt config backup."""
+        # Create a config file
+        config_file = temp_dir / "config_prompt.json"
+        config_data = {
+            "system_prompt": "Test system prompt",
+            "conversation_format": "standard"
+        }
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        # Create backup directory
+        backup_dir = temp_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        config = PromptConfig(config_file)
+        config.CONFIG_BACKUPS_DIR = backup_dir
+        backup_path = config.backup_config(config_file)
+
+        # Verify backup was created
+        assert backup_path.exists()
+        assert backup_path.parent == backup_dir
+        assert backup_path.stem.startswith("config_prompt_")
+        assert backup_path.suffix == ".json"
+
+        # Verify backup content matches original file
+        with open(backup_path, 'r') as f:
+            backup_data = json.load(f)
+        with open(config_file, 'r') as f:
+            original_data = json.load(f)
+        assert backup_data == original_data
+
+    def test_backup_config_file_not_found(self, temp_dir):
+        """Test backup fails when config file doesn't exist."""
+        config_file = temp_dir / "nonexistent.json"
+        config = PromptConfig()
+
+        with pytest.raises(FileNotFoundError, match="Prompt config file not found"):
+            config.backup_config(config_file)
+
+    def test_backup_config_custom_file(self, temp_dir):
+        """Test backup of custom prompt config file."""
+        custom_file = temp_dir / "custom_prompt.json"
+        custom_file.parent.mkdir(parents=True, exist_ok=True)
+        config_data = {"system_prompt": "Custom prompt"}
+        with open(custom_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = PromptConfig()
+        config.CONFIG_BACKUPS_DIR = temp_dir / "backups"
+        backup_path = config.backup_config(custom_file)
+
+        # Verify backup was created with correct name
+        assert backup_path.exists()
+        assert backup_path.stem.startswith("custom_prompt_")
+        assert backup_path.suffix == ".json"

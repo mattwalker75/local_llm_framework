@@ -12,6 +12,12 @@ from llf.config import Config
 from llf.prompt_config import PromptConfig
 
 
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Create temporary directory for tests."""
+    return tmp_path
+
+
 class TestLLMFrameworkGUI:
     """Test LLMFrameworkGUI class."""
 
@@ -74,6 +80,145 @@ class TestLLMFrameworkGUI:
             mock_get_config.assert_called_once()
             mock_get_prompt_config.assert_called_once()
 
+    def test_initialization_with_auth_key(self):
+        """Test GUI initialization with authentication key."""
+        with patch('llf.gui.get_config') as mock_get_config, \
+             patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
+
+            mock_get_config.return_value = Mock()
+            mock_get_prompt_config.return_value = Mock()
+
+            auth_key = "test_secret_key_123"
+            gui = LLMFrameworkGUI(auth_key=auth_key)
+
+            assert gui.auth_key == auth_key
+            assert gui.config is not None
+            assert gui.prompt_config is not None
+
+    def test_initialization_without_auth_key(self):
+        """Test GUI initialization without authentication key."""
+        with patch('llf.gui.get_config') as mock_get_config, \
+             patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
+
+            mock_get_config.return_value = Mock()
+            mock_get_prompt_config.return_value = Mock()
+
+            gui = LLMFrameworkGUI()
+
+            assert gui.auth_key is None
+            assert gui.config is not None
+            assert gui.prompt_config is not None
+
+    def test_started_server_flag_initialization(self, gui):
+        """Test that started_server flag is initialized to False."""
+        assert gui.started_server == False
+
+    def test_check_server_on_startup_external_api(self, gui):
+        """Test check_server_on_startup when using external API."""
+        with patch.object(gui.config, 'is_using_external_api', return_value=True):
+            needs_start, message = gui.check_server_on_startup()
+
+            assert needs_start == False
+            assert "external api" in message.lower()
+
+    def test_check_server_on_startup_no_local_config(self, gui):
+        """Test check_server_on_startup when no local server configured."""
+        with patch.object(gui.config, 'is_using_external_api', return_value=False), \
+             patch.object(gui.config, 'has_local_server_config', return_value=False):
+
+            needs_start, message = gui.check_server_on_startup()
+
+            assert needs_start == False
+            assert "not configured" in message.lower()
+
+    def test_check_server_on_startup_already_running(self, gui):
+        """Test check_server_on_startup when server is already running."""
+        with patch.object(gui.config, 'is_using_external_api', return_value=False), \
+             patch.object(gui.config, 'has_local_server_config', return_value=True), \
+             patch.object(gui.runtime, 'is_server_running', return_value=True):
+
+            needs_start, message = gui.check_server_on_startup()
+
+            assert needs_start == False
+            assert "running" in message.lower()
+
+    def test_check_server_on_startup_needs_start(self, gui):
+        """Test check_server_on_startup when server needs to be started."""
+        with patch.object(gui.config, 'is_using_external_api', return_value=False), \
+             patch.object(gui.config, 'has_local_server_config', return_value=True), \
+             patch.object(gui.runtime, 'is_server_running', return_value=False):
+
+            needs_start, message = gui.check_server_on_startup()
+
+            assert needs_start == True
+            assert "not running" in message.lower()
+
+    def test_start_server_from_gui_success(self, gui):
+        """Test starting server from GUI successfully."""
+        with patch.object(gui.runtime, 'start_server') as mock_start:
+            result = gui.start_server_from_gui()
+
+            mock_start.assert_called_once()
+            assert gui.started_server == True
+            assert "success" in result.lower()
+
+    def test_start_server_from_gui_error(self, gui):
+        """Test starting server from GUI with error."""
+        with patch.object(gui.runtime, 'start_server', side_effect=Exception("Start failed")):
+            result = gui.start_server_from_gui()
+
+            assert gui.started_server == False
+            assert "failed" in result.lower()
+            assert "start failed" in result.lower()
+
+    def test_shutdown_gui_with_started_server(self, gui):
+        """Test shutdown stops server if GUI started it."""
+        gui.started_server = True
+
+        with patch.object(gui.config, 'has_local_server_config', return_value=True), \
+             patch.object(gui.runtime, 'is_server_running', return_value=True), \
+             patch.object(gui.runtime, 'stop_server') as mock_stop:
+
+            result = gui.shutdown_gui()
+
+            mock_stop.assert_called_once()
+            assert "shutting down" in result.lower()
+
+    def test_shutdown_gui_without_started_server(self, gui):
+        """Test shutdown leaves server running if GUI didn't start it."""
+        gui.started_server = False
+
+        with patch.object(gui.runtime, 'is_server_running', return_value=True), \
+             patch.object(gui.runtime, 'stop_server') as mock_stop:
+
+            result = gui.shutdown_gui()
+
+            mock_stop.assert_not_called()
+            assert "shutting down" in result.lower()
+
+    def test_shutdown_gui_no_server_running(self, gui):
+        """Test shutdown when no server is running."""
+        with patch.object(gui.runtime, 'is_server_running', return_value=False), \
+             patch.object(gui.runtime, 'stop_server') as mock_stop:
+
+            result = gui.shutdown_gui()
+
+            mock_stop.assert_not_called()
+            assert "shutting down" in result.lower()
+
+    def test_shutdown_gui_error(self, gui):
+        """Test shutdown error handling."""
+        gui.started_server = True
+
+        with patch.object(gui.config, 'has_local_server_config', return_value=True), \
+             patch.object(gui.runtime, 'is_server_running', return_value=True), \
+             patch.object(gui.runtime, 'stop_server', side_effect=Exception("Stop error")):
+
+            result = gui.shutdown_gui()
+
+            assert "error" in result.lower()
+            assert "stop error" in result.lower()
+
     def test_get_server_status_no_config(self, gui):
         """Test getting server status when no local server configured."""
         with patch.object(gui.config, 'has_local_server_config', return_value=False):
@@ -127,7 +272,8 @@ class TestLLMFrameworkGUI:
 
         with patch.object(gui.runtime, 'is_server_running', side_effect=[False, True]), \
              patch.object(gui.runtime, 'start_server') as mock_start, \
-             patch.object(gui.model_manager, 'is_model_downloaded', return_value=True):
+             patch.object(gui.model_manager, 'is_model_downloaded', return_value=True), \
+             patch('time.sleep'):  # Mock sleep to speed up test
 
             result = gui.start_server()
             mock_start.assert_called_once()
@@ -169,7 +315,8 @@ class TestLLMFrameworkGUI:
         gui.config._has_local_server_section = True
 
         with patch.object(gui.runtime, 'is_server_running', side_effect=[True, False]), \
-             patch.object(gui.runtime, 'stop_server') as mock_stop:
+             patch.object(gui.runtime, 'stop_server') as mock_stop, \
+             patch('time.sleep'):  # Mock sleep to speed up test
 
             result = gui.stop_server()
             mock_stop.assert_called_once()
@@ -195,7 +342,8 @@ class TestLLMFrameworkGUI:
         gui.config._has_local_server_section = True
 
         with patch.object(gui, 'stop_server', return_value="Server stopped") as mock_stop, \
-             patch.object(gui, 'start_server', return_value="Server started") as mock_start:
+             patch.object(gui, 'start_server', return_value="Server started") as mock_start, \
+             patch('time.sleep'):  # Mock sleep to speed up test
 
             result = gui.restart_server()
             mock_stop.assert_called_once()
@@ -342,6 +490,60 @@ class TestLLMFrameworkGUI:
                 saved_data = json.load(f)
             assert saved_data["system_prompt"] == "New prompt"
 
+    def test_backup_config_success(self, gui, temp_dir):
+        """Test successful config backup via GUI."""
+        config_file = temp_dir / "config.json"
+        config_file.write_text('{"test": "data"}')
+
+        backup_dir = temp_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        gui.config.CONFIG_BACKUPS_DIR = backup_dir
+
+        with patch('llf.gui.Config.DEFAULT_CONFIG_FILE', config_file):
+            result = gui.backup_config()
+
+            assert "success" in result.lower() or "✅" in result
+            # Verify backup file was created
+            backups = list(backup_dir.glob("config_*.json"))
+            assert len(backups) == 1
+
+    def test_backup_config_file_not_found(self, gui, temp_dir):
+        """Test backup fails when config doesn't exist."""
+        nonexistent = temp_dir / "nonexistent.json"
+
+        with patch('llf.gui.Config.DEFAULT_CONFIG_FILE', nonexistent):
+            result = gui.backup_config()
+
+            assert "❌" in result or "error" in result.lower()
+
+    def test_backup_prompt_config_success(self, gui, temp_dir):
+        """Test successful prompt config backup via GUI."""
+        config_file = temp_dir / "config_prompt.json"
+        config_file.write_text('{"system_prompt": "test"}')
+
+        backup_dir = temp_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        gui.prompt_config.CONFIG_BACKUPS_DIR = backup_dir
+
+        with patch('llf.gui.PromptConfig.DEFAULT_CONFIG_FILE', config_file):
+            result = gui.backup_prompt_config()
+
+            assert "success" in result.lower() or "✅" in result
+            # Verify backup file was created
+            backups = list(backup_dir.glob("config_prompt_*.json"))
+            assert len(backups) == 1
+
+    def test_backup_prompt_config_file_not_found(self, gui, temp_dir):
+        """Test prompt config backup fails when file doesn't exist."""
+        nonexistent = temp_dir / "nonexistent.json"
+
+        with patch('llf.gui.PromptConfig.DEFAULT_CONFIG_FILE', nonexistent):
+            result = gui.backup_prompt_config()
+
+            assert "❌" in result or "error" in result.lower()
+
     def test_chat_respond(self, gui):
         """Test chat response."""
         def mock_stream():
@@ -409,16 +611,42 @@ class TestLLMFrameworkGUI:
         assert interface is not None
 
     def test_launch(self, gui):
-        """Test launching GUI."""
+        """Test launching GUI with default parameters."""
         mock_interface = Mock()
 
         with patch.object(gui, 'create_interface', return_value=mock_interface):
-            gui.launch(share=True, server_port=8080)
+            gui.launch()
 
             mock_interface.launch.assert_called_once()
             call_kwargs = mock_interface.launch.call_args[1]
-            assert call_kwargs['share'] == True
+            assert call_kwargs['server_name'] == "127.0.0.1"
+            assert call_kwargs['server_port'] == 7860
+            assert call_kwargs['inbrowser'] == True
+
+    def test_launch_with_network_access(self, gui):
+        """Test launching GUI with network access (server_name='0.0.0.0')."""
+        mock_interface = Mock()
+
+        with patch.object(gui, 'create_interface', return_value=mock_interface):
+            gui.launch(server_name="0.0.0.0", server_port=8080, inbrowser=False)
+
+            mock_interface.launch.assert_called_once()
+            call_kwargs = mock_interface.launch.call_args[1]
+            assert call_kwargs['server_name'] == "0.0.0.0"
             assert call_kwargs['server_port'] == 8080
+            assert call_kwargs['inbrowser'] == False
+
+    def test_launch_localhost_only(self, gui):
+        """Test launching GUI on localhost only."""
+        mock_interface = Mock()
+
+        with patch.object(gui, 'create_interface', return_value=mock_interface):
+            gui.launch(server_name="127.0.0.1", server_port=7860)
+
+            mock_interface.launch.assert_called_once()
+            call_kwargs = mock_interface.launch.call_args[1]
+            assert call_kwargs['server_name'] == "127.0.0.1"
+            assert call_kwargs['server_port'] == 7860
 
 
 class TestStartGUI:
@@ -432,7 +660,7 @@ class TestStartGUI:
 
             start_gui()
 
-            mock_gui_class.assert_called_once_with(config=None, prompt_config=None)
+            mock_gui_class.assert_called_once_with(config=None, prompt_config=None, auth_key=None)
             # Check that launch was called (with no kwargs by default)
             mock_gui_instance.launch.assert_called_once()
 
@@ -448,17 +676,19 @@ class TestStartGUI:
             start_gui(
                 config=mock_config,
                 prompt_config=mock_prompt_config,
-                share=True,
+                server_name="0.0.0.0",
                 server_port=8080,
+                auth_key="test_key",
                 inbrowser=False
             )
 
             mock_gui_class.assert_called_once_with(
                 config=mock_config,
-                prompt_config=mock_prompt_config
+                prompt_config=mock_prompt_config,
+                auth_key="test_key"
             )
             mock_gui_instance.launch.assert_called_once_with(
-                share=True,
+                server_name="0.0.0.0",
                 server_port=8080,
                 inbrowser=False
             )

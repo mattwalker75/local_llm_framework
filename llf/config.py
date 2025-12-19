@@ -33,6 +33,7 @@ class Config:
     CONFIG_BACKUPS_DIR: Path = CONFIGS_DIR / "backups"
     DEFAULT_MODEL_DIR: Path = PROJECT_ROOT / "models"
     DEFAULT_CACHE_DIR: Path = PROJECT_ROOT / ".cache"
+    DEFAULT_LOGS_DIR: Path = PROJECT_ROOT / "logs"
 
     # Llama server settings (replaces vLLM)
     DEFAULT_LLAMA_SERVER_PATH: Path = PROJECT_ROOT.parent / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -72,6 +73,7 @@ class Config:
         self.gguf_file = self.DEFAULT_GGUF_FILE
         self.model_dir = self.DEFAULT_MODEL_DIR
         self.cache_dir = self.DEFAULT_CACHE_DIR
+        self.logs_dir = self.DEFAULT_LOGS_DIR
         self.llama_server_path = self.DEFAULT_LLAMA_SERVER_PATH
         self.server_wrapper_script = self.SERVER_WRAPPER_SCRIPT
         self.server_host = self.SERVER_HOST
@@ -137,7 +139,9 @@ class Config:
                 # Additional llama-server parameters (optional)
                 # These are passed directly to llama-server CLI
                 # Use 'llama-server -h' to see all available options
-                self.server_params = server_config.get('server_params', {})
+                # Filter out underscore-prefixed keys (used for comments/examples in config files)
+                raw_params = server_config.get('server_params', {})
+                self.server_params = {k: v for k, v in raw_params.items() if not k.startswith('_')}
             else:
                 # Fallback to flat structure for backward compatibility with older config files
                 if 'llama_server_path' in config_data:
@@ -201,6 +205,7 @@ class Config:
         """Create necessary directories if they don't exist."""
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
         self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -316,7 +321,7 @@ class Config:
 
     def backup_config(self, config_file: Optional[Path] = None) -> Path:
         """
-        Create a backup of the configuration file.
+        Create a backup of the configuration file with pretty formatting.
 
         Args:
             config_file: Path to config file to backup. If None, uses DEFAULT_CONFIG_FILE.
@@ -328,7 +333,6 @@ class Config:
             FileNotFoundError: If config file doesn't exist.
         """
         from datetime import datetime
-        import shutil
 
         if config_file is None:
             config_file = self.DEFAULT_CONFIG_FILE
@@ -344,8 +348,11 @@ class Config:
         # Ensure backup directory exists
         self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Copy file to backup
-        shutil.copy2(config_file, backup_path)
+        # Load JSON and save with pretty formatting (indent=2)
+        with open(config_file, 'r') as f:
+            config_data = json.load(f)
+        with open(backup_path, 'w') as f:
+            json.dump(config_data, f, indent=2)
 
         return backup_path
 
@@ -365,17 +372,18 @@ class Config:
 _default_config: Optional[Config] = None
 
 
-def get_config(config_file: Optional[Path] = None) -> Config:
+def get_config(config_file: Optional[Path] = None, force_reload: bool = False) -> Config:
     """
     Get configuration instance.
 
     Args:
         config_file: Optional path to configuration file.
+        force_reload: If True, force reload the configuration even if already loaded.
 
     Returns:
         Configuration instance.
     """
     global _default_config
-    if _default_config is None or config_file is not None:
+    if _default_config is None or config_file is not None or force_reload:
         _default_config = Config(config_file)
     return _default_config

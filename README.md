@@ -17,6 +17,8 @@ Local LLM Framework (LLF) provides maximum flexibility - run models locally for 
 - ✅ Automatic model download and management from HuggingFace Hub (GGUF format)
 - ✅ Interactive CLI chat interface with colored output
 - ✅ Web-based GUI interface for easy management and chat
+- ✅ Local network access for server and GUI (with `--share` flag)
+- ✅ Authentication system for GUI with secret key protection
 - ✅ Customizable prompt configuration system
 - ✅ Production-quality modular architecture
 - ✅ Comprehensive unit testing (100% test passing rate)
@@ -226,6 +228,9 @@ llf server start --huggingface-model "mistralai/Mistral-7B-Instruct-v0.2"
 # Start server with a GGUF model in custom directory
 llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
 
+# Make server accessible on local network (binds to 0.0.0.0)
+llf server start --share
+
 # Check server status
 llf server status
 
@@ -235,6 +240,24 @@ llf server stop
 # Restart the server
 llf server restart
 ```
+
+**Network Access:**
+
+By default, the server only listens on `127.0.0.1` (localhost), making it accessible only from the same machine. To make it accessible from other devices on your local network:
+
+```bash
+# Start server with network access
+llf server start --share
+
+# Access from same device:
+# http://127.0.0.1:8000/v1
+
+# Access from other devices on local network:
+# http://YOUR_IP:8000/v1
+# Replace YOUR_IP with your machine's IP address (e.g., 192.168.1.100)
+```
+
+**Security Note:** The `--share` flag binds to `0.0.0.0`, making the server accessible to ALL devices on your local network. This does NOT expose it to the internet (unlike some tools that create public tunnels). Only use `--share` on trusted networks.
 
 **Chat with Server Auto-Start Control:**
 
@@ -270,12 +293,52 @@ llf gui
 # Start on custom port
 llf gui --port 8080
 
-# Create public share link (for remote access)
+# Make GUI accessible on local network
 llf gui --share
+
+# Require authentication with secret key
+llf gui --key MY_SECRET_KEY_123
+
+# Combine network access with authentication
+llf gui --share --key MY_SECRET_KEY_123
 
 # Start without opening browser
 llf gui --no-browser
 ```
+
+**Network Access and Security:**
+
+By default, the GUI only listens on `127.0.0.1` (localhost). To make it accessible from other devices on your local network, use the `--share` flag:
+
+```bash
+# Make GUI accessible on local network
+llf gui --share
+
+# Access from same device:
+# http://127.0.0.1:7860
+
+# Access from other devices on local network:
+# http://YOUR_IP:7860
+# Replace YOUR_IP with your machine's IP address (e.g., 192.168.1.100)
+```
+
+**Authentication:**
+
+When exposing the GUI to your local network, you can require authentication using the `--key` parameter:
+
+```bash
+# Start GUI with authentication
+llf gui --share --key MY_SECRET_KEY_123
+```
+
+When `--key` is set, users will see a login page that requires entering the secret key before accessing the GUI. This provides basic protection for network-accessible instances.
+
+**Security Notes:**
+- The `--share` flag binds to `0.0.0.0`, making the GUI accessible to ALL devices on your local network
+- This does NOT create an internet tunnel (unlike Gradio's built-in share feature)
+- Only use `--share` on trusted networks
+- Always use `--key` when enabling network access to prevent unauthorized access
+- The authentication is basic string comparison - suitable for local network protection but not cryptographically secure
 
 **GUI Features:**
 
@@ -297,14 +360,16 @@ The GUI provides 5 main tabs:
    - View model information
 
 4. **⚙️ Config Tab (Infrastructure)**
-   - View and edit `config.json`
+   - View and edit `configs/config.json`
    - Configure local server settings, API connections, inference parameters
    - Auto-reload on save
+   - Create backups of configuration
 
 5. **📝 Config Tab (Prompts)**
-   - View and edit `config_prompt.json`
+   - View and edit `configs/config_prompt.json`
    - Customize system prompts, conversation format, and message injection
    - Auto-reload on save
+   - Create backups of configuration
 
 **When to Use GUI vs CLI:**
 
@@ -373,7 +438,7 @@ LLF uses sensible defaults for local llama.cpp runtime:
 
 ### Local LLM Configuration
 
-Create a `config.json` file for local llama.cpp:
+Create a `configs/config.json` file for local llama.cpp:
 
 ```json
 {
@@ -419,19 +484,19 @@ To use OpenAI or other external APIs, simply change the endpoint configuration:
 }
 ```
 
-**Note:** External APIs don't support llama.cpp-specific parameters like `top_k` and `repetition_penalty`. See example config files in [config_examples/](config_examples/):
-- `config_examples/config.local.example` - For local llama-server
-- `config_examples/config.openai.example` - For OpenAI API
-- `config_examples/config.anthropic.example` - For Anthropic API
+**Note:** External APIs don't support llama.cpp-specific parameters like `top_k` and `repetition_penalty`. See example config files in [configs/config_examples/](configs/config_examples/):
+- `configs/config_examples/config.local.example` - For local llama-server
+- `configs/config_examples/config.openai.example` - For OpenAI API
+- `configs/config_examples/config.anthropic.example` - For Anthropic API
 
 **Quick setup:**
 ```bash
-cp config_examples/config.local.example config.json    # For local LLM
+cp configs/config_examples/config.local.example configs/config.json    # For local LLM
 # OR
-cp config_examples/config.openai.example config.json   # For OpenAI
+cp configs/config_examples/config.openai.example configs/config.json   # For OpenAI
 ```
 
-Use configuration: `llf --config config.json chat`
+Use configuration: `llf --config configs/config.json chat`
 
 ## Testing
 
@@ -519,8 +584,7 @@ cd .. && rm -rf local_llm_framework/
 
 ## Known Limitations (Phase 1)
 
-- No GUI interface
-- No API server exposure
+- No API server exposure (local llama-server only)
 - No voice input/output
 - No internet access for LLM
 - No tool execution capabilities

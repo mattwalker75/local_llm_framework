@@ -371,3 +371,57 @@ class TestGetConfig:
 
         # Empty server_params should not be included
         assert 'server_params' not in config_dict['local_llm_server']
+
+    def test_backup_config_success(self, temp_dir):
+        """Test successful config backup."""
+        # Create a config file
+        config_file = temp_dir / "config.json"
+        config_data = {"model_name": "test-model", "log_level": "INFO"}
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        # Create backup directory
+        backup_dir = temp_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        config = Config(config_file)
+        config.CONFIG_BACKUPS_DIR = backup_dir
+        backup_path = config.backup_config(config_file)
+
+        # Verify backup was created
+        assert backup_path.exists()
+        assert backup_path.parent == backup_dir
+        assert backup_path.stem.startswith("config_")
+        assert backup_path.suffix == ".json"
+
+        # Verify backup content matches original file
+        with open(backup_path, 'r') as f:
+            backup_data = json.load(f)
+        with open(config_file, 'r') as f:
+            original_data = json.load(f)
+        assert backup_data == original_data
+
+    def test_backup_config_file_not_found(self, temp_dir):
+        """Test backup fails when config file doesn't exist."""
+        config_file = temp_dir / "configs" / "nonexistent.json"
+        config = Config()
+
+        with pytest.raises(FileNotFoundError, match="Config file not found"):
+            config.backup_config(config_file)
+
+    def test_backup_config_custom_file(self, temp_dir):
+        """Test backup of custom config file."""
+        custom_file = temp_dir / "custom_config.json"
+        custom_file.parent.mkdir(parents=True, exist_ok=True)
+        config_data = {"custom": "data"}
+        with open(custom_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config()
+        config.CONFIG_BACKUPS_DIR = temp_dir / "backups"
+        backup_path = config.backup_config(custom_file)
+
+        # Verify backup was created with correct name
+        assert backup_path.exists()
+        assert backup_path.stem.startswith("custom_config_")
+        assert backup_path.suffix == ".json"

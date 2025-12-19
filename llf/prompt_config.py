@@ -177,7 +177,7 @@ class PromptConfig:
 
     def backup_config(self, config_file: Optional[Path] = None) -> Path:
         """
-        Create a backup of the prompt configuration file.
+        Create a backup of the prompt configuration file with pretty formatting.
 
         Args:
             config_file: Path to config file to backup. If None, uses DEFAULT_CONFIG_FILE.
@@ -189,7 +189,6 @@ class PromptConfig:
             FileNotFoundError: If config file doesn't exist.
         """
         from datetime import datetime
-        import shutil
 
         if config_file is None:
             config_file = self.DEFAULT_CONFIG_FILE
@@ -205,8 +204,11 @@ class PromptConfig:
         # Ensure backup directory exists
         self.CONFIG_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Copy file to backup
-        shutil.copy2(config_file, backup_path)
+        # Load JSON and save with pretty formatting (indent=2)
+        with open(config_file, 'r') as f:
+            config_data = json.load(f)
+        with open(backup_path, 'w') as f:
+            json.dump(config_data, f, indent=2)
 
         return backup_path
 

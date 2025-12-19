@@ -169,7 +169,9 @@ class TestLLMRuntime:
         assert runtime.server_process is not None
 
     @patch('llf.llm_runtime.subprocess.Popen')
-    def test_start_server_timeout(self, mock_popen, runtime, temp_dir):
+    @patch('time.sleep')  # Mock sleep to speed up test
+    @patch('time.time')  # Mock time to control timeout
+    def test_start_server_timeout(self, mock_time, mock_sleep, mock_popen, runtime, temp_dir):
         """Test server start timeout."""
         # Setup
         runtime.model_manager.is_model_downloaded = Mock(return_value=True)
@@ -184,8 +186,14 @@ class TestLLMRuntime:
         runtime.model_manager.get_model_path = Mock(return_value=model_dir)
 
         mock_process = MagicMock()
-        mock_process.poll.return_value = None
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.terminate = Mock()
+        mock_process.wait = Mock()
         mock_popen.return_value = mock_process
+
+        # Mock time to simulate timeout
+        # First call: start_time, second call: timeout exceeded
+        mock_time.side_effect = [0.0, 2.0]  # Immediate timeout
 
         # Server never becomes ready
         runtime.is_server_ready = Mock(return_value=False)
@@ -550,3 +558,95 @@ class TestLLMRuntime:
 
         # Should not have --server-arg
         assert "--server-arg" not in cmd
+
+    def test_get_server_command_custom_host(self, runtime, temp_dir):
+        """Test _get_server_command with custom server_host (network access)."""
+        model_file = temp_dir / "model.gguf"
+
+        # Test with 0.0.0.0 for network access
+        cmd = runtime._get_server_command(model_file, server_host="0.0.0.0")
+
+        assert "--host" in cmd
+        assert "0.0.0.0" in cmd
+        # Ensure default host is NOT in command
+        assert "127.0.0.1" not in cmd
+
+    def test_get_server_command_default_host(self, runtime, temp_dir):
+        """Test _get_server_command uses config host when server_host is None."""
+        model_file = temp_dir / "model.gguf"
+
+        # When server_host is None, should use config's server_host
+        cmd = runtime._get_server_command(model_file, server_host=None)
+
+        assert "--host" in cmd
+        assert runtime.config.server_host in cmd
+
+    @patch('llf.llm_runtime.subprocess.Popen')
+    def test_start_server_with_share(self, mock_popen, runtime, temp_dir):
+        """Test start_server with server_host='0.0.0.0' for network access."""
+        # Setup
+        runtime.model_manager.is_model_downloaded = Mock(return_value=True)
+        runtime.config.llama_server_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime.config.llama_server_path.touch()
+
+        model_dir = temp_dir / "models" / "test--model"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_file = model_dir / "test-model.gguf"
+        model_file.touch()
+
+        runtime.model_manager.get_model_path = Mock(return_value=model_dir)
+
+        # Mock process
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_popen.return_value = mock_process
+
+        # Mock server ready check
+        runtime.is_server_ready = Mock(side_effect=[False, True])
+
+        # Test with server_host="0.0.0.0"
+        runtime.start_server(server_host="0.0.0.0")
+
+        # Verify Popen was called
+        assert mock_popen.called
+
+        # Verify the command contains 0.0.0.0
+        call_args = mock_popen.call_args
+        cmd = call_args[0][0]  # First positional argument is the command list
+        assert "--host" in cmd
+        assert "0.0.0.0" in cmd
+
+    @patch('llf.llm_runtime.subprocess.Popen')
+    def test_start_server_localhost_only(self, mock_popen, runtime, temp_dir):
+        """Test start_server defaults to localhost (127.0.0.1)."""
+        # Setup
+        runtime.model_manager.is_model_downloaded = Mock(return_value=True)
+        runtime.config.llama_server_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime.config.llama_server_path.touch()
+
+        model_dir = temp_dir / "models" / "test--model"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_file = model_dir / "test-model.gguf"
+        model_file.touch()
+
+        runtime.model_manager.get_model_path = Mock(return_value=model_dir)
+
+        # Mock process
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_popen.return_value = mock_process
+
+        # Mock server ready check
+        runtime.is_server_ready = Mock(side_effect=[False, True])
+
+        # Test without server_host parameter (should use default)
+        runtime.start_server()
+
+        # Verify Popen was called
+        assert mock_popen.called
+
+        # Verify the command contains 127.0.0.1 (default from config)
+        call_args = mock_popen.call_args
+        cmd = call_args[0][0]  # First positional argument is the command list
+        assert "--host" in cmd
+        assert runtime.config.server_host in cmd

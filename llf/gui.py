@@ -35,19 +35,66 @@ class LLMFrameworkGUI:
     - Config: Edit config.json and config_prompt.json
     """
 
-    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None):
+    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None):
         """
         Initialize GUI.
 
         Args:
             config: Configuration instance (defaults to global config)
             prompt_config: Prompt configuration instance (defaults to global)
+            auth_key: Optional authentication key for securing GUI access
         """
         self.config = config or get_config()
         self.prompt_config = prompt_config or get_prompt_config()
         self.model_manager = ModelManager(self.config)
         self.runtime = LLMRuntime(self.config, self.model_manager, self.prompt_config)
         self.chat_history: List[Tuple[str, str]] = []
+        self.started_server = False  # Track if GUI started the server
+        self.auth_key = auth_key  # Authentication key (None = no auth required)
+
+    def check_server_on_startup(self) -> tuple[bool, str]:
+        """
+        Check if server needs to be started on GUI launch (like llf chat).
+
+        Returns:
+            Tuple of (needs_start, message) where:
+            - needs_start: True if server prompt should be shown
+            - message: Status message to display
+        """
+        # Skip if using external API
+        if self.config.is_using_external_api():
+            logger.info("Using external API, no local server needed")
+            return False, f"Using external API: {self.config.api_base_url}"
+
+        # Check if local server is configured
+        if not self.config.has_local_server_config():
+            logger.warning("Local LLM server not configured")
+            return False, "⚠️ Local LLM server not configured. Using external API or configure local server."
+
+        # Check if server is already running
+        if self.runtime.is_server_running():
+            logger.info("Server is already running")
+            return False, "✅ Server is running"
+
+        # Server is not running - needs user action
+        logger.info("Server is not running")
+        return True, "❌ Server is not running. Would you like to start it?"
+
+    def start_server_from_gui(self) -> str:
+        """
+        Start the LLM server from GUI.
+
+        Returns:
+            Status message
+        """
+        try:
+            logger.info("Starting server from GUI...")
+            self.runtime.start_server()
+            self.started_server = True
+            return "✅ Server started successfully!"
+        except Exception as e:
+            logger.error(f"Failed to start server: {e}")
+            return f"❌ Failed to start server: {str(e)}"
 
     # ===== Chat Tab Functions =====
 
@@ -103,10 +150,12 @@ class LLMFrameworkGUI:
         """
         try:
             logger.info("Shutting down GUI...")
-            # Stop server if running
-            if self.config.has_local_server_config() and self.runtime.is_server_running():
+            # Only stop server if it was started by the GUI (not if started with --daemon)
+            if self.started_server and self.config.has_local_server_config() and self.runtime.is_server_running():
                 self.runtime.stop_server()
-                logger.info("Server stopped")
+                logger.info("Server stopped (was started by GUI)")
+            elif self.runtime.is_server_running():
+                logger.info("Server left running (was started externally or in daemon mode)")
 
             # Schedule GUI shutdown
             import os
@@ -294,6 +343,26 @@ class LLMFrameworkGUI:
 
     # ===== Config Tab Functions =====
 
+    def backup_config(self) -> str:
+        """Create a backup of config.json."""
+        try:
+            backup_path = self.config.backup_config()
+            return f"✅ Backup created successfully:\n{backup_path.name}"
+        except FileNotFoundError as e:
+            return f"❌ {str(e)}"
+        except Exception as e:
+            return f"❌ Error creating backup: {str(e)}"
+
+    def backup_prompt_config(self) -> str:
+        """Create a backup of config_prompt.json."""
+        try:
+            backup_path = self.prompt_config.backup_config()
+            return f"✅ Backup created successfully:\n{backup_path.name}"
+        except FileNotFoundError as e:
+            return f"❌ {str(e)}"
+        except Exception as e:
+            return f"❌ Error creating backup: {str(e)}"
+
     def load_config(self) -> str:
         """Load config.json content."""
         try:
@@ -308,15 +377,15 @@ class LLMFrameworkGUI:
             return f"# Error loading config.json: {str(e)}"
 
     def save_config(self, content: str) -> str:
-        """Save config.json content."""
+        """Save config.json content (validates JSON before saving)."""
         try:
-            # Validate JSON
-            json.loads(content)
+            # Validate and parse JSON first
+            config_data = json.loads(content)
 
-            # Save file
+            # Save file with pretty formatting (indent=2)
             config_file = Config.DEFAULT_CONFIG_FILE
             with open(config_file, 'w') as f:
-                f.write(content)
+                json.dump(config_data, f, indent=2)
 
             # Reload config
             self.config = get_config(force_reload=True)
@@ -343,15 +412,15 @@ class LLMFrameworkGUI:
             return f"# Error loading config_prompt.json: {str(e)}"
 
     def save_prompt_config(self, content: str) -> str:
-        """Save config_prompt.json content."""
+        """Save config_prompt.json content (validates JSON before saving)."""
         try:
-            # Validate JSON
-            json.loads(content)
+            # Validate and parse JSON first
+            config_data = json.loads(content)
 
-            # Save file
+            # Save file with pretty formatting (indent=2)
             config_file = PromptConfig.DEFAULT_CONFIG_FILE
             with open(config_file, 'w') as f:
-                f.write(content)
+                json.dump(config_data, f, indent=2)
 
             # Reload prompt config
             self.prompt_config = get_prompt_config(force_reload=True)
@@ -374,12 +443,34 @@ class LLMFrameworkGUI:
         """
         with gr.Blocks(title="LLM Framework GUI") as interface:
 
-            with gr.Row():
-                with gr.Column(scale=5):
-                    gr.Markdown("# 🤖 Local LLM Framework")
-                    gr.Markdown("Web interface for managing and chatting with local LLMs")
-                with gr.Column(scale=1, min_width=150):
-                    shutdown_btn = gr.Button("🔴 Shutdown GUI", variant="stop", size="sm")
+            # Authentication state - True if no auth required or successfully authenticated
+            auth_state = gr.State(True if not self.auth_key else False)
+
+            # Login UI (visible only when authentication is required and not authenticated)
+            with gr.Group(visible=bool(self.auth_key)) as login_ui:
+                gr.Markdown("# 🔒 Authentication Required")
+                gr.Markdown("Please enter the secret key to access the LLM Framework GUI")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        key_input = gr.Textbox(
+                            label="Secret Key",
+                            type="password",
+                            placeholder="Enter your secret key...",
+                            scale=4
+                        )
+                    with gr.Column(scale=1):
+                        login_btn = gr.Button("Login", variant="primary", scale=1)
+                login_status = gr.Textbox(label="Status", interactive=False, visible=False)
+
+            # Main UI (visible only when authenticated)
+            with gr.Group(visible=not bool(self.auth_key)) as main_ui:
+
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        gr.Markdown("# 🤖 Local LLM Framework")
+                        gr.Markdown("Web interface for managing and chatting with local LLMs")
+                    with gr.Column(scale=1, min_width=150):
+                        shutdown_btn = gr.Button("🔴 Shutdown GUI", variant="stop", size="sm")
                     shutdown_status = gr.Textbox(
                         label="",
                         lines=1,
@@ -388,238 +479,313 @@ class LLMFrameworkGUI:
                         container=False
                     )
 
-            # Shutdown handler
-            shutdown_btn.click(self.shutdown_gui, None, shutdown_status).then(
-                lambda: gr.update(visible=True), None, shutdown_status
-            )
+                # Shutdown handler
+                shutdown_btn.click(self.shutdown_gui, None, shutdown_status).then(
+                    lambda: gr.update(visible=True), None, shutdown_status
+                )
 
-            with gr.Tabs():
+                # Server startup prompt (shown on load if server not running)
+                needs_start, startup_msg = self.check_server_on_startup()
+                with gr.Row(visible=needs_start) as server_prompt_row:
+                    with gr.Column():
+                        gr.Markdown(f"### {startup_msg}")
+                        with gr.Row():
+                            start_server_btn = gr.Button("Start Server", variant="primary")
+                            skip_server_btn = gr.Button("Skip (use external API)", variant="secondary")
+                        server_start_status = gr.Textbox(label="Status", lines=2, interactive=False)
 
-                # ===== Chat Tab =====
-                with gr.Tab("💬 Chat"):
-                    gr.Markdown("### Chat with your LLM")
-                    gr.Markdown("Have a conversation with your configured language model")
+                # Server startup handlers
+                def handle_start_server():
+                    status = self.start_server_from_gui()
+                    return status, gr.update(visible=False)
 
-                    chatbot = gr.Chatbot(
-                        value=[],
-                        label="Conversation",
-                        height=500
-                    )
+                def handle_skip_server():
+                    return "Using GUI without local server", gr.update(visible=False)
 
-                    with gr.Row():
-                        msg = gr.Textbox(
-                            label="Your message",
-                            placeholder="Type your message here...",
-                            scale=4,
-                            lines=2
+                start_server_btn.click(
+                    handle_start_server,
+                    None,
+                    [server_start_status, server_prompt_row]
+                )
+                skip_server_btn.click(
+                    handle_skip_server,
+                    None,
+                    [server_start_status, server_prompt_row]
+                )
+
+                with gr.Tabs():
+
+                    # ===== Chat Tab =====
+                    with gr.Tab("💬 Chat"):
+                        gr.Markdown("### Chat with your LLM")
+                        gr.Markdown("Have a conversation with your configured language model")
+    
+                        chatbot = gr.Chatbot(
+                            value=[],
+                            label="Conversation",
+                            height=500
                         )
-                        with gr.Column(scale=1):
-                            with gr.Row():
-                                submit = gr.Button("Send", variant="primary", scale=3)
-                                submit_on_enter = gr.Checkbox(
-                                    label="Enter to send",
-                                    value=True,
-                                    scale=1,
-                                    container=False
+    
+                        with gr.Row():
+                            msg = gr.Textbox(
+                                label="Your message",
+                                placeholder="Type your message here...",
+                                scale=4,
+                                lines=1,
+                                max_lines=10,
+                                show_label=True
+                            )
+                            with gr.Column(scale=1):
+                                with gr.Row():
+                                    submit = gr.Button("Send", variant="primary", scale=3)
+                                    submit_on_enter = gr.Checkbox(
+                                        label="Enter to send",
+                                        value=True,
+                                        scale=1,
+                                        container=False
+                                    )
+                                clear = gr.Button("Clear Chat")
+    
+                        # Chat interactions
+                        # Submit button always works
+                        submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+
+                        # Enter key submission - conditional based on checkbox
+                        # When disabled, we want multiline input (Enter creates newline)
+                        # Problem: Gradio's .submit() always intercepts Enter and clears the textbox
+                        # Solution: Check checkbox, and if disabled, restore the message + add newline
+                        def handle_enter_key(message, history, enter_enabled):
+                            """Handle Enter key press based on checkbox state."""
+                            if enter_enabled:
+                                # Submit: process the message
+                                for update in self.chat_respond(message, history):
+                                    yield update
+                            else:
+                                # Don't submit: restore message with newline added
+                                # Gradio cleared the textbox, so we put the text back with a newline
+                                yield message + "\n", history
+
+                        msg.submit(
+                            handle_enter_key,
+                            inputs=[msg, chatbot, submit_on_enter],
+                            outputs=[msg, chatbot]
+                        )
+
+                        clear.click(self.clear_chat, None, chatbot)
+    
+                    # ===== Server Tab =====
+                    with gr.Tab("🖥️ Server"):
+                        gr.Markdown("### Server Management")
+                        gr.Markdown("Control your local LLM server")
+
+                        status_output = gr.Textbox(
+                            label="Server Status",
+                            lines=5,
+                            interactive=False,
+                            value=self.get_server_status()  # Load initial status
+                        )
+    
+                        with gr.Row():
+                            status_btn = gr.Button("Check Status", variant="secondary")
+                            start_btn = gr.Button("Start Server", variant="primary")
+                            stop_btn = gr.Button("Stop Server", variant="stop")
+                            restart_btn = gr.Button("Restart Server")
+    
+                        # Server interactions
+                        status_btn.click(self.get_server_status, None, status_output)
+                        start_btn.click(self.start_server, None, status_output)
+                        stop_btn.click(self.stop_server, None, status_output)
+                        restart_btn.click(self.restart_server, None, status_output)
+    
+                        # Auto-update status on load
+                        interface.load(self.get_server_status, None, status_output)
+    
+                    # ===== Models Tab =====
+                    with gr.Tab("📦 Models"):
+                        gr.Markdown("### Model Management")
+                        gr.Markdown("Download and manage your LLM models")
+    
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Downloaded Models")
+                                models_list = gr.Textbox(
+                                    label="Your Models",
+                                    lines=8,
+                                    interactive=False
                                 )
-                            clear = gr.Button("Clear Chat")
-
-                    # Chat interactions - conditionally enable submit on enter
-                    def handle_submit(message, history, enter_enabled):
-                        """Handle message submission."""
-                        if enter_enabled:
-                            return self.chat_respond(message, history)
-                        return message, history
-
-                    # Submit button always works
-                    submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
-
-                    # Enter key only works when checkbox is enabled
-                    msg.submit(
-                        lambda m, h, enabled: self.chat_respond(m, h) if enabled else ("", h),
-                        [msg, chatbot, submit_on_enter],
-                        [msg, chatbot]
-                    )
-
-                    clear.click(self.clear_chat, None, chatbot)
-
-                # ===== Server Tab =====
-                with gr.Tab("🖥️ Server"):
-                    gr.Markdown("### Server Management")
-                    gr.Markdown("Control your local LLM server")
-
-                    status_output = gr.Textbox(
-                        label="Server Status",
-                        lines=5,
-                        interactive=False
-                    )
-
-                    with gr.Row():
-                        status_btn = gr.Button("Check Status", variant="secondary")
-                        start_btn = gr.Button("Start Server", variant="primary")
-                        stop_btn = gr.Button("Stop Server", variant="stop")
-                        restart_btn = gr.Button("Restart Server")
-
-                    # Server interactions
-                    status_btn.click(self.get_server_status, None, status_output)
-                    start_btn.click(self.start_server, None, status_output)
-                    stop_btn.click(self.stop_server, None, status_output)
-                    restart_btn.click(self.restart_server, None, status_output)
-
-                    # Auto-update status on load
-                    interface.load(self.get_server_status, None, status_output)
-
-                # ===== Models Tab =====
-                with gr.Tab("📦 Models"):
-                    gr.Markdown("### Model Management")
-                    gr.Markdown("Download and manage your LLM models")
-
-                    with gr.Row():
-                        with gr.Column():
-                            gr.Markdown("#### Downloaded Models")
-                            models_list = gr.Textbox(
-                                label="Your Models",
-                                lines=8,
-                                interactive=False
-                            )
-                            refresh_btn = gr.Button("Refresh List")
-
-                        with gr.Column():
-                            gr.Markdown("#### Model Information")
-                            model_info_input = gr.Textbox(
-                                label="Model Name (leave empty for default)",
-                                placeholder="e.g., Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-                            )
-                            model_info_btn = gr.Button("Get Info")
-                            model_info_output = gr.Textbox(
-                                label="Model Details",
-                                lines=8,
-                                interactive=False
-                            )
-
-                    gr.Markdown("---")
-                    gr.Markdown("#### Download New Model")
-
-                    with gr.Row():
-                        with gr.Column():
-                            gr.Markdown("**Option 1: HuggingFace Model**")
-                            hf_model_input = gr.Textbox(
-                                label="HuggingFace Model Name",
-                                placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-                            )
-
-                        with gr.Column():
-                            gr.Markdown("**Option 2: Direct URL**")
-                            url_input = gr.Textbox(
-                                label="GGUF File URL",
-                                placeholder="https://example.com/model.gguf"
-                            )
-                            url_name_input = gr.Textbox(
-                                label="Custom Name",
-                                placeholder="my-model"
-                            )
-
-                    download_btn = gr.Button("Download Model", variant="primary")
-                    download_output = gr.Textbox(
-                        label="Download Status",
-                        lines=3,
-                        interactive=False
-                    )
-
-                    # Model interactions
-                    refresh_btn.click(self.list_models, None, models_list)
-                    model_info_btn.click(self.get_model_info, model_info_input, model_info_output)
-                    download_btn.click(
-                        self.download_model,
-                        [hf_model_input, url_input, url_name_input],
-                        download_output
-                    )
-
-                    # Auto-load models list
-                    interface.load(self.list_models, None, models_list)
-
-                # ===== Config Tab =====
-                with gr.Tab("⚙️ Configuration"):
-                    gr.Markdown("### Configuration Editor")
-                    gr.Markdown("Edit your configuration files (changes require saving)")
-
-                    with gr.Tab("config.json"):
-                        gr.Markdown("**Infrastructure Configuration** - Server, API, models, inference parameters")
-
-                        config_editor = gr.Code(
-                            label="config.json",
-                            language="json",
-                            lines=20
-                        )
-
+                                refresh_btn = gr.Button("Refresh List")
+    
+                            with gr.Column():
+                                gr.Markdown("#### Model Information")
+                                model_info_input = gr.Textbox(
+                                    label="Model Name (leave empty for default)",
+                                    placeholder="e.g., Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                                )
+                                model_info_btn = gr.Button("Get Info")
+                                model_info_output = gr.Textbox(
+                                    label="Model Details",
+                                    lines=8,
+                                    interactive=False
+                                )
+    
+                        gr.Markdown("---")
+                        gr.Markdown("#### Download New Model")
+    
                         with gr.Row():
-                            config_load_btn = gr.Button("Reload from File")
-                            config_save_btn = gr.Button("Save to File", variant="primary")
-
-                        config_status = gr.Textbox(
-                            label="Status",
-                            lines=2,
+                            with gr.Column():
+                                gr.Markdown("**Option 1: HuggingFace Model**")
+                                hf_model_input = gr.Textbox(
+                                    label="HuggingFace Model Name",
+                                    placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                                )
+    
+                            with gr.Column():
+                                gr.Markdown("**Option 2: Direct URL**")
+                                url_input = gr.Textbox(
+                                    label="GGUF File URL",
+                                    placeholder="https://example.com/model.gguf"
+                                )
+                                url_name_input = gr.Textbox(
+                                    label="Custom Name",
+                                    placeholder="my-model"
+                                )
+    
+                        download_btn = gr.Button("Download Model", variant="primary")
+                        download_output = gr.Textbox(
+                            label="Download Status",
+                            lines=3,
                             interactive=False
                         )
-
-                        # Config interactions
-                        config_load_btn.click(self.load_config, None, config_editor)
-                        config_save_btn.click(self.save_config, config_editor, config_status)
-                        interface.load(self.load_config, None, config_editor)
-
-                    with gr.Tab("config_prompt.json"):
-                        gr.Markdown("**Prompt Configuration** - System prompts, conversation formatting")
-
-                        prompt_editor = gr.Code(
-                            label="config_prompt.json",
-                            language="json",
-                            lines=20
+    
+                        # Model interactions
+                        refresh_btn.click(self.list_models, None, models_list)
+                        model_info_btn.click(self.get_model_info, model_info_input, model_info_output)
+                        download_btn.click(
+                            self.download_model,
+                            [hf_model_input, url_input, url_name_input],
+                            download_output
                         )
+    
+                        # Auto-load models list
+                        interface.load(self.list_models, None, models_list)
+    
+                    # ===== Config Tab =====
+                    with gr.Tab("⚙️ Configuration"):
+                        gr.Markdown("### Configuration Editor")
+                        gr.Markdown("Edit your configuration files (changes require saving)")
+    
+                        with gr.Tab("config.json"):
+                            gr.Markdown("**Infrastructure Configuration** - Server, API, models, inference parameters")
+    
+                            config_editor = gr.Code(
+                                label="config.json",
+                                language="json",
+                                lines=20
+                            )
+    
+                            with gr.Row():
+                                config_load_btn = gr.Button("Reload from File")
+                                config_backup_btn = gr.Button("Create Backup", variant="secondary")
+                                config_save_btn = gr.Button("Save to File", variant="primary")
+    
+                            config_status = gr.Textbox(
+                                label="Status",
+                                lines=2,
+                                interactive=False
+                            )
+    
+                            # Config interactions
+                            config_load_btn.click(self.load_config, None, config_editor)
+                            config_backup_btn.click(self.backup_config, None, config_status)
+                            config_save_btn.click(self.save_config, config_editor, config_status)
+                            interface.load(self.load_config, None, config_editor)
+    
+                        with gr.Tab("config_prompt.json"):
+                            gr.Markdown("**Prompt Configuration** - System prompts, conversation formatting")
+    
+                            prompt_editor = gr.Code(
+                                label="config_prompt.json",
+                                language="json",
+                                lines=20
+                            )
+    
+                            with gr.Row():
+                                prompt_load_btn = gr.Button("Reload from File")
+                                prompt_backup_btn = gr.Button("Create Backup", variant="secondary")
+                                prompt_save_btn = gr.Button("Save to File", variant="primary")
+    
+                            prompt_status = gr.Textbox(
+                                label="Status",
+                                lines=2,
+                                interactive=False
+                            )
+    
+                            # Prompt config interactions
+                            prompt_load_btn.click(self.load_prompt_config, None, prompt_editor)
+                            prompt_backup_btn.click(self.backup_prompt_config, None, prompt_status)
+                            prompt_save_btn.click(self.save_prompt_config, prompt_editor, prompt_status)
+                            interface.load(self.load_prompt_config, None, prompt_editor)
+    
+            # Authentication handler
+            def handle_login(entered_key, current_auth):
+                """Handle login attempt."""
+                if entered_key == self.auth_key:
+                    # Authentication successful - hide login, show main UI
+                    return (
+                        True,  # Update auth_state
+                        "",  # Clear key input
+                        gr.update(visible=False),  # Hide status (don't show success message)
+                        gr.update(visible=False),  # Hide login UI
+                        gr.update(visible=True)  # Show main UI
+                    )
+                else:
+                    # Authentication failed - show error
+                    return (
+                        False,  # Keep auth_state as False
+                        "",  # Clear key input
+                        gr.update(value="❌ Invalid secret key. Please try again.", visible=True),  # Show error
+                        gr.update(visible=True),  # Keep login UI visible
+                        gr.update(visible=False)  # Keep main UI hidden
+                    )
 
-                        with gr.Row():
-                            prompt_load_btn = gr.Button("Reload from File")
-                            prompt_save_btn = gr.Button("Save to File", variant="primary")
-
-                        prompt_status = gr.Textbox(
-                            label="Status",
-                            lines=2,
-                            interactive=False
-                        )
-
-                        # Prompt config interactions
-                        prompt_load_btn.click(self.load_prompt_config, None, prompt_editor)
-                        prompt_save_btn.click(self.save_prompt_config, prompt_editor, prompt_status)
-                        interface.load(self.load_prompt_config, None, prompt_editor)
+            # Only set up login handler if authentication is required
+            if self.auth_key:
+                login_btn.click(
+                    handle_login,
+                    [key_input, auth_state],
+                    [auth_state, key_input, login_status, login_ui, main_ui]
+                )
 
         return interface
 
-    def launch(self, share: bool = False, server_port: int = 7860, inbrowser: bool = True, **kwargs):
+    def launch(self, server_name: str = "127.0.0.1", server_port: int = 7860, inbrowser: bool = True, **kwargs):
         """
         Launch the Gradio interface.
 
         Args:
-            share: Create a public share link
+            server_name: Host to bind the GUI server to (e.g., "127.0.0.1" for localhost, "0.0.0.0" for network)
             server_port: Port to run the server on
             inbrowser: Automatically open in browser (default: True)
             **kwargs: Additional arguments to pass to Gradio launch()
         """
         interface = self.create_interface()
         interface.launch(
-            share=share,
+            server_name=server_name,
             server_port=server_port,
             inbrowser=inbrowser,
             **kwargs
         )
 
 
-def start_gui(config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, **kwargs):
+def start_gui(config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None, **kwargs):
     """
     Start the GUI interface.
 
     Args:
         config: Optional configuration instance
         prompt_config: Optional prompt configuration instance
+        auth_key: Optional authentication key for securing GUI access
         **kwargs: Additional arguments to pass to Gradio launch()
     """
-    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config)
+    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config, auth_key=auth_key)
     gui.launch(**kwargs)

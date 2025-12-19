@@ -6,21 +6,27 @@ The Local LLM Framework (LLF) uses a JSON configuration file for managing all se
 
 ## Configuration File Location
 
-The framework automatically looks for a configuration file at:
+The framework automatically looks for configuration files at:
 ```
-<project_root>/config.json
+<project_root>/configs/config.json        # Infrastructure configuration
+<project_root>/configs/config_prompt.json  # Prompt configuration (optional)
 ```
 
-If this file doesn't exist, LLF will use built-in default values.
+If these files don't exist, LLF will use built-in default values.
+
+**Configuration backups** are automatically saved to:
+```
+<project_root>/configs/backups/
+```
 
 ## Getting Started
 
 1. **Copy the example configuration:**
    ```bash
-   cp config.json.example config.json
+   cp configs/config_examples/config.local.example configs/config.json
    ```
 
-2. **Edit `config.json`** to customize your settings (see below for options)
+2. **Edit `configs/config.json`** to customize your settings (see below for options)
 
 3. **Run LLF** - it will automatically load your configuration:
    ```bash

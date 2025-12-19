@@ -128,10 +128,10 @@ llf -d /mnt/storage/models chat
 Load configuration from a JSON file.
 
 ```bash
-llf -c my_config.json chat
+llf -c configs/my_config.json chat
 ```
 
-**Example config.json:**
+**Example configs/config.json:**
 ```json
 {
   "model_name": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
@@ -462,7 +462,7 @@ llf --log-level DEBUG chat
 
 ### Using Configuration Files
 
-Create a `config.json`:
+Create a `configs/config.json`:
 
 ```json
 {
@@ -481,7 +481,7 @@ Create a `config.json`:
 Then use it:
 
 ```bash
-llf -c config.json chat
+llf -c configs/config.json chat
 ```
 
 ## Environment Variables
@@ -532,8 +532,8 @@ llf chat
 
 ```bash
 # Create different config files
-llf -c qwen_config.json chat
-llf -c mistral_config.json chat
+llf -c configs/qwen_config.json chat
+llf -c configs/mistral_config.json chat
 ```
 
 ### Batch Operations
