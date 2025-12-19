@@ -1306,10 +1306,8 @@ actions:
         validate_download_args(args)
 
     # Load or create config first (to get log_level if not specified on CLI)
-    if args.config:
-        config = get_config(args.config)
-    else:
-        config = get_config()
+    # get_config() accepts None and uses default path, so we don't need to check args.config
+    config = get_config(args.config)
 
     # Load prompt configuration (optional)
     # Use default config_prompt.json if it exists, otherwise no prompt config

@@ -1,0 +1,10 @@
+
+Application testing outline to ensure all codes is functioning as expected
+
+Unit Testing:
+  - Run RUN_UNIT_TESTS.sh 
+
+Model conversion ( HuggingFace (.safetensors) -> GGUF ( Llama format )
+   - Run convert_huggingface_llm_2_gguf.sh against an LLM
+
+

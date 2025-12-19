@@ -38,6 +38,7 @@ class TestConfig:
             assert config.inference_params == Config.DEFAULT_INFERENCE_PARAMS
             assert config.server_host == Config.SERVER_HOST
             assert config.server_port == Config.SERVER_PORT
+            assert config.healthcheck_interval == Config.HEALTHCHECK_INTERVAL
         finally:
             # Restore config.json if it was backed up
             if config_backup and config_backup.exists():
@@ -64,6 +65,7 @@ class TestConfig:
             },
             'server_host': '0.0.0.0',
             'server_port': 9000,
+            'healthcheck_interval': 1.5,
             'log_level': 'DEBUG'
         }
 
@@ -82,6 +84,7 @@ class TestConfig:
         assert config.inference_params['max_tokens'] == 1000
         assert config.server_host == '0.0.0.0'
         assert config.server_port == 9000
+        assert config.healthcheck_interval == 1.5
         assert config.log_level == 'DEBUG'
 
     def test_load_partial_config(self, temp_dir):
@@ -371,6 +374,46 @@ class TestGetConfig:
 
         # Empty server_params should not be included
         assert 'server_params' not in config_dict['local_llm_server']
+
+    def test_healthcheck_interval_loading(self, temp_dir):
+        """Test loading healthcheck_interval from config file."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_host': '127.0.0.1',
+                'server_port': 8000,
+                'healthcheck_interval': 1.0
+            }
+        }
+        config_file = temp_dir / 'config_healthcheck.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        assert config.healthcheck_interval == 1.0
+
+    def test_healthcheck_interval_default(self, temp_dir):
+        """Test that healthcheck_interval defaults to 2.0 when not specified."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_host': '127.0.0.1',
+                'server_port': 8000
+                # No healthcheck_interval specified
+            }
+        }
+        config_file = temp_dir / 'config_no_healthcheck.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        # Should use default value
+        assert config.healthcheck_interval == Config.HEALTHCHECK_INTERVAL
+        assert config.healthcheck_interval == 2.0
 
     def test_backup_config_success(self, temp_dir):
         """Test successful config backup."""

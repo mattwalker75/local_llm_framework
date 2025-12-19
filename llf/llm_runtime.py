@@ -73,7 +73,8 @@ class LLMRuntime:
             "--port", str(self.config.server_port),
         ]
 
-        # Add additional server parameters if configured
+        # Add additional server parameters if configured (e.g., ctx-size, n-gpu-layers, threads)
+        # These are passed through to llama-server via the wrapper script
         if self.config.server_params:
             for key, value in self.config.server_params.items():
                 cmd.extend(["--server-arg", key, str(value)])
@@ -121,25 +122,23 @@ class LLMRuntime:
             logger.warning("llama-server is already running")
             return
 
-        # Determine model file path
-        # If custom_model_dir is set, use it directly
-        if self.config.custom_model_dir is not None:
-            model_file_path = self.config.custom_model_dir / gguf_file
-            if not model_file_path.exists():
-                raise ValueError(
-                    f"GGUF model file not found: {model_file_path}\n"
-                    f"Custom model directory: {self.config.custom_model_dir}\n"
-                    f"Available files: {list(self.config.custom_model_dir.glob('*.gguf')) if self.config.custom_model_dir.exists() else 'Directory does not exist'}"
-                )
-        else:
-            # Use HuggingFace model path
-            model_dir = self.model_manager.get_model_path(model_name)
-            model_file_path = model_dir / gguf_file
-            if not model_file_path.exists():
-                raise ValueError(
-                    f"GGUF model file not found: {model_file_path}\n"
-                    f"Available files in {model_dir}: {list(model_dir.glob('*.gguf'))}"
-                )
+        # ===== Model File Path Determination =====
+        # Support two model directory structures:
+        # 1. Custom directory: User-specified path for GGUF files (e.g., models/custom_models/)
+        # 2. HuggingFace structure: Standard models/{model_name}/ layout
+        # This flexibility allows both manual model placement and HuggingFace downloads
+        model_dir = self.config.custom_model_dir if self.config.custom_model_dir is not None else self.model_manager.get_model_path(model_name)
+        model_file_path = model_dir / gguf_file
+
+        # Verify model file exists before attempting to start server
+        # Provide helpful error message listing available GGUF files if not found
+        if not model_file_path.exists():
+            available_files = list(model_dir.glob('*.gguf')) if model_dir.exists() else 'Directory does not exist'
+            raise ValueError(
+                f"GGUF model file not found: {model_file_path}\n"
+                f"Model directory: {model_dir}\n"
+                f"Available files: {available_files}"
+            )
 
         cmd = self._get_server_command(model_file_path, server_host=server_host)
 
@@ -162,7 +161,9 @@ class LLMRuntime:
 
             logger.info("llama-server process started, waiting for readiness...")
 
-            # Wait for server to become ready
+            # ===== Health Check Loop =====
+            # Poll server's /health endpoint until it returns HTTP 200 or timeout is reached
+            # This ensures the server is fully initialized before accepting inference requests
             start_time = time.time()
             while time.time() - start_time < timeout:
                 if self.is_server_ready():
@@ -170,16 +171,17 @@ class LLMRuntime:
                     self._initialize_client()
                     return
 
-                # Check if process has terminated
+                # Check if process has terminated unexpectedly (e.g., model file issues, port conflicts)
                 if self.server_process.poll() is not None:
                     stderr = self.server_process.stderr.read() if self.server_process.stderr else "No error output"
                     raise RuntimeError(
                         f"llama-server process terminated unexpectedly:\n{stderr}"
                     )
 
-                time.sleep(2)
+                # Wait between health checks (configurable via healthcheck_interval)
+                time.sleep(self.config.healthcheck_interval)
 
-            # Timeout reached
+            # Timeout reached - server failed to start within the allowed time
             self.stop_server()
             raise RuntimeError(
                 f"llama-server failed to become ready within {timeout} seconds"
@@ -314,6 +316,77 @@ class LLMRuntime:
             api_key=self.config.api_key,
         )
 
+    def _ensure_server_ready(self) -> None:
+        """
+        Ensure server is ready and client is initialized.
+
+        For local LLM setups, verifies the llama-server is running.
+        For external APIs (OpenAI, Anthropic, etc.), skips server check.
+        Initializes the OpenAI client if not already initialized.
+
+        Raises:
+            RuntimeError: If local server is required but not running.
+        """
+        # Only check if local llama-server is running when using local LLM
+        # Skip this check for external APIs since they don't need local server
+        if not self.config.is_using_external_api() and not self.is_server_running():
+            raise RuntimeError("llama-server is not running")
+
+        if self.client is None:
+            self._initialize_client()
+
+    def _build_api_params(self, model: Optional[str], base_params: dict, **kwargs) -> dict:
+        """
+        Build API request parameters with proper handling of llama.cpp-specific params.
+
+        This helper consolidates duplicate parameter building logic used by both
+        generate() and chat() methods. It handles the complexity of supporting
+        both OpenAI-compatible APIs and llama.cpp-specific parameters.
+
+        Args:
+            model: Model name to use, or None to use config default.
+            base_params: Base parameters dict (e.g., {'prompt': '...'} or {'messages': [...], 'stream': False}).
+            **kwargs: Additional parameters to override config defaults.
+
+        Returns:
+            Complete parameters dict ready for OpenAI API call.
+        """
+        # Start with config file parameters, then override with any kwargs passed to this method
+        params = self.config.inference_params.copy()
+        params.update(kwargs)
+
+        # Build the API request parameters, starting with required fields
+        openai_params = {
+            'model': model or self.config.model_name,
+            **base_params
+        }
+
+        # ===== llama.cpp-Specific Parameters =====
+        # These parameters are only supported by llama-server, not external APIs (OpenAI, Anthropic, etc.)
+        # We put them in 'extra_body' to keep them separate from standard OpenAI parameters
+        extra_body_params = {'top_k', 'repetition_penalty'}
+
+        # ===== Pass Through All Parameters =====
+        # This approach allows config files to control EXACTLY which parameters are sent
+        # - For local llama-server: include max_tokens, top_k, repetition_penalty, etc.
+        # - For OpenAI: include max_tokens or max_completion_tokens (depending on model), but NOT top_k
+        # - For other APIs: include whatever parameters they support
+        extra_body = {}
+        for key, value in params.items():
+            if key in extra_body_params:
+                # llama.cpp-specific params go in extra_body
+                extra_body[key] = value
+            else:
+                # All other params (temperature, max_tokens, max_completion_tokens, top_p, etc.)
+                # are passed directly to the API
+                openai_params[key] = value
+
+        # Add extra_body to request if we have llama.cpp-specific parameters
+        if extra_body:
+            openai_params['extra_body'] = extra_body
+
+        return openai_params
+
     def generate(
         self,
         prompt: str,
@@ -341,49 +414,8 @@ class LLMRuntime:
         Raises:
             RuntimeError: If server is not running or request fails.
         """
-        # ===== Server Availability Check =====
-        # Only check if local llama-server is running when using local LLM
-        # Skip this check for external APIs (OpenAI, Anthropic, etc.) since they don't need local server
-        if not self.config.is_using_external_api() and not self.is_server_running():
-            raise RuntimeError("llama-server is not running")
-
-        if self.client is None:
-            self._initialize_client()
-
-        # ===== Parameter Handling =====
-        # Start with config file parameters, then override with any kwargs passed to this method
-        params = self.config.inference_params.copy()
-        params.update(kwargs)
-
-        # Build the API request parameters, starting with required fields
-        openai_params = {
-            'model': model or self.config.model_name,
-            'prompt': prompt,
-        }
-
-        # ===== llama.cpp-Specific Parameters =====
-        # These parameters are only supported by llama-server, not external APIs (OpenAI, Anthropic, etc.)
-        # We put them in 'extra_body' to keep them separate from standard OpenAI parameters
-        extra_body_params = {'top_k', 'repetition_penalty'}
-
-        # ===== Pass Through All Parameters =====
-        # This approach allows config files to control EXACTLY which parameters are sent
-        # - For local llama-server: include max_tokens, top_k, repetition_penalty, etc.
-        # - For OpenAI: include max_tokens or max_completion_tokens (depending on model), but NOT top_k
-        # - For other APIs: include whatever parameters they support
-        extra_body = {}
-        for key, value in params.items():
-            if key in extra_body_params:
-                # llama.cpp-specific params go in extra_body
-                extra_body[key] = value
-            else:
-                # All other params (temperature, max_tokens, max_completion_tokens, top_p, etc.)
-                # are passed directly to the API
-                openai_params[key] = value
-
-        # Add extra_body to request if we have llama.cpp-specific parameters
-        if extra_body:
-            openai_params['extra_body'] = extra_body
+        self._ensure_server_ready()
+        openai_params = self._build_api_params(model, {'prompt': prompt}, **kwargs)
 
         try:
             logger.debug(f"Generating completion with params: {openai_params}")
@@ -430,14 +462,7 @@ class LLMRuntime:
         Raises:
             RuntimeError: If server is not running or request fails.
         """
-        # ===== Server Availability Check =====
-        # Only check if local llama-server is running when using local LLM
-        # Skip this check for external APIs (OpenAI, Anthropic, etc.) since they don't need local server
-        if not self.config.is_using_external_api() and not self.is_server_running():
-            raise RuntimeError("llama-server is not running")
-
-        if self.client is None:
-            self._initialize_client()
+        self._ensure_server_ready()
 
         # ===== Prompt Configuration Processing =====
         # Apply prompt config to format/enhance messages if configured
@@ -457,41 +482,11 @@ class LLMRuntime:
                 )
             # else: messages are already in full format, use as-is
 
-        # ===== Parameter Handling =====
-        # Start with config file parameters, then override with any kwargs passed to this method
-        params = self.config.inference_params.copy()
-        params.update(kwargs)
-
-        # Build the API request parameters, starting with required fields
-        openai_params = {
-            'model': model or self.config.model_name,
-            'messages': processed_messages,
-            'stream': stream,
-        }
-
-        # ===== llama.cpp-Specific Parameters =====
-        # These parameters are only supported by llama-server, not external APIs (OpenAI, Anthropic, etc.)
-        # We put them in 'extra_body' to keep them separate from standard OpenAI parameters
-        extra_body_params = {'top_k', 'repetition_penalty'}
-
-        # ===== Pass Through All Parameters =====
-        # This approach allows config files to control EXACTLY which parameters are sent
-        # - For local llama-server: include max_tokens, top_k, repetition_penalty, etc.
-        # - For OpenAI: include max_tokens or max_completion_tokens (depending on model), but NOT top_k
-        # - For other APIs: include whatever parameters they support
-        extra_body = {}
-        for key, value in params.items():
-            if key in extra_body_params:
-                # llama.cpp-specific params go in extra_body
-                extra_body[key] = value
-            else:
-                # All other params (temperature, max_tokens, max_completion_tokens, top_p, etc.)
-                # are passed directly to the API
-                openai_params[key] = value
-
-        # Add extra_body to request if we have llama.cpp-specific parameters
-        if extra_body:
-            openai_params['extra_body'] = extra_body
+        openai_params = self._build_api_params(
+            model,
+            {'messages': processed_messages, 'stream': stream},
+            **kwargs
+        )
 
         try:
             logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream})")
@@ -534,7 +529,7 @@ class LLMRuntime:
         logger.info(f"Listing models from {self.config.api_base_url}")
 
         try:
-            # Ensure client is initialized
+            # Ensure client is initialized (but don't check server status)
             if self.client is None:
                 self._initialize_client()
 

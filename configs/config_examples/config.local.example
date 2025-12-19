@@ -22,6 +22,9 @@
     "server_port": 8000,
     "_server_port_note": "Port for llama-server to listen on",
 
+    "healthcheck_interval": 2.0,
+    "_healthcheck_interval_note": "Seconds between health checks during server startup (default: 2.0, reduce to 1.0 for faster startup)",
+
     "_model_location_comment": "===== Model File Location =====",
     "_model_location_note": "Two ways to specify where your GGUF model file is located:",
 

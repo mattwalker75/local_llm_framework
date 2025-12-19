@@ -100,11 +100,13 @@ Examples:
 ### Command-Specific Help
 
 ```bash
-llf download -h
 llf chat -h
-llf list -h
-llf info -h
+llf model -h
 llf server -h
+llf gui -h
+llf datastore -h
+llf module -h
+llf tool -h
 ```
 
 ## Global Options
@@ -177,7 +179,56 @@ llf --version
 
 ## Commands
 
-### 1. Chat (Default Command)
+### 1. GUI Command
+
+Start the web-based GUI interface for easy management and chat.
+
+```bash
+# Start GUI (opens in browser automatically)
+llf gui
+llf gui start
+
+# Start in background (daemon mode)
+llf gui start --daemon
+
+# Start on custom port
+llf gui start --port 8080
+
+# Make GUI accessible on local network
+llf gui start --share
+
+# Start with authentication
+llf gui start --key MY_SECRET_KEY_123
+
+# Combine network access with authentication
+llf gui start --share --key MY_SECRET_KEY_123
+
+# Start without opening browser
+llf gui start --no-browser
+
+# Stop GUI daemon
+llf gui stop
+
+# Check GUI status
+llf gui status
+```
+
+**GUI Features:**
+- 💬 **Chat Tab**: Interactive conversation with multiline input support
+- 🖥️ **Server Tab**: Server management with auto-loading status
+- 📦 **Models Tab**: Model download and management
+- ⚙️ **Config (Infrastructure)**: Edit `configs/config.json`
+- 📝 **Config (Prompts)**: Edit `configs/config_prompt.json`
+- 📚 **Data Stores Tab**: Placeholder for future RAG features
+- 🔌 **Modules Tab**: Placeholder for future module management
+- 🛠️ **Tools Tab**: Placeholder for future tool management
+
+**Network Access:**
+- Default: Only accessible on localhost (127.0.0.1)
+- `--share`: Makes GUI accessible on local network (0.0.0.0)
+- `--key`: Adds authentication protection (recommended with --share)
+
+### 2. Chat (Default Command)
 
 Start an interactive chat session with the LLM.
 
@@ -211,88 +262,65 @@ You: exit
 Goodbye!
 ```
 
-### 2. Download Command
+### 3. Model Command
 
-Download a model from HuggingFace Hub.
+Manage model downloads and information.
 
 ```bash
 # Download the default model
-llf download
+llf model download
 
-# Download a specific model
-llf download --model "mistralai/Mistral-7B-Instruct-v0.2"
+# Download a specific HuggingFace model
+llf model download --huggingface-model "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+
+# Download from direct URL
+llf model download --url "https://example.com/model.gguf" --name "my-model"
 
 # Force re-download
-llf download --force
+llf model download --force
 
 # Download with authentication token (for private models)
-llf download --model "private/model" --token "hf_xxxxxxxxxxxxx"
+llf model download --huggingface-model "private/model" --token "hf_xxxxxxxxxxxxx"
 
 # Download to custom directory
-llf -d /mnt/storage/models download
+llf -d /mnt/storage/models model download
+
+# List all downloaded models
+llf model list
+
+# Show default model information
+llf model info
+
+# Show specific model information
+llf model info --huggingface-model "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
 ```
 
-**Options:**
-- `--model NAME` - Model name from HuggingFace Hub
+**Download Options:**
+- `--huggingface-model NAME` - HuggingFace model identifier
+- `--url URL --name NAME` - Download from direct URL (both required together)
 - `--force` - Re-download even if model exists
 - `--token TOKEN` - HuggingFace API token for private models
 
-**Examples:**
-```bash
-# Popular models to try:
-llf download --model "Qwen/Qwen3-Coder-30B-A3B-Instruct"
-llf download --model "meta-llama/Llama-2-7b-chat-hf"
-llf download --model "mistralai/Mistral-7B-Instruct-v0.2"
-llf download --model "codellama/CodeLlama-7b-Instruct-hf"
-```
-
-### 3. List Command
-
-Display all downloaded models.
-
-```bash
-llf list
-```
-
-**Example Output:**
+**Example Output (llf model list):**
 ```
 Downloaded Models:
-  ✓ Qwen/Qwen3-Coder-30B-A3B-Instruct (60 GB)
-  ✓ mistralai/Mistral-7B-Instruct-v0.2 (14.5 GB)
+  ✓ Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  ✓ mistralai/Mistral-7B-Instruct-v0.2
 ```
 
-### 4. Info Command
-
-Show detailed information about a model.
-
-```bash
-# Show info for default model
-llf info
-
-# Show info for specific model
-llf info --model "mistralai/Mistral-7B-Instruct-v0.2"
-```
-
-**Example Output:**
+**Example Output (llf model info):**
 ```
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Model Info                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-Name: Qwen/Qwen3-Coder-30B-A3B-Instruct
-Path: /path/to/models/Qwen--Qwen3-Coder-30B-A3B-Instruct
+Name: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+Path: /path/to/models/Qwen2.5-Coder-7B-Instruct-GGUF
 Downloaded: Yes
-Size: 60 GB
-
-Verification:
-  - Exists: Yes
-  - Has Config: Yes
-  - Has Tokenizer: Yes
-  - Has Weights: Yes
-  - Valid: Yes
+GGUF File: qwen2.5-coder-7b-instruct-q4_k_m.gguf
 ```
 
-### 5. Server Command
+### 4. Server Command
 
 Manage the llama-server inference server independently. LLF runs a local server on `localhost:8000` that can be controlled separately from the chat interface.
 
@@ -402,6 +430,81 @@ llf chat --no-server-start
 
 # Ctrl+C in first terminal stops server
 ```
+
+### 5. Data Store Command (Placeholder)
+
+Manage data stores for RAG (Retrieval-Augmented Generation). These commands are placeholders for future functionality.
+
+```bash
+# List all data stores
+llf datastore list
+
+# List only attached data stores
+llf datastore list --attached
+
+# Attach a data store
+llf datastore attach
+
+# Detach a data store
+llf datastore detach
+
+# Show data store information
+llf datastore info DATA_STORE_NAME
+```
+
+**Purpose:** Will support managing data sources that provide context to LLM queries through RAG.
+
+**Directory:** `data_stores/` (for storing RAG data files)
+
+### 6. Module Command (Placeholder)
+
+Manage modules that extend engagement between the LLM and user. These commands are placeholders for future functionality.
+
+```bash
+# List all modules
+llf module list
+
+# List only enabled modules
+llf module list --enabled
+
+# Enable a module
+llf module enable
+
+# Disable a module
+llf module disable
+
+# Show module information
+llf module info MODULE_NAME
+```
+
+**Purpose:** Will support extensions that enhance interaction capabilities (e.g., text-to-speech, speech-to-text).
+
+**Directory:** `modules/` (for storing module files)
+
+### 7. Tool Command (Placeholder)
+
+Manage tools that extend the LLM's capabilities. These commands are placeholders for future functionality.
+
+```bash
+# List all tools
+llf tool list
+
+# List only enabled tools
+llf tool list --enabled
+
+# Enable a tool
+llf tool enable TOOL_NAME
+
+# Disable a tool
+llf tool disable TOOL_NAME
+
+# Show tool information
+llf tool info TOOL_NAME
+```
+
+**Purpose:** Will support extensions that enhance LLM functionality (e.g., internet search, code execution, file operations).
+
+**Directory:** `tools/` (for storing tool files)
 
 ## Common Use Cases
 

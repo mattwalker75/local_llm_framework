@@ -2,24 +2,37 @@
 
 ## Overview
 
-The Local LLM Framework (LLF) uses a JSON configuration file for managing all settings. This allows you to easily customize the framework without modifying code.
+The Local LLM Framework (LLF) uses a dual configuration system with two separate JSON files:
 
-## Configuration File Location
+1. **Infrastructure Configuration** (`configs/config.json`): Server settings, API endpoints, model paths, inference parameters
+2. **Prompt Configuration** (`configs/config_prompt.json`): System prompts, conversation format, message injection
+
+This separation allows you to:
+- Swap infrastructure settings without affecting prompts
+- Share prompt templates across different setups
+- Version control prompts separately from credentials
+
+## Configuration File Locations
 
 The framework automatically looks for configuration files at:
 ```
 <project_root>/configs/config.json        # Infrastructure configuration
-<project_root>/configs/config_prompt.json  # Prompt configuration (optional)
+<project_root>/configs/config_prompt.json  # Prompt configuration
 ```
 
 If these files don't exist, LLF will use built-in default values.
 
 **Configuration backups** are automatically saved to:
 ```
-<project_root>/configs/backups/
+<project_root>/configs/backups/config_YYYYMMDD_HHMMSS.json
+<project_root>/configs/backups/config_prompt_YYYYMMDD_HHMMSS.json
 ```
 
+Backups are created when you save configurations through the GUI.
+
 ## Getting Started
+
+### Infrastructure Configuration
 
 1. **Copy the example configuration:**
    ```bash
@@ -32,6 +45,17 @@ If these files don't exist, LLF will use built-in default values.
    ```bash
    llf chat
    ```
+
+### Prompt Configuration
+
+1. **Copy the example prompt configuration:**
+   ```bash
+   cp configs/config_examples/config_prompt.example configs/config_prompt.json
+   ```
+
+2. **Edit `configs/config_prompt.json`** to customize prompts and conversation format
+
+3. **Changes take effect** on the next chat session or GUI reload
 
 ## Configuration Options
 
@@ -72,6 +96,13 @@ These settings configure the local llama-server when you start it. Only needed f
 - **`server_port`**: Port number for the local server
   - Default: `8000`
   - Change if port 8000 is already in use
+
+- **`healthcheck_interval`**: Seconds between health checks during server startup
+  - Default: `2.0`
+  - Controls how frequently LLF checks if the server is ready during startup
+  - Reduce to `1.0` for faster startup (checks more frequently)
+  - Increase to `3.0` or higher if server takes longer to initialize
+  - Only applies to local llama-server (not used with external APIs)
 
 - **`server_params`** (Optional): Additional parameters to pass to llama-server
   - Format: Dictionary of key-value pairs
@@ -150,6 +181,7 @@ The `inference_params` object controls how the LLM generates responses:
   "llama_server_path": "../llama.cpp/build/bin/llama-server",
   "server_host": "127.0.0.1",
   "server_port": 8000,
+  "healthcheck_interval": 2.0,
   "api_base_url": "http://127.0.0.1:8000/v1",
   "api_key": "EMPTY",
   "log_level": "ERROR",
@@ -391,9 +423,205 @@ config.temperature = 0.5
 config.save_to_file("modified_config.json")
 ```
 
+## Prompt Configuration (`config_prompt.json`)
+
+The prompt configuration file controls how the LLM receives and formats messages. This is separate from infrastructure configuration to allow easy sharing of prompt templates.
+
+### Prompt Configuration Structure
+
+```json
+{
+  "system_prompt": "You are a helpful AI assistant...",
+  "conversation_format": {
+    "user_prefix": "User: ",
+    "assistant_prefix": "Assistant: ",
+    "system_prefix": "System: ",
+    "message_separator": "\n\n"
+  },
+  "injected_messages": [
+    {
+      "role": "system",
+      "content": "Always be concise and helpful.",
+      "position": "start"
+    }
+  ]
+}
+```
+
+### Configuration Fields
+
+#### `system_prompt` (string)
+
+The main system prompt that sets the LLM's behavior and personality.
+
+**Example:**
+```json
+{
+  "system_prompt": "You are a helpful coding assistant specialized in Python. Provide clear, concise code examples with explanations."
+}
+```
+
+#### `conversation_format` (object)
+
+Controls how messages are formatted in the conversation.
+
+**Fields:**
+- `user_prefix`: Text before user messages (default: `"User: "`)
+- `assistant_prefix`: Text before assistant messages (default: `"Assistant: "`)
+- `system_prefix`: Text before system messages (default: `"System: "`)
+- `message_separator`: Text between messages (default: `"\n\n"`)
+
+**Example:**
+```json
+{
+  "conversation_format": {
+    "user_prefix": "Human: ",
+    "assistant_prefix": "AI: ",
+    "system_prefix": "[SYSTEM]: ",
+    "message_separator": "\n---\n"
+  }
+}
+```
+
+#### `injected_messages` (array)
+
+Messages automatically added to conversations. Useful for context or behavior modification.
+
+**Fields per message:**
+- `role`: Message role (`"system"`, `"user"`, or `"assistant"`)
+- `content`: Message content
+- `position`: Where to inject (`"start"` or `"end"`)
+
+**Example:**
+```json
+{
+  "injected_messages": [
+    {
+      "role": "system",
+      "content": "Always format code with proper syntax highlighting.",
+      "position": "start"
+    },
+    {
+      "role": "system",
+      "content": "Provide sources when citing information.",
+      "position": "start"
+    }
+  ]
+}
+```
+
+### Example Configurations
+
+#### Default Configuration
+
+```json
+{
+  "system_prompt": "You are a helpful, harmless, and honest AI assistant.",
+  "conversation_format": {
+    "user_prefix": "User: ",
+    "assistant_prefix": "Assistant: ",
+    "system_prefix": "System: ",
+    "message_separator": "\n\n"
+  },
+  "injected_messages": []
+}
+```
+
+#### Coding Assistant Configuration
+
+```json
+{
+  "system_prompt": "You are an expert programming assistant. Provide clear, well-documented code with explanations. Focus on best practices and maintainability.",
+  "conversation_format": {
+    "user_prefix": "Developer: ",
+    "assistant_prefix": "AI: ",
+    "system_prefix": "[SYS]: ",
+    "message_separator": "\n\n"
+  },
+  "injected_messages": [
+    {
+      "role": "system",
+      "content": "Always include error handling in code examples.",
+      "position": "start"
+    },
+    {
+      "role": "system",
+      "content": "Explain your reasoning before providing code.",
+      "position": "start"
+    }
+  ]
+}
+```
+
+#### Creative Writing Assistant
+
+```json
+{
+  "system_prompt": "You are a creative writing assistant. Help users develop stories, characters, and narratives with vivid descriptions and engaging dialogue.",
+  "conversation_format": {
+    "user_prefix": "Writer: ",
+    "assistant_prefix": "Muse: ",
+    "system_prefix": "",
+    "message_separator": "\n\n---\n\n"
+  },
+  "injected_messages": [
+    {
+      "role": "system",
+      "content": "Encourage creativity and unique perspectives.",
+      "position": "start"
+    }
+  ]
+}
+```
+
+### Managing Prompt Configurations
+
+#### Via GUI
+
+1. Open the GUI: `llf gui`
+2. Navigate to **Config (Prompts)** tab
+3. Edit the JSON directly
+4. Click **Save Config** to apply changes
+5. Click **Create Backup** to save a timestamped backup
+
+#### Via Command Line
+
+```bash
+# Edit directly
+nano configs/config_prompt.json
+
+# Or use your preferred editor
+code configs/config_prompt.json
+```
+
+#### Backup and Restore
+
+Backups are automatically created in `configs/backups/` with timestamps:
+
+```bash
+# List backups
+ls -lh configs/backups/config_prompt_*.json
+
+# Restore a backup
+cp configs/backups/config_prompt_20251218_103758.json configs/config_prompt.json
+
+# Create manual backup
+cp configs/config_prompt.json configs/backups/config_prompt_$(date +%Y%m%d_%H%M%S).json
+```
+
+### Tips for Prompt Configuration
+
+1. **Be Specific**: Clear system prompts lead to better responses
+2. **Test Changes**: Try different prompts to find what works best
+3. **Use Injected Messages**: Add consistent context without repeating in every conversation
+4. **Keep Backups**: Experiment freely knowing you can restore previous versions
+5. **Version Control**: Consider keeping prompt templates in version control (without credentials)
+
 ## Notes
 
-- `config.json` is ignored by git (in `.gitignore`)
-- Use `config.json.example` as a template for version control
+- `config.json` and `config_prompt.json` are ignored by git (in `.gitignore`)
+- Use example files as templates for version control
 - Relative paths in config are resolved from project root
-- Changes to `config.json` require restarting LLF to take effect
+- Infrastructure changes require restarting LLF
+- Prompt changes take effect on next conversation or GUI reload
+- Backups are created automatically when saving through GUI
