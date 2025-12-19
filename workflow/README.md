@@ -244,9 +244,29 @@ with which prompts I passed to the AI.
 12.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 #### Perform major testing and resolve all bugs and update docs
+1.  Ensure all unit tests are in place for code coverage and works
+2.  Verify all documentation is up to data accordingly
+3.  Perform a detailed code review and see if there are any performance 
+    improvements that should be made.  Remember to perform all this work
+    in the virtual environment
 
 
 
+4.  Perform a detailed code review and see if there is any cluttered 
+    code that needs to be reworked and better stream lined.  Is there
+    any coding optimization that can take place that will not affected
+    the intended functionality of the code.  Remember to perform all
+    this work in the virtual environment
+
+
+5.  Perform a final code review and add any comments in the code to
+    make the code easier to read, understand, and work on by future
+    developers
+
+
+6.  Perform detailed testing.  Refer to the following testing outline:
+       -  6_Testing_Outline.txt
+    
 
      
 

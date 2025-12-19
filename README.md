@@ -19,14 +19,19 @@ Local LLM Framework (LLF) provides maximum flexibility - run models locally for 
 - ✅ Web-based GUI interface for easy management and chat
 - ✅ Local network access for server and GUI (with `--share` flag)
 - ✅ Authentication system for GUI with secret key protection
-- ✅ Customizable prompt configuration system
+- ✅ Dual configuration system:
+  - Infrastructure configuration (`configs/config.json`)
+  - Prompt configuration (`configs/config_prompt.json`)
+- ✅ Customizable prompt templates with system prompts and message injection
+- ✅ Automatic configuration backups
 - ✅ Production-quality modular architecture
-- ✅ Comprehensive unit testing (100% test passing rate)
+- ✅ Comprehensive unit testing (218 tests, 100% test passing rate)
 - ✅ Clean installation and uninstallation process
 - ✅ Support for Qwen2.5-Coder-7B-Instruct-GGUF (default local model)
 - ✅ Configurable inference parameters per API
 - ✅ Independent server management (start/stop/status/restart for local LLM)
 - ✅ OpenAI-compatible API interface
+- ✅ Placeholder management commands (datastore, module, tool) for future extensibility
 
 ### Future Phases (Planned)
 - 🔮 Voice input/output
@@ -173,10 +178,13 @@ llf -h
 llf --help
 
 # Command-specific help
-llf download -h
 llf chat -h
-llf list -h
-llf info -h
+llf model -h
+llf server -h
+llf gui -h
+llf datastore -h
+llf module -h
+llf tool -h
 ```
 
 ### Common Commands
@@ -280,6 +288,54 @@ llf chat --no-server-start
 
 This allows you to keep the server running while executing multiple commands or chat sessions against it.
 
+### Management Commands (Placeholder Features)
+
+LLF includes three management command structures for planned future features:
+
+**Data Store Management:**
+
+```bash
+# List data stores
+llf datastore list
+llf datastore list --attached    # List only attached data stores
+
+# Manage data stores (placeholders)
+llf datastore attach             # Attach data store to query
+llf datastore detach             # Detach data store
+llf datastore info DATA_STORE_NAME  # Show data store information
+```
+
+**Module Management:**
+
+```bash
+# List modules
+llf module list
+llf module list --enabled        # List only enabled modules
+
+# Manage modules (placeholders)
+llf module enable                # Enable a module
+llf module disable               # Disable a module
+llf module info MODULE_NAME      # Show module information
+```
+
+**Tool Management:**
+
+```bash
+# List tools
+llf tool list
+llf tool list --enabled          # List only enabled tools
+
+# Manage tools (placeholders)
+llf tool enable TOOL_NAME        # Enable a tool
+llf tool disable TOOL_NAME       # Disable a tool
+llf tool info TOOL_NAME          # Show tool information
+```
+
+**Note:** These commands are placeholders for future functionality:
+- **Data Stores**: Will support RAG (Retrieval-Augmented Generation) for providing context to LLM queries
+- **Modules**: Will support extensions that enhance engagement between LLM and user (e.g., text-to-speech)
+- **Tools**: Will support extensions that enhance LLM capabilities (e.g., internet search, code execution)
+
 ### Web-Based GUI Interface
 
 LLF includes a modern web-based GUI interface built with Gradio, providing an intuitive alternative to the command-line interface.
@@ -342,15 +398,16 @@ When `--key` is set, users will see a login page that requires entering the secr
 
 **GUI Features:**
 
-The GUI provides 5 main tabs:
+The GUI provides 8 main tabs:
 
 1. **💬 Chat Tab**
    - Interactive conversation with your LLM
    - Conversation history display
+   - Multiline input support (Enter to send checkbox)
    - Clear chat functionality
 
 2. **🖥️ Server Tab**
-   - View server status
+   - View server status (auto-loads on startup)
    - Start/stop/restart local LLM server
    - Real-time status updates
 
@@ -370,6 +427,18 @@ The GUI provides 5 main tabs:
    - Customize system prompts, conversation format, and message injection
    - Auto-reload on save
    - Create backups of configuration
+
+6. **📚 Data Stores Tab**
+   - Placeholder for future RAG (Retrieval-Augmented Generation) features
+   - Will support managing data sources for context
+
+7. **🔌 Modules Tab**
+   - Placeholder for future module management
+   - Will support engagement extensions (e.g., text-to-speech)
+
+8. **🛠️ Tools Tab**
+   - Placeholder for future tool management
+   - Will support LLM capability extensions (e.g., internet search)
 
 **When to Use GUI vs CLI:**
 
@@ -529,15 +598,32 @@ local_llm_framework/
 ├── llf/                        # Main package
 │   ├── __init__.py            # Package initialization
 │   ├── cli.py                 # CLI interface module
-│   ├── config.py              # Configuration management
+│   ├── config.py              # Configuration management (infrastructure)
+│   ├── prompt_config.py       # Prompt configuration management
 │   ├── llm_runtime.py         # llama-server runtime management
 │   ├── logging_config.py      # Logging configuration
-│   └── model_manager.py       # Model download and management
-├── tests/                      # Unit tests (90% coverage)
-│   ├── test_cli.py
-│   ├── test_config.py
-│   ├── test_llm_runtime.py
-│   └── test_model_manager.py
+│   ├── model_manager.py       # Model download and management
+│   └── gui.py                 # Web-based GUI interface (Gradio)
+├── tests/                      # Unit tests (218 tests, 100% passing)
+│   ├── test_cli.py            # CLI tests
+│   ├── test_config.py         # Configuration tests
+│   ├── test_prompt_config.py  # Prompt configuration tests
+│   ├── test_llm_runtime.py    # Runtime tests
+│   ├── test_model_manager.py  # Model manager tests
+│   └── test_gui.py            # GUI tests
+├── configs/                    # Configuration files
+│   ├── config.json            # Infrastructure configuration (gitignored)
+│   ├── config_prompt.json     # Prompt configuration (gitignored)
+│   ├── backups/               # Automatic configuration backups
+│   └── config_examples/       # Example configuration files
+├── data_stores/                # RAG data store directory (future use)
+├── modules/                    # Module extensions directory (future use)
+├── tools/                      # Tool extensions directory (future use)
+├── models/                     # Downloaded GGUF models (gitignored)
+├── docs/                       # Documentation
+│   ├── USAGE.md               # Detailed usage guide
+│   ├── CONFIG_README.md       # Configuration reference
+│   └── QUICK_REFERENCE.md     # Quick reference card
 ├── requirements.txt           # Python dependencies
 ├── setup.py                   # Package setup
 └── README.md                 # This file
