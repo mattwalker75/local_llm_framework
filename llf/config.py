@@ -42,6 +42,7 @@ class Config:
     # Server connection settings
     SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
+    HEALTHCHECK_INTERVAL: float = 2.0  # Seconds between health checks during server startup
 
     # API settings (used for both local and external LLM providers)
     API_BASE_URL: str = "http://127.0.0.1:8000/v1"  # Default to local server
@@ -78,6 +79,7 @@ class Config:
         self.server_wrapper_script = self.SERVER_WRAPPER_SCRIPT
         self.server_host = self.SERVER_HOST
         self.server_port = self.SERVER_PORT
+        self.healthcheck_interval = self.HEALTHCHECK_INTERVAL
         self.api_base_url = self.API_BASE_URL
         self.api_key = self.API_KEY
         self.inference_params = self.DEFAULT_INFERENCE_PARAMS.copy()
@@ -130,6 +132,8 @@ class Config:
                 self.server_host = server_config.get('server_host', self.server_host)
                 # Server port number
                 self.server_port = server_config.get('server_port', self.server_port)
+                # Health check interval in seconds (time between health checks during startup)
+                self.healthcheck_interval = server_config.get('healthcheck_interval', self.healthcheck_interval)
                 # Custom model directory (optional) - subdirectory within models/ directory
                 if 'model_dir' in server_config:
                     # model_dir is relative to models/ directory
@@ -149,6 +153,7 @@ class Config:
                     self.llama_server_path = path if path.is_absolute() else self.PROJECT_ROOT / path
                 self.server_host = config_data.get('server_host', self.server_host)
                 self.server_port = config_data.get('server_port', self.server_port)
+                self.healthcheck_interval = config_data.get('healthcheck_interval', self.healthcheck_interval)
                 self.gguf_file = config_data.get('gguf_file', self.gguf_file)
 
             # ===== LLM Endpoint Configuration (client-side) =====

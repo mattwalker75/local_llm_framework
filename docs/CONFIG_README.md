@@ -97,6 +97,13 @@ These settings configure the local llama-server when you start it. Only needed f
   - Default: `8000`
   - Change if port 8000 is already in use
 
+- **`healthcheck_interval`**: Seconds between health checks during server startup
+  - Default: `2.0`
+  - Controls how frequently LLF checks if the server is ready during startup
+  - Reduce to `1.0` for faster startup (checks more frequently)
+  - Increase to `3.0` or higher if server takes longer to initialize
+  - Only applies to local llama-server (not used with external APIs)
+
 - **`server_params`** (Optional): Additional parameters to pass to llama-server
   - Format: Dictionary of key-value pairs
   - These are passed directly to the llama-server CLI as `--key value`
@@ -174,6 +181,7 @@ The `inference_params` object controls how the LLM generates responses:
   "llama_server_path": "../llama.cpp/build/bin/llama-server",
   "server_host": "127.0.0.1",
   "server_port": 8000,
+  "healthcheck_interval": 2.0,
   "api_base_url": "http://127.0.0.1:8000/v1",
   "api_key": "EMPTY",
   "log_level": "ERROR",

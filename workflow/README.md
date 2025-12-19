@@ -249,14 +249,11 @@ with which prompts I passed to the AI.
 3.  Perform a detailed code review and see if there are any performance 
     improvements that should be made.  Remember to perform all this work
     in the virtual environment
-
-
-
 4.  Perform a detailed code review and see if there is any cluttered 
     code that needs to be reworked and better stream lined.  Is there
     any coding optimization that can take place that will not affected
     the intended functionality of the code.  Remember to perform all
-    this work in the virtual environment
+    this work in the virtual environment and verify with unit testing
 
 
 5.  Perform a final code review and add any comments in the code to

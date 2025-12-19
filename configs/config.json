@@ -3,6 +3,7 @@
     "llama_server_path": "../llama.cpp/build/bin/llama-server",
     "server_host": "127.0.0.1",
     "server_port": 8000,
+    "healthcheck_interval": 2.0,
     "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
     "gguf_file": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
   },

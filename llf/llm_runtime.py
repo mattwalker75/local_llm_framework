@@ -177,7 +177,7 @@ class LLMRuntime:
                         f"llama-server process terminated unexpectedly:\n{stderr}"
                     )
 
-                time.sleep(2)
+                time.sleep(self.config.healthcheck_interval)
 
             # Timeout reached
             self.stop_server()
