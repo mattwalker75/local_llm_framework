@@ -725,7 +725,22 @@ class LLMFrameworkGUI:
                             prompt_backup_btn.click(self.backup_prompt_config, None, prompt_status)
                             prompt_save_btn.click(self.save_prompt_config, prompt_editor, prompt_status)
                             interface.load(self.load_prompt_config, None, prompt_editor)
-    
+
+                    # ===== Data Stores Tab =====
+                    with gr.Tab("📚 Data Stores"):
+                        gr.Markdown("### Data Store Management")
+                        gr.Markdown("For future use...")
+
+                    # ===== Modules Tab =====
+                    with gr.Tab("🔌 Modules"):
+                        gr.Markdown("### Module Management")
+                        gr.Markdown("For future use...")
+
+                    # ===== Tools Tab =====
+                    with gr.Tab("🛠️ Tools"):
+                        gr.Markdown("### Tool Management")
+                        gr.Markdown("For future use...")
+
             # Authentication handler
             def handle_login(entered_key, current_auth):
                 """Handle login attempt."""

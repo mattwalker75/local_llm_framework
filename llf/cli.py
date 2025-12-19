@@ -853,6 +853,27 @@ Examples:
   llf gui stop                     Stop GUI daemon process
   llf gui status                   Check if GUI daemon is running
 
+  # Data Store management
+  llf datastore list               List all available data stores
+  llf datastore list --attached    List only attached data stores
+  llf datastore attach             Attach data store to query
+  llf datastore detach             Detach data store
+  llf datastore info DATA_STORE_NAME  Show data store information
+
+  # Module management
+  llf module list                  List modules
+  llf module list --enabled        List only enabled modules
+  llf module enable                Enable a module
+  llf module disable               Disable a module
+  llf module info MODULE_NAME      Show module information
+
+  # Tool management
+  llf tool list                    List tools
+  llf tool list --enabled          List only enabled tools
+  llf tool enable TOOL_NAME        Enable a tool
+  llf tool disable TOOL_NAME       Disable a tool
+  llf tool info TOOL_NAME          Show tool information
+
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
   llf --log-level DEBUG --log-file debug.log chat      Log chat session to file
@@ -1129,6 +1150,99 @@ For backward compatibility, 'llf gui' is equivalent to 'llf gui start'.
         '--no-browser',
         action='store_true',
         help='Do not automatically open browser (for start action)'
+    )
+
+    # Data Store command
+    datastore_parser = subparsers.add_parser(
+        'datastore',
+        help='Data Store Management',
+        description='Manage data stores for RAG (Retrieval-Augmented Generation). Attach and detach data sources to provide context to LLM queries.',
+        epilog='''
+actions:
+  list                      List data stores
+  list --attached           List only attached data stores
+  attach                    Attach data store to query
+  detach                    Detach data store
+  info DATA_STORE_NAME      Show data store information
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    datastore_parser.add_argument(
+        'action',
+        nargs='?',
+        help='Data store action to perform (placeholder for future functionality)'
+    )
+    datastore_parser.add_argument(
+        'datastore_name',
+        nargs='?',
+        help='Name of the data store (for info action)'
+    )
+    datastore_parser.add_argument(
+        '--attached',
+        action='store_true',
+        help='List only attached data stores (use with list action)'
+    )
+
+    # Module command
+    module_parser = subparsers.add_parser(
+        'module',
+        help='Module Management',
+        description='Manage modules that extend the engagement ability between the LLM and user.\n( An example of a module would be converting text from the LLM to audio words for the user. )',
+        epilog='''
+actions:
+  list                      List modules
+  list --enabled            List only enabled modules
+  enable                    Enable a module
+  disable                   Disable a module
+  info MODULE_NAME          Show module information
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    module_parser.add_argument(
+        'action',
+        nargs='?',
+        help='Module action to perform (placeholder for future functionality)'
+    )
+    module_parser.add_argument(
+        'module_name',
+        nargs='?',
+        help='Name of the module (for info action)'
+    )
+    module_parser.add_argument(
+        '--enabled',
+        action='store_true',
+        help='List only enabled modules (use with list action)'
+    )
+
+    # Tool command
+    tool_parser = subparsers.add_parser(
+        'tool',
+        help='Tool Management',
+        description='Manage tools that extend the ability of the LLM.\n( An example of a tool would be to enable the LLM to perform searches on the Internet )',
+        epilog='''
+actions:
+  list                      List tools
+  list --enabled            List only enabled tools
+  enable TOOL_NAME          Enable a tool
+  disable TOOL_NAME         Disable a tool
+  info TOOL_NAME            Show tool information
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    tool_parser.add_argument(
+        'action',
+        nargs='?',
+        help='Tool action to perform (placeholder for future functionality)'
+    )
+    tool_parser.add_argument(
+        'tool_name',
+        nargs='?',
+        help='Name of the tool (for enable, disable, and info actions)'
+    )
+    tool_parser.add_argument(
+        '--enabled',
+        action='store_true',
+        help='List only enabled tools (use with list action)'
     )
 
     # Parse arguments
@@ -1443,6 +1557,45 @@ finally:
                 if gui_pid_file.exists():
                     gui_pid_file.unlink()
                 return 1
+
+    elif args.command == 'datastore':
+        # Data Store Management (placeholder for future functionality)
+        console.print("[yellow]Data Store Management[/yellow]")
+        console.print("This command is reserved for future functionality.")
+        console.print("\n[dim]Planned features:[/dim]")
+        console.print("  • List available data stores (RAG data)")
+        console.print("  • Attach data store to active session")
+        console.print("  • Detach data store from session")
+        console.print("  • List currently attached data stores")
+        if args.action:
+            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        return 0
+
+    elif args.command == 'module':
+        # Module Management (placeholder for future functionality)
+        console.print("[yellow]Module Management[/yellow]")
+        console.print("This command is reserved for future functionality.")
+        console.print("\n[dim]Planned features:[/dim]")
+        console.print("  • Install and manage framework modules")
+        console.print("  • Enable/disable plugins and extensions")
+        console.print("  • Module configuration and updates")
+        console.print("  • List available and installed modules")
+        if args.action:
+            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        return 0
+
+    elif args.command == 'tool':
+        # Tool Management (placeholder for future functionality)
+        console.print("[yellow]Tool Management[/yellow]")
+        console.print("This command is reserved for future functionality.")
+        console.print("\n[dim]Planned features:[/dim]")
+        console.print("  • Manage LLM tool definitions")
+        console.print("  • Configure function calling")
+        console.print("  • Register and manage external integrations")
+        console.print("  • List and test available tools")
+        if args.action:
+            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        return 0
 
     elif args.command == 'chat' or args.command is None:
         # Override model settings if specified via CLI flags
