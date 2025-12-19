@@ -254,8 +254,6 @@ with which prompts I passed to the AI.
     any coding optimization that can take place that will not affected
     the intended functionality of the code.  Remember to perform all
     this work in the virtual environment and verify with unit testing
-
-
 5.  Perform a final code review and add any comments in the code to
     make the code easier to read, understand, and work on by future
     developers
