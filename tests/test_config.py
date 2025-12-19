@@ -275,3 +275,153 @@ class TestGetConfig:
         # Should be different from original
         assert config2.model_name == 'different/model'
         assert config2.model_name != original_name
+
+    def test_server_params_default(self):
+        """Test that server_params defaults to empty dict."""
+        config = Config()
+        assert config.server_params == {}
+
+    def test_server_params_loading(self, temp_dir):
+        """Test loading server_params from config file."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_params': {
+                    'ctx-size': 8192,
+                    'n-gpu-layers': 35,
+                    'threads': 8
+                }
+            }
+        }
+        config_file = temp_dir / 'config_with_params.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        assert config.server_params == {
+            'ctx-size': 8192,
+            'n-gpu-layers': 35,
+            'threads': 8
+        }
+
+    def test_server_params_optional(self, temp_dir):
+        """Test that server_params is optional in config."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_host': '127.0.0.1',
+                'server_port': 8000
+                # No server_params field
+            }
+        }
+        config_file = temp_dir / 'config_no_params.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        # Should default to empty dict
+        assert config.server_params == {}
+
+    def test_server_params_empty(self, temp_dir):
+        """Test that empty server_params is handled correctly."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_params': {}
+            }
+        }
+        config_file = temp_dir / 'config_empty_params.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+
+        assert config.server_params == {}
+
+    def test_server_params_in_to_dict(self, temp_dir):
+        """Test that server_params is included in to_dict when not empty."""
+        config_data = {
+            'local_llm_server': {
+                'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_params': {
+                    'ctx-size': 4096
+                }
+            }
+        }
+        config_file = temp_dir / 'config_params_dict.json'
+
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config(config_file)
+        config_dict = config.to_dict()
+
+        assert 'server_params' in config_dict['local_llm_server']
+        assert config_dict['local_llm_server']['server_params'] == {'ctx-size': 4096}
+
+    def test_server_params_not_in_to_dict_when_empty(self):
+        """Test that server_params is not in to_dict when empty."""
+        config = Config()
+        config_dict = config.to_dict()
+
+        # Empty server_params should not be included
+        assert 'server_params' not in config_dict['local_llm_server']
+
+    def test_backup_config_success(self, temp_dir):
+        """Test successful config backup."""
+        # Create a config file
+        config_file = temp_dir / "config.json"
+        config_data = {"model_name": "test-model", "log_level": "INFO"}
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        # Create backup directory
+        backup_dir = temp_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        config = Config(config_file)
+        config.CONFIG_BACKUPS_DIR = backup_dir
+        backup_path = config.backup_config(config_file)
+
+        # Verify backup was created
+        assert backup_path.exists()
+        assert backup_path.parent == backup_dir
+        assert backup_path.stem.startswith("config_")
+        assert backup_path.suffix == ".json"
+
+        # Verify backup content matches original file
+        with open(backup_path, 'r') as f:
+            backup_data = json.load(f)
+        with open(config_file, 'r') as f:
+            original_data = json.load(f)
+        assert backup_data == original_data
+
+    def test_backup_config_file_not_found(self, temp_dir):
+        """Test backup fails when config file doesn't exist."""
+        config_file = temp_dir / "configs" / "nonexistent.json"
+        config = Config()
+
+        with pytest.raises(FileNotFoundError, match="Config file not found"):
+            config.backup_config(config_file)
+
+    def test_backup_config_custom_file(self, temp_dir):
+        """Test backup of custom config file."""
+        custom_file = temp_dir / "custom_config.json"
+        custom_file.parent.mkdir(parents=True, exist_ok=True)
+        config_data = {"custom": "data"}
+        with open(custom_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = Config()
+        config.CONFIG_BACKUPS_DIR = temp_dir / "backups"
+        backup_path = config.backup_config(custom_file)
+
+        # Verify backup was created with correct name
+        assert backup_path.exists()
+        assert backup_path.stem.startswith("custom_config_")
+        assert backup_path.suffix == ".json"

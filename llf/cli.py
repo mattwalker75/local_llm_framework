@@ -9,10 +9,12 @@ Future: Can be extended to support different modes (chat, completion, batch, etc
 """
 
 import sys
+import os
 import argparse
 from pathlib import Path
 from typing import Optional
 import signal
+from datetime import datetime
 
 from rich.console import Console
 from rich.panel import Panel
@@ -672,11 +674,24 @@ def server_command(args) -> int:
             else:
                 model_display = config.model_name
 
-            console.print(f"[yellow]Starting llama-server with model {model_display}...[/yellow]")
+            # Determine server host based on --share flag
+            server_host = "0.0.0.0" if args.share else None  # None uses config default (127.0.0.1)
+
+            if args.share:
+                console.print(f"[yellow]Starting llama-server with model {model_display} (accessible on local network)...[/yellow]")
+            else:
+                console.print(f"[yellow]Starting llama-server with model {model_display} (localhost only)...[/yellow]")
             console.print("[dim]This may take a minute or two...[/dim]")
 
-            runtime.start_server()
-            console.print(f"[green]✓ Server started successfully on {config.get_server_url()}[/green]")
+            runtime.start_server(server_host=server_host)
+
+            # Display appropriate access message
+            if args.share:
+                console.print(f"[green]✓ Server started successfully on 0.0.0.0:{config.server_port}[/green]")
+                console.print(f"[cyan]Access from this device: http://127.0.0.1:{config.server_port}/v1[/cyan]")
+                console.print(f"[cyan]Access from network: http://YOUR_IP:{config.server_port}/v1[/cyan]")
+            else:
+                console.print(f"[green]✓ Server started successfully on {config.get_server_url()}[/green]")
 
             if args.daemon:
                 console.print("[cyan]Server is running in daemon mode.[/cyan]")
@@ -725,9 +740,18 @@ def server_command(args) -> int:
                     console.print(f"[red]Failed to download model: {e}[/red]")
                     return 1
 
+            # Determine server host based on --share flag
+            server_host = "0.0.0.0" if args.share else None  # None uses config default (127.0.0.1)
+
             console.print("[dim]Starting server...[/dim]")
-            runtime.start_server()
-            console.print(f"[green]✓ Server restarted successfully on {config.get_server_url()}[/green]")
+            runtime.start_server(server_host=server_host)
+
+            # Display appropriate access message
+            if args.share:
+                console.print(f"[green]✓ Server restarted successfully on 0.0.0.0:{config.server_port}[/green]")
+                console.print(f"[cyan]Access from network: http://YOUR_IP:{config.server_port}/v1[/cyan]")
+            else:
+                console.print(f"[green]✓ Server restarted successfully on {config.get_server_url()}[/green]")
             return 0
 
         elif args.action == 'list_models':
@@ -797,13 +821,16 @@ Examples:
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
   # Server management
-  llf server start                 Start llama-server (stays in foreground)
-  llf server start --daemon        Start server in background
+  llf server start                 Start llama-server (localhost only, stays in foreground)
+  llf server start --share         Start server accessible on local network (0.0.0.0)
+  llf server start --daemon        Start server in background (localhost only)
+  llf server start --share --daemon  Start server in background (network accessible)
   llf server start --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
   llf server stop                  Stop running server
   llf server status                Check if server is running
   llf server restart               Restart server with current model
+  llf server restart --share       Restart server with network access
   llf server list_models           List available models from configured endpoint
 
   # Model management
@@ -813,6 +840,18 @@ Examples:
   llf model list                   List downloaded models
   llf model info                   Show default model information
   llf model info --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  # GUI interface
+  llf gui                          Start web-based GUI (localhost only, port 7860)
+  llf gui start                    Start web-based GUI (same as above)
+  llf gui start --daemon           Start GUI in background (daemon mode)
+  llf gui start --share            Start GUI accessible on local network (0.0.0.0)
+  llf gui start --key MY_SECRET    Start GUI with authentication (requires secret key)
+  llf gui start --share --key PASSWORD  Network-accessible GUI with authentication
+  llf gui start --port 8080        Start GUI on custom port
+  llf gui start --no-browser       Start GUI without opening browser
+  llf gui stop                     Stop GUI daemon process
+  llf gui status                   Check if GUI daemon is running
 
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
@@ -1026,6 +1065,72 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help='Run server in background (daemon mode)'
     )
 
+    server_parser.add_argument(
+        '--share',
+        action='store_true',
+        help='Make server accessible on local network (binds to 0.0.0.0). Default is localhost only (127.0.0.1).'
+    )
+
+    # GUI command
+    gui_parser = subparsers.add_parser(
+        'gui',
+        help='Manage web-based GUI interface',
+        description='''Start, stop, or check status of the web-based graphical interface for managing the LLM framework.
+
+Actions:
+  start   - Start the GUI (default action if not specified)
+            Use --daemon to run in background
+            Example: llf gui start --daemon
+  stop    - Stop a running GUI daemon process
+            Example: llf gui stop
+  status  - Check if GUI daemon is running
+            Example: llf gui status
+
+For backward compatibility, 'llf gui' is equivalent to 'llf gui start'.
+''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    gui_parser.add_argument(
+        'action',
+        nargs='?',  # Optional - defaults to 'start' for backward compatibility
+        choices=['start', 'stop', 'status'],
+        default='start',
+        help='GUI action to perform (default: start)'
+    )
+
+    gui_parser.add_argument(
+        '--port',
+        type=int,
+        default=7860,
+        metavar='PORT',
+        help='Port to run the web server on (default: 7860, for start action)'
+    )
+
+    gui_parser.add_argument(
+        '--daemon',
+        action='store_true',
+        help='Run GUI in background (daemon mode, for start action)'
+    )
+
+    gui_parser.add_argument(
+        '--share',
+        action='store_true',
+        help='Make GUI accessible on local network (binds to 0.0.0.0). Default is localhost only (127.0.0.1, for start action).'
+    )
+
+    gui_parser.add_argument(
+        '--key',
+        type=str,
+        metavar='SECRET',
+        help='Require authentication with a secret key to access the GUI (for start action)'
+    )
+
+    gui_parser.add_argument(
+        '--no-browser',
+        action='store_true',
+        help='Do not automatically open browser (for start action)'
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -1127,6 +1232,218 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
             return 0
     elif args.command == 'server':
         return server_command(args)
+    elif args.command == 'gui':
+        # GUI management (start, stop)
+        if args.action == 'start':
+            # Start GUI interface
+            from .gui import start_gui
+            import subprocess
+            import sys
+
+            # Check if GUI is already running (daemon mode check)
+            gui_pid_file = config.cache_dir / 'gui.pid'
+            if gui_pid_file.exists():
+                try:
+                    with open(gui_pid_file, 'r') as f:
+                        pid = int(f.read().strip())
+                    # Check if process is still running
+                    import psutil
+                    if psutil.pid_exists(pid):
+                        console.print(f"[yellow]GUI is already running (PID: {pid})[/yellow]")
+                        console.print(f"[cyan]Access at: http://{'0.0.0.0' if args.share else '127.0.0.1'}:{args.port}[/cyan]")
+                        console.print("[yellow]Use 'llf gui stop' to stop it[/yellow]")
+                        return 0
+                    else:
+                        # Stale PID file
+                        gui_pid_file.unlink()
+                except (ValueError, FileNotFoundError):
+                    # Invalid or missing PID file
+                    if gui_pid_file.exists():
+                        gui_pid_file.unlink()
+
+            # Determine server_name based on --share flag
+            server_name = "0.0.0.0" if args.share else "127.0.0.1"
+
+            if args.daemon:
+                # Start GUI in daemon mode (background)
+                console.print("[cyan]Starting LLM Framework GUI in daemon mode...[/cyan]")
+                console.print(f"[cyan]Port: {args.port}[/cyan]")
+
+                if args.share:
+                    console.print(f"[cyan]Access from this device: http://127.0.0.1:{args.port}[/cyan]")
+                    console.print(f"[cyan]Access from network: http://YOUR_IP:{args.port}[/cyan]")
+                else:
+                    console.print(f"[cyan]Access at: http://127.0.0.1:{args.port}[/cyan]")
+
+                if args.key:
+                    console.print(f"[yellow]Authentication enabled with secret key[/yellow]")
+
+                # Build command to run in background
+                cmd = [
+                    sys.executable, '-c',
+                    f'''
+import sys
+import os
+sys.path.insert(0, "{config.PROJECT_ROOT}")
+from llf.gui import start_gui
+from llf.config import get_config
+from llf.prompt_config import get_prompt_config
+
+# Save PID
+with open("{gui_pid_file}", "w") as f:
+    f.write(str(os.getpid()))
+
+try:
+    config = get_config()
+    prompt_config = get_prompt_config()
+    start_gui(
+        config=config,
+        prompt_config=prompt_config,
+        server_name="{server_name}",
+        server_port={args.port},
+        auth_key={repr(args.key)},
+        inbrowser=False
+    )
+except Exception as e:
+    print(f"GUI error: {{e}}", file=sys.stderr)
+    if os.path.exists("{gui_pid_file}"):
+        os.remove("{gui_pid_file}")
+finally:
+    if os.path.exists("{gui_pid_file}"):
+        os.remove("{gui_pid_file}")
+'''
+                ]
+
+                # Start process in background
+                log_file = config.logs_dir / 'gui.log'
+                with open(log_file, 'w') as log:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True  # Detach from parent
+                    )
+
+                console.print(f"[green]✓ GUI started in background (PID: {process.pid})[/green]")
+                console.print(f"[cyan]Logs: {log_file}[/cyan]")
+                console.print(f"[yellow]Use 'llf gui stop' to stop the GUI[/yellow]")
+                return 0
+            else:
+                # Start GUI in foreground
+                console.print("[cyan]Starting LLM Framework GUI...[/cyan]")
+                console.print(f"Opening web interface on port {args.port}")
+
+                if args.share:
+                    console.print("[yellow]Making GUI accessible on local network...[/yellow]")
+                    console.print(f"[cyan]Access from this device: http://127.0.0.1:{args.port}[/cyan]")
+                    console.print(f"[cyan]Access from network: http://YOUR_IP:{args.port}[/cyan]")
+                else:
+                    console.print("[cyan]GUI accessible on localhost only[/cyan]")
+
+                if args.key:
+                    console.print(f"[yellow]Authentication enabled with secret key[/yellow]")
+
+                try:
+                    start_gui(
+                        config=config,
+                        prompt_config=prompt_config,
+                        server_name=server_name,
+                        server_port=args.port,
+                        auth_key=args.key,
+                        inbrowser=not args.no_browser
+                    )
+                    return 0
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]GUI shutting down...[/yellow]")
+                    return 0
+                except Exception as e:
+                    console.print(f"[red]Error starting GUI: {e}[/red]")
+                    return 1
+
+        elif args.action == 'stop':
+            # Stop GUI
+            gui_pid_file = config.cache_dir / 'gui.pid'
+            if not gui_pid_file.exists():
+                console.print("[yellow]No GUI daemon process found[/yellow]")
+                return 1
+
+            try:
+                with open(gui_pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+
+                import psutil
+                if not psutil.pid_exists(pid):
+                    console.print("[yellow]GUI process not running (stale PID file)[/yellow]")
+                    gui_pid_file.unlink()
+                    return 1
+
+                # Send SIGTERM to the process
+                import signal
+                import time
+                console.print(f"[cyan]Stopping GUI (PID: {pid})...[/cyan]")
+                os.kill(pid, signal.SIGTERM)
+
+                # Wait for process to terminate
+                for _ in range(50):  # Wait up to 5 seconds
+                    if not psutil.pid_exists(pid):
+                        break
+                    time.sleep(0.1)
+
+                if psutil.pid_exists(pid):
+                    console.print("[yellow]GUI didn't stop gracefully, forcing...[/yellow]")
+                    os.kill(pid, signal.SIGKILL)
+
+                gui_pid_file.unlink()
+                console.print("[green]✓ GUI stopped successfully[/green]")
+                return 0
+
+            except (ValueError, FileNotFoundError, ProcessLookupError) as e:
+                console.print(f"[red]Error stopping GUI: {e}[/red]")
+                if gui_pid_file.exists():
+                    gui_pid_file.unlink()
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error stopping GUI: {e}[/red]")
+                return 1
+
+        elif args.action == 'status':
+            # Check GUI status
+            gui_pid_file = config.cache_dir / 'gui.pid'
+
+            if not gui_pid_file.exists():
+                console.print("[yellow]GUI Status: Not running (no daemon process)[/yellow]")
+                console.print("[dim]Start GUI with: llf gui start --daemon[/dim]")
+                return 0
+
+            try:
+                with open(gui_pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+
+                import psutil
+                if psutil.pid_exists(pid):
+                    # Check if it's actually our GUI process
+                    try:
+                        proc = psutil.Process(pid)
+                        console.print(f"[green]GUI Status: Running (PID: {pid})[/green]")
+                        console.print(f"[cyan]Port: {args.port}[/cyan]")
+                        console.print(f"[cyan]Access at: http://127.0.0.1:{args.port}[/cyan]")
+                        console.print(f"[dim]Started: {datetime.fromtimestamp(proc.create_time()).strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
+                        return 0
+                    except psutil.NoSuchProcess:
+                        console.print("[yellow]GUI process not found (stale PID file)[/yellow]")
+                        gui_pid_file.unlink()
+                        return 1
+                else:
+                    console.print("[yellow]GUI Status: Not running (stale PID file)[/yellow]")
+                    gui_pid_file.unlink()
+                    return 0
+
+            except (ValueError, FileNotFoundError) as e:
+                console.print(f"[red]Error checking GUI status: {e}[/red]")
+                if gui_pid_file.exists():
+                    gui_pid_file.unlink()
+                return 1
+
     elif args.command == 'chat' or args.command is None:
         # Override model settings if specified via CLI flags
         if hasattr(args, 'huggingface_model') and args.huggingface_model:

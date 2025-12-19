@@ -167,7 +167,80 @@ with which prompts I passed to the AI.
     appropriate updates.
 7.  Test it all and make sure everything works and that unit testing is 
     complete
-8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+8.  All configurations are stored in a config.json file
+9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Added a bunch of misc functionality
+1.  Enable the app to not require local_llm_server entry in the config.json
+    file if you are using an external LLM
+2.  Modify the config.json to be able to support both HuggingFace and GGUF
+    formatted LLM's
+3.  Created example config.json files to use as references for different 
+    configurations
+4.  Created a script called convert_huggingface_llm_2_gguf.sh that will convert
+    a downloaded HuggingFace LLM to a GGUF image so it can be ran from the
+    internal Llama server
+5.  Created a config_prompt.json file that can optionally be used to pass 
+    different types of prompts to the LLM with your request, such as System, 
+    Master, and Assistant prompts.
+6.  A number of misc tweaks
+7.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Create an optional GUI frontend
+1.  Create a GUI frontend that can be enabled and started with the "llf gui enable"
+    option.  I passed the following prompt for Claude to do the coding:
+       -  5_GUI.txt
+2.  It provided a GUI that can be accessed via a web browser.  Adding some minor 
+    tweaks to the web based GUI.  All functionality I have in the CLI I want in
+    the GUI.  Including the ability to modify the .json config files
+3.  You can pass in optional server parameters to the locally running Llama server
+    via additional "server_params" added to the "local_llm_server" in the 
+    config.json file.  These parameters are 100% optional 
+4.  Moving configuration files and their associated examples to a configs directory
+5.  Creatinga  backup location in the configs directory to backup config files when
+    needed
+6.  Add the ability in the GUI to backup the configuration files 
+7.  Add the ability to enable the llama server on the network interface so that
+    you can enable people on your local network access to your running LLM
+      - The default will be to only run on localhost 127.0.0.1
+      - This is done via the --share parameter
+8.  Add the ability to run the GUI interface through the network interface so 
+    that you can enable people on your local network access to your GUI
+    interface. 
+      - The default will be to only run on localhost 127.0.0.1
+      - This is done via the --share parameter
+9.  Add an optional "secret key" as a parameter passed to the "llf gui" command
+    that is used to require a simple login access to the GUI.  The user just
+    needs to type in the same value as the "secret key" to get access to the
+    GUI interface.  This is to provide some form of basic security when you
+    decide to grant access to the GUI on your private network.
+10. Add the following options for the GUI options
+      - llf gui start 
+         - This will do the same thing as "llf gui".  This is just needed
+           for standardization
+      - llf gui start --daemon
+         - This will start the GUI as a daemon process similar to how the
+           LLM ( llama ) server operates with the --daemon parameter
+      - llf gui stop
+         - Stop the GUI process if it is running
+11. Fix misc bugs and isseus with the GUI
+12.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Create a basic framework for extended compontents
+1.  Create a section to work with memory  
+       - Create "llf memory"  ( Call it "Memory Management" )
+       - This section will be for custom memory sources used by the
+         LLM for data lookups, such as a RAG data source
+2.  Create a section to work with modules
+       - Create  "llf module"  ( Call it "Module Management" )
+       - This section will be for modules that extends the LLM 
+         engagement with the end user, such as enabling text to
+         speech and visa versa
+3.  Create a section to work with tools
+       - Create  "llf tool"  ( Call it "Tool Management" )
+       - This section will be for tools that extends the LLM
+         capability, such as enabling internet search access and
+         the ability to access files locally on your computer
 
 
 

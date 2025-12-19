@@ -6,21 +6,27 @@ The Local LLM Framework (LLF) uses a JSON configuration file for managing all se
 
 ## Configuration File Location
 
-The framework automatically looks for a configuration file at:
+The framework automatically looks for configuration files at:
 ```
-<project_root>/config.json
+<project_root>/configs/config.json        # Infrastructure configuration
+<project_root>/configs/config_prompt.json  # Prompt configuration (optional)
 ```
 
-If this file doesn't exist, LLF will use built-in default values.
+If these files don't exist, LLF will use built-in default values.
+
+**Configuration backups** are automatically saved to:
+```
+<project_root>/configs/backups/
+```
 
 ## Getting Started
 
 1. **Copy the example configuration:**
    ```bash
-   cp config.json.example config.json
+   cp configs/config_examples/config.local.example configs/config.json
    ```
 
-2. **Edit `config.json`** to customize your settings (see below for options)
+2. **Edit `configs/config.json`** to customize your settings (see below for options)
 
 3. **Run LLF** - it will automatically load your configuration:
    ```bash
@@ -67,7 +73,25 @@ These settings configure the local llama-server when you start it. Only needed f
   - Default: `8000`
   - Change if port 8000 is already in use
 
-**Note**: These should match the URL in `api_base_url` for local usage.
+- **`server_params`** (Optional): Additional parameters to pass to llama-server
+  - Format: Dictionary of key-value pairs
+  - These are passed directly to the llama-server CLI as `--key value`
+  - **To see all available options, run:** `../llama.cpp/build/bin/llama-server -h`
+
+  **Common examples:**
+  ```json
+  "server_params": {
+    "ctx-size": 8192,        // Context window size (default ~2048)
+    "n-gpu-layers": 35,      // GPU layers (0=CPU only, -1=all layers)
+    "threads": 8,            // CPU threads for inference
+    "batch-size": 512,       // Batch size for prompt processing
+    "flash-attn": true       // Enable flash attention (if supported)
+  }
+  ```
+
+  **This section is completely optional.** If omitted, llama-server uses its default values.
+
+**Note**: `server_host` and `server_port` should match the URL in `api_base_url` for local usage.
 
 ### API Settings
 
