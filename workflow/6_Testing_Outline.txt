@@ -3,8 +3,124 @@ Application testing outline to ensure all codes is functioning as expected
 
 Unit Testing:
   - Run RUN_UNIT_TESTS.sh 
+     - PASS ( 220 unit tests with 88% code coverage )
 
 Model conversion ( HuggingFace (.safetensors) -> GGUF ( Llama format )
    - Run convert_huggingface_llm_2_gguf.sh against an LLM
+      - PASS ( converted deepseek-ai--deepseek-coder-6.7b-instruct )
+
+Review online help documentation:
+   - llf -h
+      - PASS
+   - llf chat -h
+      - PASS
+   - llf model -h
+      - PASS
+   - llf server -h
+      - PASS
+   - llf gui -h
+      - PASS
+   - llf datastore -h
+      - PASS
+   - llf module -h
+      - PASS
+   - llf tool -h
+      - PASS
+
+Review terminal chat ( llf chat ):
+   - Interactive chat with server running
+      - PASS
+      - Sub-tests
+         - "help" to bring up help menu
+            - PASS
+         - "info" to show model info
+            - PASS
+         - "clear" to clear the screen
+            - PASS
+         - "START"/"END" for multi-line input
+            - PASS
+         - "exit" to exit interactive chat
+            - PASS
+   - Interactive chat with server not running
+      - PASS
+      - It started the server for you and then stopped it when done
+   - Interactive chat with external LLM
+      - PASS
+   - Interactive chat with custom model
+      - PASS
+   - Interactive chat with server auto start
+      - PASS
+   - CLI chat with server running
+      - PASS
+   - CLI chat with server not running
+      - PASS
+   - CLI chat with external LLM
+      - PASS
+   - CLI chat with pipped file
+      - PASS
+   - CLI chat using custom model
+      - PASS 
+   - CLI chat with server auto start
+      - PASS
+
+Review Server ( llf server ):
+   - Start server
+      - PASS
+   - Stop server
+      - PASS
+   - Check server status
+      - PASS
+   - Start server in daemon mode
+      - PASS
+   - Start server and have it on network
+      - PASS
+   - Restart the server
+      - PASS
+   - Start server using custom model
+      - PASS
+   - List available models on local server
+      - PASS
+   - List available models on external LLM
+      - PASS
+
+Review Model ( llf model ):
+   - Download a model from Huggingface
+      - PASS ( Downloaded ResembleAI/chatterbox-turbo ) 
+   - Download a model from custom URL
+      - PASS ( https://github.com/resemble-ai/chatterbox )
+         - NOTE:  didn't know of external model to download
+   - List downloaded models
+   - Get info of default local model
+   - Get info on non-default local model
+
+Review GUI from the CLI ( llf gui ):
+   - Start gui
+   - Start gui in daemon mode
+   - Start gui sharing on network
+   - Start gui with login
+   - Start gui with login and shared on network
+   - Start gui on custom port
+   - Start gui without starting a browser
+   - Check gui status
+   - Stop gui
+
+Misc configurations:
+   - Logging
+      - Enable debug mode for chat via CLI
+      - Enable debug mode for server via CLI
+      - Download models to custom location
+   - Use custom config file when starting server
+   - Check version
+   - Change cache location
+
+Following can not be reviews because they are not built out:
+   - Data Store ( llf datastore )
+   - Module ( llf module )
+   - Tool ( llf tool )
+
+-------------------------------------------------
+
+Web GUI interaction:
+   - 
 
 
