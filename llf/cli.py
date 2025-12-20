@@ -58,6 +58,10 @@ class CLI:
         self.no_server_start = no_server_start
         self.started_server = False  # Track if this instance started the server
 
+        # Load module registry and initialize text-to-speech if enabled
+        self.tts = None
+        self._load_modules()
+
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -68,6 +72,39 @@ class CLI:
         self.running = False
         self.shutdown()
         sys.exit(0)
+
+    def _load_modules(self) -> None:
+        """Load enabled modules from registry."""
+        try:
+            # Path to modules registry
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Check if text2speech module is enabled
+            for module in modules:
+                if module.get('name') == 'text2speech' and module.get('enabled', False):
+                    try:
+                        # Import and initialize text2speech module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from text2speech import TextToSpeech
+                        self.tts = TextToSpeech()
+                        logger.info("Text-to-Speech module loaded and enabled")
+                    except Exception as e:
+                        logger.warning(f"Failed to load text2speech module: {e}")
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to load module registry: {e}")
 
     def print_welcome(self) -> None:
         """Print welcome message."""
@@ -351,6 +388,13 @@ Simply type your message and press Enter to chat with the LLM.
                         'content': full_response
                     })
 
+                    # If TTS is enabled, speak the response
+                    if self.tts:
+                        try:
+                            self.tts.speak(full_response)
+                        except Exception as e:
+                            logger.warning(f"Text-to-Speech error: {e}")
+
                     # Print separator line after response
                     console.print("\n[dim]" + "─" * 60 + "[/dim]")
 
@@ -404,6 +448,13 @@ Simply type your message and press Enter to chat with the LLM.
 
             # Print response
             console.print(response)
+
+            # If TTS is enabled, speak the response
+            if self.tts:
+                try:
+                    self.tts.speak(response)
+                except Exception as e:
+                    logger.warning(f"Text-to-Speech error: {e}")
 
             return 0
 
