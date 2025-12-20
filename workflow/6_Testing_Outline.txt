@@ -154,9 +154,7 @@ Web GUI interaction:
       - Stop server
          - PASS
       - Get server status
-         - Having "Server Status" get pre-populated at boot with:
-             Click on "Check Status"
-         - 
+         - PASS
       - Restart server
          - PASS
 
@@ -174,26 +172,11 @@ Web GUI interaction:
    - Models
       - Want to do the following modifications to the "Your Models" and
         "Model Information"
-         - Get ride of the "Model Name (leave empty for default)"
-         - Get rid of the "Get Info" button
-         - Leave the "Model Detail" window on the right
-         - When you click on the models under "Your Models" then
-           I want it to populate the "Model Detail" with the specific
-           model detail.
-         - About the list of models right below "Downloaded Models:" add
-           the word "Default" and when you click on "Default" then it
-           will display the default model in the "Model Details window
+         - PASS
       - Download a HuggingFace Model
          - PASS
-            - ENHANCEMENT TO ADD:  While the model is downloading, it should
-              actively show some status data in the "Download Status" so you
-              know it is actively downloading
       - Download a direct link
-         - Not working.  
-            - NEXT STEPS:  Need a way to select either "HuggingFace Model"
-              or "GGUF file URL" to download.  Maybe some selector switch.
-            - Got the following error:   
-                Error downloading model: 'ModelManager' object has no attribute 'download_model_from_url'
+         - PASS
 
    - Configuration
       - config.json
@@ -201,8 +184,6 @@ Web GUI interaction:
             - PASS
          - Reload file
             - PASS
-            - ENHANCEMENT:  Have it post a status of "Successfully reloaded from file" in
-              the "Status" section
          - Modify file and save it with valid data
             - PASS
          - Modify file with non-JSON formatted data and try to save it ( should not save )
@@ -212,8 +193,6 @@ Web GUI interaction:
             - PASS
          - Reload file
             - PASS
-            - ENHANCEMENT:  Have it post a status of "Successfully reloaded from file" in
-              the "Status" section
          - Modify file and save it with valid data
             - PASS
          - Modify file with non-JSON formatted data and try to save it ( should not save )

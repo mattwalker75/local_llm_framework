@@ -259,7 +259,10 @@ with which prompts I passed to the AI.
     developers
 6.  Perform detailed testing.  Refer to the following testing outline:
        -  6_Testing_Outline.txt
-    
+7.  More testing     
+8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Work on modules ( text to speech )
 
      
 

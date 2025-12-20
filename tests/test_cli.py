@@ -1144,3 +1144,285 @@ class TestLogging:
         assert call_args[1]['level'] == 'INFO'
         assert call_args[1]['log_file'] is None
         assert result == 0
+
+
+class TestAdditionalCLICoverage:
+    """Additional tests to improve CLI coverage."""
+
+    def test_print_welcome_with_server_models(self, cli):
+        """Test print_welcome when server returns model list."""
+        with patch.object(cli.runtime, 'is_server_running', return_value=True), \
+             patch.object(cli.runtime, 'list_models', return_value=[{'id': 'actual-model-from-server'}]) as mock_list_models, \
+             patch.object(cli.config, 'is_using_external_api', return_value=False), \
+             patch('llf.cli.console'):
+
+            cli.print_welcome()
+
+            # Should have called list_models to get the actual model name from server
+            mock_list_models.assert_called_once()
+
+    def test_print_welcome_server_query_fails(self, cli):
+        """Test print_welcome when server model query fails."""
+        with patch.object(cli.runtime, 'is_server_running', return_value=True), \
+             patch.object(cli.runtime, 'list_models', side_effect=Exception("Query failed")) as mock_list_models, \
+             patch.object(cli.config, 'is_using_external_api', return_value=False), \
+             patch('llf.cli.console'):
+
+            # Should not raise exception, should fall back to config model name
+            cli.print_welcome()
+
+            # Should have tried to call list_models
+            mock_list_models.assert_called_once()
+            # Exception should be caught and handled gracefully (no error raised)
+
+    @patch('llf.cli.console.print')
+    def test_signal_handler_shutdown(self, mock_print, cli):
+        """Test signal handler triggers shutdown."""
+        import signal
+
+        with patch.object(cli, 'shutdown') as mock_shutdown, \
+             patch('sys.exit') as mock_exit:
+
+            # Trigger private signal handler
+            cli._signal_handler(signal.SIGINT, None)
+
+            # Should set running to False
+            assert cli.running is False
+            # Should call shutdown
+            mock_shutdown.assert_called_once()
+            # Should call sys.exit(0)
+            mock_exit.assert_called_once_with(0)
+
+
+class TestServerListModelsCommand:
+    """Test server list_models command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.get_config')
+    def test_server_list_models_local_server(self, mock_get_config, mock_print):
+        """Test server list_models command with local server."""
+        from llf.cli import server_command
+
+        # Setup mock config
+        mock_config = MagicMock()
+        mock_config.has_local_server_config.return_value = True
+        mock_config.api_base_url = "http://127.0.0.1:8000/v1"
+        mock_get_config.return_value = mock_config
+
+        # Setup mock args
+        args = MagicMock()
+        args.action = 'list_models'
+
+        # Setup mock runtime to return models
+        with patch('llf.cli.LLMRuntime') as mock_runtime_class:
+            mock_runtime = MagicMock()
+            mock_runtime.list_models.return_value = [
+                {'id': 'model1', 'object': 'model', 'owned_by': 'org1'},
+                {'id': 'model2', 'object': 'model', 'owned_by': 'org2'}
+            ]
+            mock_runtime_class.return_value = mock_runtime
+
+            result = server_command(args)
+
+            assert result == 0
+            # Should query models from runtime
+            mock_runtime.list_models.assert_called_once()
+            # Should print success message with model count
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Found 2 model(s)' in str(call) for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.get_config')
+    def test_server_list_models_external_api(self, mock_get_config, mock_print):
+        """Test server list_models command with external API."""
+        from llf.cli import server_command
+
+        # Setup mock config for external API
+        mock_config = MagicMock()
+        mock_config.has_local_server_config.return_value = False
+        mock_config.api_base_url = "https://api.openai.com/v1"
+        mock_get_config.return_value = mock_config
+
+        # Setup mock args
+        args = MagicMock()
+        args.action = 'list_models'
+
+        # Setup mock runtime
+        with patch('llf.cli.LLMRuntime') as mock_runtime_class:
+            mock_runtime = MagicMock()
+            mock_runtime.list_models.return_value = [
+                {'id': 'gpt-4', 'object': 'model', 'owned_by': 'openai'}
+            ]
+            mock_runtime_class.return_value = mock_runtime
+
+            result = server_command(args)
+
+            assert result == 0
+            # Should print success and call list_models
+            mock_print.assert_called()
+            mock_runtime.list_models.assert_called_once()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.get_config')
+    def test_server_list_models_no_models(self, mock_get_config, mock_print):
+        """Test server list_models command when no models found."""
+        from llf.cli import server_command
+
+        mock_config = MagicMock()
+        mock_config.has_local_server_config.return_value = True
+        mock_config.api_base_url = "http://127.0.0.1:8000/v1"
+        mock_get_config.return_value = mock_config
+
+        args = MagicMock()
+        args.action = 'list_models'
+
+        with patch('llf.cli.LLMRuntime') as mock_runtime_class:
+            mock_runtime = MagicMock()
+            mock_runtime.list_models.return_value = []
+            mock_runtime_class.return_value = mock_runtime
+
+            result = server_command(args)
+
+            assert result == 0
+            # Should print "No models found"
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('No models found' in str(call) for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.get_config')
+    def test_server_list_models_error(self, mock_get_config, mock_print):
+        """Test server list_models command error handling."""
+        from llf.cli import server_command
+
+        mock_config = MagicMock()
+        mock_config.has_local_server_config.return_value = True
+        mock_get_config.return_value = mock_config
+
+        args = MagicMock()
+        args.action = 'list_models'
+
+        with patch('llf.cli.LLMRuntime') as mock_runtime_class:
+            mock_runtime = MagicMock()
+            mock_runtime.list_models.side_effect = Exception("Connection failed")
+            mock_runtime_class.return_value = mock_runtime
+
+            result = server_command(args)
+
+            assert result == 1
+            # Should print error message
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Failed to list models' in str(call) for call in print_calls)
+            assert any('Connection failed' in str(call) for call in print_calls)
+
+
+class TestPlaceholderCommands:
+    """Test placeholder commands for datastore, module, and tool."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_list_command(self, mock_setup_logging, mock_print):
+        """Test datastore list command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'datastore', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            # Should print placeholder message
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('data store' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_list_attached_command(self, mock_setup_logging, mock_print):
+        """Test datastore list --attached command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'datastore', 'list', '--attached']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('attached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_command(self, mock_setup_logging, mock_print):
+        """Test module list command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('module' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_enabled_command(self, mock_setup_logging, mock_print):
+        """Test module list --enabled command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'list', '--enabled']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            # Should print module management placeholder
+            mock_print.assert_called()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_tool_list_command(self, mock_setup_logging, mock_print):
+        """Test tool list command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'tool', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            # Should print tool management placeholder
+            mock_print.assert_called()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_tool_list_enabled_command(self, mock_setup_logging, mock_print):
+        """Test tool list --enabled command."""
+        from llf.cli import main
+
+        test_args = ['llf', 'tool', 'list', '--enabled']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 0
+            # Should print tool management placeholder
+            mock_print.assert_called()
