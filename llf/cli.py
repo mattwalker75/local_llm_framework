@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 import signal
 from datetime import datetime
+import json
 
 from rich.console import Console
 from rich.panel import Panel
@@ -1650,16 +1651,192 @@ finally:
         return 0
 
     elif args.command == 'module':
-        # Module Management (placeholder for future functionality)
-        console.print("[yellow]Module Management[/yellow]")
-        console.print("This command is reserved for future functionality.")
-        console.print("\n[dim]Planned features:[/dim]")
-        console.print("  • Install and manage framework modules")
-        console.print("  • Enable/disable plugins and extensions")
-        console.print("  • Module configuration and updates")
-        console.print("  • List available and installed modules")
-        if args.action:
-            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        # Module Management
+        action = args.action if args.action else 'list'
+
+        # Path to modules registry
+        modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+        if action == 'list':
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Filter by enabled status if requested
+                if args.enabled:
+                    modules = [m for m in modules if m.get('enabled', False)]
+
+                if not modules:
+                    if args.enabled:
+                        console.print("No enabled modules found")
+                    else:
+                        console.print("No modules available")
+                else:
+                    for module in modules:
+                        display_name = module.get('display_name', module.get('name', 'unknown'))
+                        enabled = module.get('enabled', False)
+                        status = "enabled" if enabled else "disabled"
+                        console.print(f"{display_name:<30} {status}")
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read modules registry: {e}")
+                return 1
+
+        elif action == 'enable':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for enable command")
+                console.print("[dim]Usage: llf module enable MODULE_NAME[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Find the module by name or display_name
+                module_found = False
+                for module in modules:
+                    if module.get('name') == args.module_name or module.get('display_name') == args.module_name:
+                        if module.get('enabled', False):
+                            console.print(f"[yellow]Module '{args.module_name}' is already enabled[/yellow]")
+                        else:
+                            module['enabled'] = True
+                            # Write back to registry
+                            with open(modules_registry_path, 'w') as f:
+                                json.dump(registry, f, indent=2)
+                            console.print(f"[green]Module '{args.module_name}' enabled successfully[/green]")
+                        module_found = True
+                        break
+
+                if not module_found:
+                    console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                    return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to enable module: {e}")
+                return 1
+
+        elif action == 'disable':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for disable command")
+                console.print("[dim]Usage: llf module disable MODULE_NAME[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Find the module by name or display_name
+                module_found = False
+                for module in modules:
+                    if module.get('name') == args.module_name or module.get('display_name') == args.module_name:
+                        if not module.get('enabled', False):
+                            console.print(f"[yellow]Module '{args.module_name}' is already disabled[/yellow]")
+                        else:
+                            module['enabled'] = False
+                            # Write back to registry
+                            with open(modules_registry_path, 'w') as f:
+                                json.dump(registry, f, indent=2)
+                            console.print(f"[green]Module '{args.module_name}' disabled successfully[/green]")
+                        module_found = True
+                        break
+
+                if not module_found:
+                    console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                    return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to disable module: {e}")
+                return 1
+
+        elif action == 'info':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for info command")
+                console.print("[dim]Usage: llf module info MODULE_NAME[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Find the module by name or display_name
+                module = None
+                for m in modules:
+                    if m.get('name') == args.module_name or m.get('display_name') == args.module_name:
+                        module = m
+                        break
+
+                if not module:
+                    console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                    return 1
+
+                # Display detailed module information
+                name = module.get('name', 'unknown')
+                display_name = module.get('display_name', name)
+                description = module.get('description', 'No description')
+                enabled = module.get('enabled', False)
+                version = module.get('version', '0.0.0')
+                module_type = module.get('type', 'unknown')
+                directory = module.get('directory', name)
+
+                # Calculate module path relative to project root
+                module_path = Path(__file__).parent.parent / 'modules' / directory
+
+                # Status indicator
+                status = "[green]✓ enabled[/green]" if enabled else "[dim]○ disabled[/dim]"
+
+                console.print()
+                console.print(f"[bold]{display_name}[/bold] ({name}) [dim]v{version}[/dim]")
+                console.print(f"  {status}")
+                console.print(f"  [dim]Type:[/dim] {module_type}")
+                console.print(f"  [dim]Description:[/dim] {description}")
+                console.print(f"  [dim]Location:[/dim] {module_path}")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read module info: {e}")
+                return 1
+
+        else:
+            console.print(f"[red]Error:[/red] Unknown action '{action}'")
+            console.print("[dim]Valid actions: list, enable, disable, info[/dim]")
+            return 1
+
         return 0
 
     elif args.command == 'tool':

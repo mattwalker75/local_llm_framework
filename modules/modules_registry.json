@@ -1,17 +1,30 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "last_updated": "2025-12-20",
-  "modules": {
-    "text2speech": {
+  "modules": [
+    {
+      "name": "text2speech",
+      "display_name": "Text-to-Speech",
+      "description": "Converts LLM text output to spoken audio using pyttsx3",
+      "type": "output_processor",
       "directory": "text2speech",
-      "enabled": false,
+      "enabled": true,
+      "loaded": false,
       "info_file": "text2speech/module_info.json",
       "main_module": "text2speech",
-      "loaded": false
+      "version": "0.1.0",
+      "dependencies": [
+        "pyttsx3>=2.90"
+      ]
     }
-  },
+  ],
   "metadata": {
     "description": "Registry of all available modules for the LLM Framework",
-    "note": "This file tracks which modules are available and their enabled/disabled status"
+    "note": "This file tracks which modules are available and their enabled/disabled status",
+    "schema_version": "2.0",
+    "changes": [
+      "v2.0: Changed modules from object to array structure for better scalability",
+      "v2.0: Added name, display_name, description, type, version, and dependencies to each module entry"
+    ]
   }
 }
