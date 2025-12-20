@@ -367,20 +367,26 @@ class TestLLMFrameworkGUI:
 
     def test_download_model_missing_info(self, gui):
         """Test downloading model with missing information."""
-        result = gui.download_model("", "", "")
-        assert "provide" in result.lower() and ("model name" in result.lower() or "url" in result.lower())
+        # Generator returns multiple values, get the last one
+        results = list(gui.download_model("HuggingFace", "", "", ""))
+        result = results[-1] if results else ""
+        assert "provide" in result.lower() and "model name" in result.lower()
 
     def test_download_model_success(self, gui):
         """Test successful model download."""
         with patch.object(gui.model_manager, 'download_model', return_value=None) as mock_download:
-            result = gui.download_model("org/model", "", "")
+            # Generator returns multiple values, get the last one
+            results = list(gui.download_model("HuggingFace", "org/model", "", ""))
+            result = results[-1] if results else ""
             mock_download.assert_called_once()
             assert "success" in result.lower() or "downloaded" in result.lower()
 
     def test_download_model_error(self, gui):
         """Test model download error handling."""
         with patch.object(gui.model_manager, 'download_model', side_effect=Exception("Download failed")):
-            result = gui.download_model("org/model", "", "")
+            # Generator returns multiple values, get the last one
+            results = list(gui.download_model("HuggingFace", "org/model", "", ""))
+            result = results[-1] if results else ""
             assert "error" in result.lower()
             assert "download failed" in result.lower()
 
@@ -692,3 +698,202 @@ class TestStartGUI:
                 server_port=8080,
                 inbrowser=False
             )
+
+
+class TestNewGUIMethods:
+    """Test new GUI methods added for enhanced functionality."""
+
+    @pytest.fixture
+    def gui(self):
+        """Create GUI instance for testing."""
+        with patch('llf.gui.get_config') as mock_get_config, \
+             patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
+
+            mock_config = Mock()
+            mock_config.model_dir = Path("/tmp/models")
+            mock_config.cache_dir = Path("/tmp/cache")
+            mock_config.model_name = "test-model"
+            mock_config.is_using_external_api.return_value = False
+            mock_config.has_local_server_config.return_value = True
+
+            mock_prompt_config = Mock()
+
+            mock_get_config.return_value = mock_config
+            mock_get_prompt_config.return_value = mock_prompt_config
+
+            return LLMFrameworkGUI()
+
+    def test_toggle_download_sections_huggingface(self):
+        """Test toggle_download_sections with HuggingFace selection."""
+        hf_update, url_update = LLMFrameworkGUI.toggle_download_sections("HuggingFace")
+        assert hf_update['visible'] is True
+        assert url_update['visible'] is False
+
+    def test_toggle_download_sections_url(self):
+        """Test toggle_download_sections with URL selection."""
+        hf_update, url_update = LLMFrameworkGUI.toggle_download_sections("URL")
+        assert hf_update['visible'] is False
+        assert url_update['visible'] is True
+
+    def test_list_models_for_radio_empty(self, gui):
+        """Test list_models_for_radio with no models."""
+        with patch.object(gui.model_manager, 'list_downloaded_models', return_value=[]):
+            result = gui.list_models_for_radio()
+            assert result == ["Default"]
+
+    def test_list_models_for_radio_with_models(self, gui):
+        """Test list_models_for_radio with multiple models."""
+        mock_models = ["model1", "model2", "model3"]
+        with patch.object(gui.model_manager, 'list_downloaded_models', return_value=mock_models):
+            result = gui.list_models_for_radio()
+            assert result == ["Default", "model1", "model2", "model3"]
+            assert result[0] == "Default"  # Default should always be first
+
+    def test_list_models_for_radio_error(self, gui):
+        """Test list_models_for_radio handles errors gracefully."""
+        with patch.object(gui.model_manager, 'list_downloaded_models', side_effect=Exception("Error")):
+            result = gui.list_models_for_radio()
+            assert result == ["Default"]  # Should return Default on error
+
+    def test_get_selected_model_info_default(self, gui):
+        """Test get_selected_model_info with Default selection."""
+        with patch.object(gui, 'get_model_info', return_value="Model info") as mock_info:
+            result = gui.get_selected_model_info("Default")
+            mock_info.assert_called_once_with("test-model")  # Should use config.model_name
+            assert result == "Model info"
+
+    def test_get_selected_model_info_custom(self, gui):
+        """Test get_selected_model_info with custom model."""
+        with patch.object(gui, 'get_model_info', return_value="Custom model info") as mock_info:
+            result = gui.get_selected_model_info("custom-model")
+            mock_info.assert_called_once_with("custom-model")
+            assert result == "Custom model info"
+
+    def test_get_selected_model_info_empty(self, gui):
+        """Test get_selected_model_info with empty selection."""
+        result = gui.get_selected_model_info("")
+        assert result == ""
+
+    def test_get_selected_model_info_error(self, gui):
+        """Test get_selected_model_info handles errors."""
+        with patch.object(gui, 'get_model_info', side_effect=Exception("Error")):
+            result = gui.get_selected_model_info("model")
+            assert "error" in result.lower()
+
+    def test_refresh_models_list_success(self, gui):
+        """Test refresh_models_list successfully refreshes."""
+        mock_models = ["model1", "model2"]
+        with patch.object(gui, 'list_models_for_radio', return_value=["Default"] + mock_models), \
+             patch.object(gui, 'get_selected_model_info', return_value="Default model info"):
+
+            radio_update, info = gui.refresh_models_list()
+
+            # Radio component returns tuples (label, value) for choices
+            expected_choices = [("Default", "Default"), ("model1", "model1"), ("model2", "model2")]
+            assert radio_update.choices == expected_choices
+            assert radio_update.value == "Default"
+            assert info == "Default model info"
+
+    def test_refresh_models_list_error(self, gui):
+        """Test refresh_models_list handles errors."""
+        with patch.object(gui, 'list_models_for_radio', side_effect=Exception("Error")):
+            radio_update, info = gui.refresh_models_list()
+            # Radio component returns tuples (label, value) for choices
+            assert radio_update.choices == [("Default", "Default")]
+            assert "error" in info.lower()
+
+    def test_reload_config_with_status_success(self, gui, temp_dir):
+        """Test reload_config_with_status successfully reloads."""
+        config_file = temp_dir / "config.json"
+        config_content = '{"test": "data"}'
+        config_file.write_text(config_content)
+
+        with patch('llf.gui.Config.DEFAULT_CONFIG_FILE', config_file):
+            content, status = gui.reload_config_with_status()
+            assert content == config_content
+            assert "✅" in status
+            assert "successfully" in status.lower()
+
+    def test_reload_config_with_status_file_not_found(self, gui, temp_dir):
+        """Test reload_config_with_status when file doesn't exist."""
+        nonexistent = temp_dir / "nonexistent.json"
+
+        with patch('llf.gui.Config.DEFAULT_CONFIG_FILE', nonexistent):
+            content, status = gui.reload_config_with_status()
+            assert "not found" in content.lower()
+            assert "❌" in status
+
+    def test_reload_config_with_status_error(self, gui, temp_dir):
+        """Test reload_config_with_status handles read errors."""
+        config_file = temp_dir / "config.json"
+        config_file.write_text("test")
+
+        with patch('llf.gui.Config.DEFAULT_CONFIG_FILE', config_file), \
+             patch('builtins.open', side_effect=PermissionError("No permission")):
+            content, status = gui.reload_config_with_status()
+            assert "error" in content.lower()
+            assert "❌" in status
+
+    def test_reload_prompt_config_with_status_success(self, gui, temp_dir):
+        """Test reload_prompt_config_with_status successfully reloads."""
+        config_file = temp_dir / "config_prompt.json"
+        config_content = '{"system_prompt": "test"}'
+        config_file.write_text(config_content)
+
+        with patch('llf.gui.PromptConfig.DEFAULT_CONFIG_FILE', config_file):
+            content, status = gui.reload_prompt_config_with_status()
+            assert content == config_content
+            assert "✅" in status
+            assert "successfully" in status.lower()
+
+    def test_reload_prompt_config_with_status_file_not_found(self, gui, temp_dir):
+        """Test reload_prompt_config_with_status when file doesn't exist."""
+        nonexistent = temp_dir / "nonexistent.json"
+
+        with patch('llf.gui.PromptConfig.DEFAULT_CONFIG_FILE', nonexistent):
+            content, status = gui.reload_prompt_config_with_status()
+            assert "not found" in content.lower()
+            assert "❌" in status
+
+    def test_reload_prompt_config_with_status_error(self, gui, temp_dir):
+        """Test reload_prompt_config_with_status handles read errors."""
+        config_file = temp_dir / "config_prompt.json"
+        config_file.write_text("test")
+
+        with patch('llf.gui.PromptConfig.DEFAULT_CONFIG_FILE', config_file), \
+             patch('builtins.open', side_effect=PermissionError("No permission")):
+            content, status = gui.reload_prompt_config_with_status()
+            assert "error" in content.lower()
+            assert "❌" in status
+
+    def test_download_model_url_missing_url(self, gui):
+        """Test download_model with URL type but missing URL."""
+        results = list(gui.download_model("URL", "", "", ""))
+        result = results[-1] if results else ""
+        assert "url" in result.lower()
+
+    def test_download_model_url_missing_name(self, gui):
+        """Test download_model with URL type but missing custom name."""
+        results = list(gui.download_model("URL", "", "http://example.com/model.gguf", ""))
+        result = results[-1] if results else ""
+        assert "name" in result.lower()
+
+    def test_download_model_url_success(self, gui):
+        """Test successful URL download."""
+        with patch.object(gui.model_manager, 'download_from_url', return_value=None) as mock_download:
+            results = list(gui.download_model("URL", "", "http://example.com/model.gguf", "my-model"))
+            result = results[-1] if results else ""
+
+            mock_download.assert_called_once_with(
+                url="http://example.com/model.gguf",
+                name="my-model"
+            )
+            assert "success" in result.lower()
+
+    def test_download_model_url_error(self, gui):
+        """Test URL download error handling."""
+        with patch.object(gui.model_manager, 'download_from_url', side_effect=Exception("Download failed")):
+            results = list(gui.download_model("URL", "", "http://example.com/model.gguf", "my-model"))
+            result = results[-1] if results else ""
+            assert "error" in result.lower()
+            assert "download failed" in result.lower()

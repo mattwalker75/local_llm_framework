@@ -6,7 +6,7 @@ A flexible Python framework designed to run Large Language Models (LLMs) locally
 
 Local LLM Framework (LLF) provides maximum flexibility - run models locally for zero token costs and full privacy, or seamlessly switch to external APIs when needed. Phase 1 focuses on CLI-based interaction with plans for future expansion into API servers, GUIs, and advanced features.
 
-**Current Version:** 0.1.0 (Phase 1)
+**Current Version:** 0.2.0 (Phase 1)
 
 ## Features
 
@@ -25,7 +25,7 @@ Local LLM Framework (LLF) provides maximum flexibility - run models locally for 
 - ✅ Customizable prompt templates with system prompts and message injection
 - ✅ Automatic configuration backups
 - ✅ Production-quality modular architecture
-- ✅ Comprehensive unit testing (218 tests, 100% test passing rate)
+- ✅ Comprehensive unit testing (254 tests, 100% test passing rate, 79% code coverage)
 - ✅ Clean installation and uninstallation process
 - ✅ Support for Qwen2.5-Coder-7B-Instruct-GGUF (default local model)
 - ✅ Configurable inference parameters per API
@@ -398,47 +398,74 @@ When `--key` is set, users will see a login page that requires entering the secr
 
 **GUI Features:**
 
-The GUI provides 8 main tabs:
+The GUI provides 8 main tabs with intuitive controls and real-time feedback:
 
 1. **💬 Chat Tab**
    - Interactive conversation with your LLM
+   - Streaming responses with real-time display
    - Conversation history display
    - Multiline input support (Enter to send checkbox)
    - Clear chat functionality
+   - Shutdown GUI button (gracefully stops server if started by GUI)
 
 2. **🖥️ Server Tab**
-   - View server status (auto-loads on startup)
+   - Server status display with placeholder text ("Click on Check Status")
+   - Check server status in real-time
    - Start/stop/restart local LLM server
-   - Real-time status updates
+   - Real-time status updates with visual indicators (✅ running, ⭕ stopped, ❌ error)
 
 3. **📦 Models Tab**
-   - List downloaded models
-   - Download models from HuggingFace or URL
-   - View model information
+   - **Your Models Section:**
+     - Auto-loads list of downloaded models on startup
+     - Radio selection showing all models with scroll support
+     - "Default" option to use configured model
+     - Click any model to view details in Model Detail window
+     - Refresh List button aligned to bottom of window
+   - **Download Model Section:**
+     - Toggle between HuggingFace and URL download methods
+     - HuggingFace: Enter model name (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
+     - URL: Enter direct GGUF URL and custom model name
+     - Real-time download progress with visual indicators (📥⏳🔄⚠️🎉✅)
+     - Status messages during download: "Model is downloading... You will get notified when complete..."
+     - Success notification when download completes
 
-4. **⚙️ Config Tab (Infrastructure)**
-   - View and edit `configs/config.json`
-   - Configure local server settings, API connections, inference parameters
-   - Auto-reload on save
-   - Create backups of configuration
+4. **⚙️ Configuration Tab**
+   - **Config.json Section:**
+     - Auto-loads configuration on startup
+     - View and edit `configs/config.json` in JSON editor
+     - Save changes with validation
+     - Reload from file with status feedback
+     - Create timestamped backups
+     - Status messages for all operations (✅ success, ❌ error)
+   - **Config_prompt.json Section:**
+     - Auto-loads prompt configuration on startup
+     - View and edit `configs/config_prompt.json`
+     - Save changes with validation
+     - Reload from file with status feedback
+     - Create timestamped backups
+     - Status messages for all operations
 
-5. **📝 Config Tab (Prompts)**
-   - View and edit `configs/config_prompt.json`
-   - Customize system prompts, conversation format, and message injection
-   - Auto-reload on save
-   - Create backups of configuration
-
-6. **📚 Data Stores Tab**
+5. **📚 Data Stores Tab**
    - Placeholder for future RAG (Retrieval-Augmented Generation) features
    - Will support managing data sources for context
 
-7. **🔌 Modules Tab**
+6. **🔌 Modules Tab**
    - Placeholder for future module management
    - Will support engagement extensions (e.g., text-to-speech)
 
-8. **🛠️ Tools Tab**
+7. **🛠️ Tools Tab**
    - Placeholder for future tool management
    - Will support LLM capability extensions (e.g., internet search)
+
+**GUI Improvements in v0.2.0:**
+- Auto-loading of configurations and models on startup
+- Visual placeholder text for empty sections
+- Real-time download progress with animations
+- Dual download method support (HuggingFace and direct URL)
+- Status messages for all file operations
+- Improved model selection with radio buttons and full list visibility
+- Better button alignment and layout
+- Status feedback for reload operations
 
 **When to Use GUI vs CLI:**
 
@@ -569,7 +596,7 @@ Use configuration: `llf --config configs/config.json chat`
 
 ## Testing
 
-LLF includes comprehensive unit tests with **90% code coverage**.
+LLF includes comprehensive unit tests with **79% overall code coverage** and **90% GUI code coverage**.
 
 ### Run All Tests
 
@@ -604,13 +631,13 @@ local_llm_framework/
 │   ├── logging_config.py      # Logging configuration
 │   ├── model_manager.py       # Model download and management
 │   └── gui.py                 # Web-based GUI interface (Gradio)
-├── tests/                      # Unit tests (218 tests, 100% passing)
-│   ├── test_cli.py            # CLI tests
-│   ├── test_config.py         # Configuration tests
-│   ├── test_prompt_config.py  # Prompt configuration tests
-│   ├── test_llm_runtime.py    # Runtime tests
-│   ├── test_model_manager.py  # Model manager tests
-│   └── test_gui.py            # GUI tests
+├── tests/                      # Unit tests (254 tests, 100% passing, 79% coverage)
+│   ├── test_cli.py            # CLI tests (75 tests)
+│   ├── test_config.py         # Configuration tests (31 tests)
+│   ├── test_prompt_config.py  # Prompt configuration tests (10 tests)
+│   ├── test_llm_runtime.py    # Runtime tests (36 tests)
+│   ├── test_model_manager.py  # Model manager tests (19 tests)
+│   └── test_gui.py            # GUI tests (79 tests, 90% GUI coverage)
 ├── configs/                    # Configuration files
 │   ├── config.json            # Infrastructure configuration (gitignored)
 │   ├── config_prompt.json     # Prompt configuration (gitignored)
@@ -680,12 +707,23 @@ These limitations are intentional for Phase 1 and will be addressed in future re
 
 ## Version History
 
-### v0.1.0 (Phase 1) - Current
+### v0.2.0 (Phase 1) - Current
+- Enhanced GUI interface with auto-loading features
+- Real-time download progress with visual indicators
+- Dual download method support (HuggingFace and direct URL)
+- Improved model selection with radio buttons
+- Status feedback for all file operations
+- Configuration auto-loading on startup
+- 254 unit tests with 79% code coverage (90% GUI, 67% CLI)
+- Comprehensive documentation updates
+
+### v0.1.0 (Phase 1)
 - Initial release
 - CLI-based interaction
+- Basic GUI interface
 - Automatic model management (GGUF format)
 - llama.cpp/llama-server integration
-- Comprehensive testing
+- 218 unit tests with comprehensive coverage
 
 ---
 

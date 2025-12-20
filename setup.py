@@ -31,7 +31,7 @@ else:
 
 setup(
     name="local-llm-framework",
-    version="0.1.0",
+    version="0.2.0",
     author="LLF Development Team",
     author_email="",
     description="A Python framework for running Large Language Models locally using vLLM",

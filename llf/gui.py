@@ -23,6 +23,14 @@ from .logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Constants for download progress messages
+DOWNLOAD_PROGRESS_MESSAGE = (
+    "🔄 Download in progress...\n"
+    "You will be notified when complete.\n\n"
+    "⚠️  This process can take a while depending on the size of the model.\n"
+    "Please do not close this window."
+)
+
 
 class LLMFrameworkGUI:
     """
@@ -52,7 +60,7 @@ class LLMFrameworkGUI:
         self.started_server = False  # Track if GUI started the server
         self.auth_key = auth_key  # Authentication key (None = no auth required)
 
-    def check_server_on_startup(self) -> tuple[bool, str]:
+    def check_server_on_startup(self) -> Tuple[bool, str]:
         """
         Check if server needs to be started on GUI launch (like llf chat).
 
@@ -169,7 +177,7 @@ class LLMFrameworkGUI:
 
             threading.Thread(target=delayed_shutdown, daemon=True).start()
 
-            return "✅ Shutting down GUI... The window will close shortly."
+            return "✅ Shutting down GUI... You can close this window."
         except Exception as e:
             return f"❌ Error during shutdown: {str(e)}"
 
@@ -272,43 +280,87 @@ class LLMFrameworkGUI:
         except Exception as e:
             return f"❌ Error listing models: {str(e)}"
 
-    def download_model(self, model_name: str, url: str, custom_name: str) -> str:
+    def list_models_for_radio(self) -> List[str]:
+        """List downloaded models as a list for Radio component."""
+        try:
+            models = self.model_manager.list_downloaded_models()
+            # Always include "Default" as the first option
+            return ["Default"] + models
+        except Exception as e:
+            return ["Default"]
+
+    def get_selected_model_info(self, selected_model: str) -> str:
+        """Get information about the selected model from radio."""
+        try:
+            if not selected_model:
+                return ""
+
+            # If "Default" is selected, get info for the default model
+            if selected_model == "Default":
+                model_name = self.config.model_name
+            else:
+                model_name = selected_model
+
+            return self.get_model_info(model_name)
+        except Exception as e:
+            return f"❌ Error getting model info: {str(e)}"
+
+    def refresh_models_list(self) -> Tuple[gr.Radio, str]:
+        """Refresh the models list and return updated Radio component."""
+        try:
+            models = self.list_models_for_radio()
+            # Return updated radio choices and reset info
+            return gr.Radio(choices=models, value="Default"), self.get_selected_model_info("Default")
+        except Exception as e:
+            return gr.Radio(choices=["Default"], value="Default"), f"❌ Error refreshing models: {str(e)}"
+
+    def download_model(self, download_type: str, model_name: str, url: str, custom_name: str):
         """
-        Download a model.
+        Download a model with progress updates.
 
         Args:
+            download_type: Type of download ("HuggingFace" or "URL")
             model_name: HuggingFace model name (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")
             url: Direct URL to GGUF file (alternative to model_name)
             custom_name: Custom name for URL-downloaded model
 
-        Returns:
-            Status message
+        Yields:
+            Status messages during download
         """
         try:
-            if url and url.strip():
+            if download_type == "URL":
                 # URL download
+                if not url or not url.strip():
+                    yield "❌ Please provide a URL"
+                    return
                 if not custom_name or not custom_name.strip():
-                    return "❌ Please provide a custom name for URL downloads"
+                    yield "❌ Please provide a custom name for URL downloads"
+                    return
 
-                self.model_manager.download_model_from_url(
+                yield f"📥 Model is downloading from URL... ⏳\n\n{DOWNLOAD_PROGRESS_MESSAGE}"
+
+                self.model_manager.download_from_url(
                     url=url.strip(),
-                    model_dir_name=custom_name.strip()
+                    name=custom_name.strip()
                 )
-                return f"✅ Model downloaded successfully from URL\n\nSaved as: {custom_name}"
+                yield f"✅ Model downloaded successfully from URL! 🎉\n\nSaved as: {custom_name}"
 
-            elif model_name and model_name.strip():
+            else:  # HuggingFace
+                if not model_name or not model_name.strip():
+                    yield "❌ Please provide a HuggingFace model name"
+                    return
+
+                yield f"📥 Model is downloading from HuggingFace... ⏳\n\n{DOWNLOAD_PROGRESS_MESSAGE}\n\nModel: {model_name.strip()}"
+
                 # HuggingFace download
                 self.model_manager.download_model(
                     model_name=model_name.strip(),
                     force=False
                 )
-                return f"✅ Model downloaded successfully\n\nModel: {model_name}"
-
-            else:
-                return "❌ Please provide either a HuggingFace model name or a URL"
+                yield f"✅ Model downloaded successfully! 🎉\n\nModel: {model_name.strip()}"
 
         except Exception as e:
-            return f"❌ Error downloading model: {str(e)}"
+            yield f"❌ Error downloading model: {str(e)}"
 
     def get_model_info(self, model_name: str) -> str:
         """Get information about a model."""
@@ -431,6 +483,48 @@ class LLMFrameworkGUI:
             return f"❌ Invalid JSON: {str(e)}"
         except Exception as e:
             return f"❌ Error saving config_prompt.json: {str(e)}"
+
+    def reload_config_with_status(self) -> Tuple[str, str]:
+        """Reload config.json and return both content and status message."""
+        try:
+            config_file = Config.DEFAULT_CONFIG_FILE
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    content = f.read()
+                return content, "✅ Successfully reloaded config.json"
+            else:
+                return "# config.json not found\n# Create one to get started", "❌ config.json not found"
+        except Exception as e:
+            return f"# Error loading config.json: {str(e)}", f"❌ Error reloading config.json: {str(e)}"
+
+    def reload_prompt_config_with_status(self) -> Tuple[str, str]:
+        """Reload config_prompt.json and return both content and status message."""
+        try:
+            config_file = PromptConfig.DEFAULT_CONFIG_FILE
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    content = f.read()
+                return content, "✅ Successfully reloaded config_prompt.json"
+            else:
+                return "# config_prompt.json not found\n# Create one to customize prompts", "❌ config_prompt.json not found"
+        except Exception as e:
+            return f"# Error loading config_prompt.json: {str(e)}", f"❌ Error reloading config_prompt.json: {str(e)}"
+
+    @staticmethod
+    def toggle_download_sections(choice: str) -> Tuple[dict, dict]:
+        """
+        Toggle visibility of download sections based on selected method.
+
+        Args:
+            choice: Download method ("HuggingFace" or "URL")
+
+        Returns:
+            Tuple of (hf_section_update, url_section_update)
+        """
+        if choice == "HuggingFace":
+            return gr.update(visible=True), gr.update(visible=False)
+        else:
+            return gr.update(visible=False), gr.update(visible=True)
 
     # ===== Main Interface Builder =====
 
@@ -582,7 +676,7 @@ class LLMFrameworkGUI:
                             label="Server Status",
                             lines=5,
                             interactive=False,
-                            value=self.get_server_status()  # Load initial status
+                            value='Click on "Check Status"'
                         )
     
                         with gr.Row():
@@ -597,59 +691,55 @@ class LLMFrameworkGUI:
                         stop_btn.click(self.stop_server, None, status_output)
                         restart_btn.click(self.restart_server, None, status_output)
     
-                        # Auto-update status on load
-                        interface.load(self.get_server_status, None, status_output)
-    
                     # ===== Models Tab =====
                     with gr.Tab("📦 Models"):
                         gr.Markdown("### Model Management")
                         gr.Markdown("Download and manage your LLM models")
-    
+
                         with gr.Row():
                             with gr.Column():
                                 gr.Markdown("#### Downloaded Models")
-                                models_list = gr.Textbox(
-                                    label="Your Models",
-                                    lines=8,
-                                    interactive=False
+                                models_radio = gr.Radio(
+                                    label="Select a Model",
+                                    choices=self.list_models_for_radio(),
+                                    value="Default"
                                 )
-                                refresh_btn = gr.Button("Refresh List")
-    
+
                             with gr.Column():
                                 gr.Markdown("#### Model Information")
-                                model_info_input = gr.Textbox(
-                                    label="Model Name (leave empty for default)",
-                                    placeholder="e.g., Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-                                )
-                                model_info_btn = gr.Button("Get Info")
                                 model_info_output = gr.Textbox(
                                     label="Model Details",
-                                    lines=8,
-                                    interactive=False
+                                    lines=10,
+                                    interactive=False,
+                                    value=self.get_selected_model_info("Default")
                                 )
-    
+
+                        refresh_btn = gr.Button("Refresh List")
                         gr.Markdown("---")
                         gr.Markdown("#### Download New Model")
-    
-                        with gr.Row():
-                            with gr.Column():
-                                gr.Markdown("**Option 1: HuggingFace Model**")
-                                hf_model_input = gr.Textbox(
-                                    label="HuggingFace Model Name",
-                                    placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-                                )
-    
-                            with gr.Column():
-                                gr.Markdown("**Option 2: Direct URL**")
-                                url_input = gr.Textbox(
-                                    label="GGUF File URL",
-                                    placeholder="https://example.com/model.gguf"
-                                )
-                                url_name_input = gr.Textbox(
-                                    label="Custom Name",
-                                    placeholder="my-model"
-                                )
-    
+
+                        download_type = gr.Radio(
+                            label="Download Method",
+                            choices=["HuggingFace", "URL"],
+                            value="HuggingFace"
+                        )
+
+                        with gr.Column(visible=True) as hf_section:
+                            hf_model_input = gr.Textbox(
+                                label="HuggingFace Model Name",
+                                placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                            )
+
+                        with gr.Column(visible=False) as url_section:
+                            url_input = gr.Textbox(
+                                label="GGUF File URL",
+                                placeholder="https://example.com/model.gguf"
+                            )
+                            url_name_input = gr.Textbox(
+                                label="Custom Name",
+                                placeholder="my-model"
+                            )
+
                         download_btn = gr.Button("Download Model", variant="primary")
                         download_output = gr.Textbox(
                             label="Download Status",
@@ -658,16 +748,21 @@ class LLMFrameworkGUI:
                         )
     
                         # Model interactions
-                        refresh_btn.click(self.list_models, None, models_list)
-                        model_info_btn.click(self.get_model_info, model_info_input, model_info_output)
+                        models_radio.change(self.get_selected_model_info, models_radio, model_info_output)
+                        refresh_btn.click(self.refresh_models_list, None, [models_radio, model_info_output])
+
+                        # Download method selector - show/hide sections
+                        download_type.change(
+                            self.toggle_download_sections,
+                            download_type,
+                            [hf_section, url_section]
+                        )
+
                         download_btn.click(
                             self.download_model,
-                            [hf_model_input, url_input, url_name_input],
+                            [download_type, hf_model_input, url_input, url_name_input],
                             download_output
                         )
-    
-                        # Auto-load models list
-                        interface.load(self.list_models, None, models_list)
     
                     # ===== Config Tab =====
                     with gr.Tab("⚙️ Configuration"):
@@ -680,7 +775,8 @@ class LLMFrameworkGUI:
                             config_editor = gr.Code(
                                 label="config.json",
                                 language="json",
-                                lines=20
+                                lines=20,
+                                value=self.load_config()
                             )
     
                             with gr.Row():
@@ -695,18 +791,18 @@ class LLMFrameworkGUI:
                             )
     
                             # Config interactions
-                            config_load_btn.click(self.load_config, None, config_editor)
+                            config_load_btn.click(self.reload_config_with_status, None, [config_editor, config_status])
                             config_backup_btn.click(self.backup_config, None, config_status)
                             config_save_btn.click(self.save_config, config_editor, config_status)
-                            interface.load(self.load_config, None, config_editor)
-    
+
                         with gr.Tab("config_prompt.json"):
                             gr.Markdown("**Prompt Configuration** - System prompts, conversation formatting")
     
                             prompt_editor = gr.Code(
                                 label="config_prompt.json",
                                 language="json",
-                                lines=20
+                                lines=20,
+                                value=self.load_prompt_config()
                             )
     
                             with gr.Row():
@@ -721,10 +817,9 @@ class LLMFrameworkGUI:
                             )
     
                             # Prompt config interactions
-                            prompt_load_btn.click(self.load_prompt_config, None, prompt_editor)
+                            prompt_load_btn.click(self.reload_prompt_config_with_status, None, [prompt_editor, prompt_status])
                             prompt_backup_btn.click(self.backup_prompt_config, None, prompt_status)
                             prompt_save_btn.click(self.save_prompt_config, prompt_editor, prompt_status)
-                            interface.load(self.load_prompt_config, None, prompt_editor)
 
                     # ===== Data Stores Tab =====
                     with gr.Tab("📚 Data Stores"):

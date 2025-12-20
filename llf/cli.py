@@ -564,7 +564,7 @@ def info_command(args) -> int:
     config = get_config()
     model_manager = ModelManager(config)
 
-    model_name = args.huggingface_model or config.model_name
+    model_name = args.model or config.model_name
     info = model_manager.get_model_info(model_name)
 
     console.print(Panel(
@@ -839,7 +839,7 @@ Examples:
   llf model download --url https://example.com/model.gguf --name my-model
   llf model list                   List downloaded models
   llf model info                   Show default model information
-  llf model info --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 
   # GUI interface
   llf gui                          Start web-based GUI (localhost only, port 7860)
@@ -926,7 +926,7 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     parser.add_argument(
         '--version',
         action='version',
-        version='%(prog)s 0.1.0 (Phase 1)'
+        version='%(prog)s 0.2.0 (Phase 1)'
     )
 
     # Subcommands
@@ -940,7 +940,23 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     chat_parser = subparsers.add_parser(
         'chat',
         help='Start interactive chat with LLM',
-        description='Start an interactive chat session with the locally running LLM.'
+        description='Start an interactive chat session with an LLM either locally running or remote.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Interactive mode
+  llf chat                                     Start interactive chat session
+  llf chat --auto-start-server                 Auto-start server if not running
+  llf chat --no-server-start                   Exit with error if server not running
+
+  # CLI mode (non-interactive, for scripting)
+  llf chat --cli "What is 2+2?"                Ask a single question and exit
+  cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
+
+  # Model selection
+  llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf chat --gguf-dir test_gguf --gguf-file my-model.gguf
+        """
     )
 
     # Model selection (mutually exclusive)
@@ -984,7 +1000,28 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     model_parser = subparsers.add_parser(
         'model',
         help='Model management commands',
-        description='Download, list, and manage models for use with LLF.'
+        description='Download, list, and manage LLM models that run locally via the local OpenAI compatible server.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Global options (specify before 'model'):
+  -d, --download-dir PATH   Directory for downloading and storing models (default: ./models/)
+
+Examples:
+  # HuggingFace download
+  llf model download --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+
+  # Direct link download
+  llf model download --url https://example.com/model.gguf --name my-model
+
+  # Download to custom directory
+  llf -d /custom/models model download
+
+  # List and info
+  llf model list                        List all downloaded models
+  llf model info                        Show default model information
+  llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        View information about a specific downloaded model
+        """
     )
     model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
 
@@ -1042,21 +1079,50 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         description='Display detailed information about a specific model including size, location, and verification status.'
     )
     info_parser.add_argument(
-        '--huggingface-model',
+        '--model',
         metavar='NAME',
-        help='HuggingFace model identifier to show info for (default: configured default model)'
+        help='Model identifier to show info for (default: configured default model)'
     )
 
     # Server command
     server_parser = subparsers.add_parser(
         'server',
         help='Manage llama-server',
-        description='Start, stop, or check status of the llama.cpp inference server.'
+        description='''Start, stop, or check status of the locally running OpenAI compatible LLM server ( llama.cpp ).
+
+Positional arguments:
+  start        Start local LLM server (llama-server)
+  stop         Stop local LLM server (llama-server)
+  status       Display running status of local LLM server
+  restart      Restart the local LLM server
+  list_models  List available models hosted from LLM server
+''',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic server operations
+  llf server start                             Start server with default model
+  llf server stop                              Stop the running server
+  llf server status                            Check server status
+  llf server restart                           Restart the server
+
+  # Server with options
+  llf server start --share --daemon            Start server in background (network accessible)
+
+  # Model selection
+  llf server start --gguf-dir model_GGUF --gguf-file my-model.gguf
+                                               Use local GGUF LLM model
+  llf server start --huggingface-model My_Local_Model
+                                               Use local HuggingFace LLM model
+
+Note: The locally running server requires llama.cpp compiled with llama-server binary.
+For setup instructions, see: https://github.com/ggml-org/llama.cpp
+    """
     )
     server_parser.add_argument(
         'action',
         choices=['start', 'stop', 'status', 'restart', 'list_models'],
-        help='Server action to perform'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom description instead
     )
 
     # Model selection for server
@@ -1109,7 +1175,21 @@ Actions:
 
 For backward compatibility, 'llf gui' is equivalent to 'llf gui start'.
 ''',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic GUI operations
+  llf gui                                      Start GUI (opens browser automatically)
+  llf gui start                                Same as above (explicit start)
+  llf gui stop                                 Stop running GUI daemon
+  llf gui status                               Check GUI daemon status
+
+  # GUI with options
+  llf gui start --share --key PASSWORD         Network-accessible GUI with authentication
+  llf gui start --daemon                       Start GUI in background (daemon mode)
+  llf gui start --port 8080                    Start GUI on custom port
+  llf gui start --no-browser                   Start GUI without opening browser
+    """
     )
     gui_parser.add_argument(
         'action',
@@ -1143,7 +1223,7 @@ For backward compatibility, 'llf gui' is equivalent to 'llf gui start'.
         '--key',
         type=str,
         metavar='SECRET',
-        help='Require authentication with a secret key to access the GUI (for start action)'
+        help='Require authentication with a secret key to access the GUI (for start action). SECRET is any string value of your choosing that will be used to log into the GUI interface'
     )
 
     gui_parser.add_argument(
@@ -1161,8 +1241,8 @@ For backward compatibility, 'llf gui' is equivalent to 'llf gui start'.
 actions:
   list                      List data stores
   list --attached           List only attached data stores
-  attach                    Attach data store to query
-  detach                    Detach data store
+  attach DATA_STORE_NAME    Attach data store to query
+  detach DATA_STORE_NAME    Detach data store
   info DATA_STORE_NAME      Show data store information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1170,12 +1250,12 @@ actions:
     datastore_parser.add_argument(
         'action',
         nargs='?',
-        help='Data store action to perform (placeholder for future functionality)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     datastore_parser.add_argument(
         'datastore_name',
         nargs='?',
-        help='Name of the data store (for info action)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     datastore_parser.add_argument(
         '--attached',
@@ -1192,8 +1272,8 @@ actions:
 actions:
   list                      List modules
   list --enabled            List only enabled modules
-  enable                    Enable a module
-  disable                   Disable a module
+  enable MODULE_NAME        Enable a module
+  disable MODULE_NAME       Disable a module
   info MODULE_NAME          Show module information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1201,12 +1281,12 @@ actions:
     module_parser.add_argument(
         'action',
         nargs='?',
-        help='Module action to perform (placeholder for future functionality)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     module_parser.add_argument(
         'module_name',
         nargs='?',
-        help='Name of the module (for info action)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     module_parser.add_argument(
         '--enabled',
@@ -1232,12 +1312,12 @@ actions:
     tool_parser.add_argument(
         'action',
         nargs='?',
-        help='Tool action to perform (placeholder for future functionality)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     tool_parser.add_argument(
         'tool_name',
         nargs='?',
-        help='Name of the tool (for enable, disable, and info actions)'
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
     )
     tool_parser.add_argument(
         '--enabled',

@@ -214,19 +214,57 @@ llf gui status
 ```
 
 **GUI Features:**
-- 💬 **Chat Tab**: Interactive conversation with multiline input support
-- 🖥️ **Server Tab**: Server management with auto-loading status
-- 📦 **Models Tab**: Model download and management
-- ⚙️ **Config (Infrastructure)**: Edit `configs/config.json`
-- 📝 **Config (Prompts)**: Edit `configs/config_prompt.json`
-- 📚 **Data Stores Tab**: Placeholder for future RAG features
-- 🔌 **Modules Tab**: Placeholder for future module management
-- 🛠️ **Tools Tab**: Placeholder for future tool management
+
+1. **💬 Chat Tab**
+   - Interactive conversation with streaming responses
+   - Multiline input support
+   - Clear chat and shutdown GUI buttons
+
+2. **🖥️ Server Tab**
+   - Server status with placeholder text ("Click on Check Status")
+   - Start/stop/restart controls with visual status indicators
+   - Real-time status updates (✅ running, ⭕ stopped, ❌ error)
+
+3. **📦 Models Tab**
+   - **Your Models:**
+     - Auto-loads model list on startup
+     - Radio selection with scroll support
+     - "Default" option + all downloaded models
+     - Click model to view details
+     - Refresh List button
+   - **Download Model:**
+     - Toggle between HuggingFace and URL methods
+     - Real-time progress with visual indicators (📥⏳🔄⚠️🎉✅)
+     - Status messages during and after download
+
+4. **⚙️ Configuration Tab**
+   - **Config.json:**
+     - Auto-loads on startup
+     - JSON editor with syntax highlighting
+     - Save with validation
+     - Reload with status feedback
+     - Create backups
+   - **Config_prompt.json:**
+     - Auto-loads on startup
+     - Save/reload with status messages
+     - Backup support
+
+5. **📚 Data Stores Tab** (Future: RAG features)
+6. **🔌 Modules Tab** (Future: extensions)
+7. **🛠️ Tools Tab** (Future: LLM capabilities)
 
 **Network Access:**
 - Default: Only accessible on localhost (127.0.0.1)
 - `--share`: Makes GUI accessible on local network (0.0.0.0)
 - `--key`: Adds authentication protection (recommended with --share)
+
+**GUI Improvements in v0.2.0:**
+- Auto-loading of configs and models on startup
+- Placeholder text for empty sections
+- Real-time download progress
+- Dual download methods (HuggingFace + URL)
+- Status feedback for all operations
+- Improved button layout and alignment
 
 ### 2. Chat (Default Command)
 
