@@ -1,0 +1,48 @@
+{
+  "name": "text2speech",
+  "display_name": "Text-to-Speech",
+  "version": "0.1.0",
+  "description": "Converts LLM text output to spoken audio using pyttsx3",
+  "author": "LLM Framework",
+  "type": "output_processor",
+  "enabled": false,
+  "dependencies": [
+    "pyttsx3>=2.90"
+  ],
+  "settings": {
+    "voice_id": null,
+    "rate": 200,
+    "volume": 1.0,
+    "auto_speak": true
+  },
+  "hooks": {
+    "on_llm_response_chunk": "process_chunk",
+    "on_llm_response_complete": "process_complete"
+  },
+  "configuration": {
+    "voice_id": {
+      "type": "string",
+      "description": "Voice ID to use (null for system default)",
+      "default": null
+    },
+    "rate": {
+      "type": "integer",
+      "description": "Speech rate in words per minute",
+      "default": 200,
+      "min": 50,
+      "max": 400
+    },
+    "volume": {
+      "type": "float",
+      "description": "Volume level from 0.0 to 1.0",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "auto_speak": {
+      "type": "boolean",
+      "description": "Automatically speak LLM responses when enabled",
+      "default": true
+    }
+  }
+}

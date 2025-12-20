@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-20",
+  "modules": {
+    "text2speech": {
+      "directory": "text2speech",
+      "enabled": false,
+      "info_file": "text2speech/module_info.json",
+      "main_module": "text2speech",
+      "loaded": false
+    }
+  },
+  "metadata": {
+    "description": "Registry of all available modules for the LLM Framework",
+    "note": "This file tracks which modules are available and their enabled/disabled status"
+  }
+}

@@ -16,6 +16,9 @@ requests>=2.31.0
 # Process management
 psutil>=5.9.0
 
+# Text-to-Speech (for modules)
+pyttsx3>=2.90
+
 # Testing
 pytest>=8.0.0
 pytest-cov>=4.1.0
