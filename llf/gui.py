@@ -97,6 +97,34 @@ class LLMFrameworkGUI:
         except Exception as e:
             logger.warning(f"Failed to load module registry: {e}")
 
+    def reload_modules(self) -> str:
+        """
+        Reload modules from registry (used when modules are enabled/disabled).
+
+        Returns:
+            Status message about reload
+        """
+        try:
+            # Clear existing TTS instance if it exists
+            if self.tts:
+                try:
+                    self.tts.stop()
+                except Exception:
+                    pass
+                self.tts = None
+
+            # Reload modules using the same logic as initialization
+            self._load_modules()
+
+            if self.tts:
+                return "✅ Text-to-Speech module reloaded and active"
+            else:
+                return "⭕ No modules currently enabled"
+
+        except Exception as e:
+            logger.error(f"Error reloading modules: {e}")
+            return f"❌ Error reloading modules: {str(e)}"
+
     def check_server_on_startup(self) -> Tuple[bool, str]:
         """
         Check if server needs to be started on GUI launch (like llf chat).
@@ -570,6 +598,162 @@ class LLMFrameworkGUI:
         else:
             return gr.update(visible=False), gr.update(visible=True)
 
+    # ===== Module Management Functions =====
+
+    def get_available_modules(self) -> List[str]:
+        """List available modules for Radio component."""
+        try:
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return []
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+            return [m.get('display_name', m.get('name', 'Unknown')) for m in modules]
+        except Exception as e:
+            logger.error(f"Error listing modules: {e}")
+            return []
+
+    def get_module_info(self, selected_module: str) -> str:
+        """Get detailed information about the selected module."""
+        try:
+            if not selected_module:
+                return "Select a module to view its details"
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return "❌ Modules registry not found"
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find module by display name or name
+            module = None
+            for m in modules:
+                if m.get('display_name') == selected_module or m.get('name') == selected_module:
+                    module = m
+                    break
+
+            if not module:
+                return f"❌ Module '{selected_module}' not found"
+
+            # Build info display
+            name = module.get('name', 'unknown')
+            display_name = module.get('display_name', name)
+            description = module.get('description', 'No description')
+            enabled = module.get('enabled', False)
+            version = module.get('version', '0.0.0')
+            module_type = module.get('type', 'unknown')
+            directory = module.get('directory', name)
+            dependencies = module.get('dependencies', [])
+
+            status = "✅ Enabled" if enabled else "⭕ Disabled"
+            module_path = Path(__file__).parent.parent / 'modules' / directory
+
+            info = f"""**{display_name}** ({name}) v{version}
+
+**Status:** {status}
+**Type:** {module_type}
+**Description:** {description}
+**Location:** {module_path}
+
+**Dependencies:**
+"""
+            if dependencies:
+                for dep in dependencies:
+                    info += f"  • {dep}\n"
+            else:
+                info += "  • None\n"
+
+            return info
+
+        except Exception as e:
+            return f"❌ Error getting module info: {str(e)}"
+
+    def enable_module(self, selected_module: str) -> Tuple[str, str]:
+        """Enable the selected module."""
+        try:
+            if not selected_module:
+                return "Please select a module first", self.get_module_info(selected_module)
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find and enable module
+            module_found = False
+            for module in modules:
+                if module.get('display_name') == selected_module or module.get('name') == selected_module:
+                    if module.get('enabled', False):
+                        return f"⚠️ Module '{selected_module}' is already enabled", self.get_module_info(selected_module)
+                    else:
+                        module['enabled'] = True
+                        module_found = True
+                        break
+
+            if not module_found:
+                return f"❌ Module '{selected_module}' not found", self.get_module_info(selected_module)
+
+            # Write back to registry
+            with open(modules_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            # Reload modules to apply changes immediately
+            reload_status = self.reload_modules()
+
+            return f"✅ Module '{selected_module}' enabled successfully\n{reload_status}", self.get_module_info(selected_module)
+
+        except Exception as e:
+            return f"❌ Error enabling module: {str(e)}", self.get_module_info(selected_module)
+
+    def disable_module(self, selected_module: str) -> Tuple[str, str]:
+        """Disable the selected module."""
+        try:
+            if not selected_module:
+                return "Please select a module first", self.get_module_info(selected_module)
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find and disable module
+            module_found = False
+            for module in modules:
+                if module.get('display_name') == selected_module or module.get('name') == selected_module:
+                    if not module.get('enabled', False):
+                        return f"⚠️ Module '{selected_module}' is already disabled", self.get_module_info(selected_module)
+                    else:
+                        module['enabled'] = False
+                        module_found = True
+                        break
+
+            if not module_found:
+                return f"❌ Module '{selected_module}' not found", self.get_module_info(selected_module)
+
+            # Write back to registry
+            with open(modules_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            # Reload modules to apply changes immediately
+            reload_status = self.reload_modules()
+
+            return f"✅ Module '{selected_module}' disabled successfully\n{reload_status}", self.get_module_info(selected_module)
+
+        except Exception as e:
+            return f"❌ Error disabling module: {str(e)}", self.get_module_info(selected_module)
+
     # ===== Main Interface Builder =====
 
     def create_interface(self) -> gr.Blocks:
@@ -873,7 +1057,40 @@ class LLMFrameworkGUI:
                     # ===== Modules Tab =====
                     with gr.Tab("🔌 Modules"):
                         gr.Markdown("### Module Management")
-                        gr.Markdown("For future use...")
+                        gr.Markdown("Enable or disable framework modules")
+
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Available Modules")
+                                modules_radio = gr.Radio(
+                                    label="Select a Module",
+                                    choices=self.get_available_modules(),
+                                    value=self.get_available_modules()[0] if self.get_available_modules() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Module Information")
+                                module_info_output = gr.Textbox(
+                                    label="Module Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_module_info(self.get_available_modules()[0] if self.get_available_modules() else "")
+                                )
+
+                        with gr.Row():
+                            enable_btn = gr.Button("Enable Module", variant="primary")
+                            disable_btn = gr.Button("Disable Module")
+
+                        module_status = gr.Textbox(
+                            label="Status",
+                            lines=2,
+                            interactive=False
+                        )
+
+                        # Module interactions
+                        modules_radio.change(self.get_module_info, modules_radio, module_info_output)
+                        enable_btn.click(self.enable_module, modules_radio, [module_status, module_info_output])
+                        disable_btn.click(self.disable_module, modules_radio, [module_status, module_info_output])
 
                     # ===== Tools Tab =====
                     with gr.Tab("🛠️ Tools"):

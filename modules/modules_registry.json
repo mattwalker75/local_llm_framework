@@ -8,7 +8,7 @@
       "description": "Converts LLM text output to spoken audio using pyttsx3",
       "type": "output_processor",
       "directory": "text2speech",
-      "enabled": true,
+      "enabled": false,
       "loaded": false,
       "info_file": "text2speech/module_info.json",
       "main_module": "text2speech",
