@@ -926,7 +926,7 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     parser.add_argument(
         '--version',
         action='version',
-        version='%(prog)s 0.1.0 (Phase 1)'
+        version='%(prog)s 0.2.0 (Phase 1)'
     )
 
     # Subcommands

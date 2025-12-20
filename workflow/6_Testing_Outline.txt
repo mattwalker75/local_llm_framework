@@ -90,28 +90,46 @@ Review Model ( llf model ):
       - PASS ( https://github.com/resemble-ai/chatterbox )
          - NOTE:  didn't know of external model to download
    - List downloaded models
+      - PASS
    - Get info of default local model
+      - PASS
    - Get info on non-default local model
+      - PASS
 
 Review GUI from the CLI ( llf gui ):
    - Start gui
+      - PASS
    - Start gui in daemon mode
+      - PASS
    - Start gui sharing on network
+      - PASS
    - Start gui with login
+      - PASS
    - Start gui with login and shared on network
+      - PASS
    - Start gui on custom port
+      - PASS
    - Start gui without starting a browser
+      - PASS
    - Check gui status
+      - PASS
    - Stop gui
+      - PASS
 
 Misc configurations:
    - Logging
       - Enable debug mode for chat via CLI
+         - PASS
       - Enable debug mode for server via CLI
-      - Download models to custom location
+         - PASS
+   - Download models to custom location
+      - PASS
    - Use custom config file when starting server
+      - PASS
    - Check version
+      - PASS
    - Change cache location
+      - PASS
 
 Following can not be reviews because they are not built out:
    - Data Store ( llf datastore )

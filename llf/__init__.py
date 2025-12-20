@@ -13,7 +13,7 @@ Current Features:
 Future: API server, GUI, voice I/O, tool execution
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "LLF Development Team"
 
 from .config import Config, get_config

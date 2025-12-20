@@ -169,7 +169,7 @@ class LLMFrameworkGUI:
 
             threading.Thread(target=delayed_shutdown, daemon=True).start()
 
-            return "✅ Shutting down GUI... The window will close shortly."
+            return "✅ Shutting down GUI... You can close this window."
         except Exception as e:
             return f"❌ Error during shutdown: {str(e)}"
 
