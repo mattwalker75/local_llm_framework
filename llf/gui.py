@@ -60,6 +60,43 @@ class LLMFrameworkGUI:
         self.started_server = False  # Track if GUI started the server
         self.auth_key = auth_key  # Authentication key (None = no auth required)
 
+        # Load module registry and initialize text-to-speech if enabled
+        self.tts = None
+        self._load_modules()
+
+    def _load_modules(self) -> None:
+        """Load enabled modules from registry."""
+        try:
+            # Path to modules registry
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Check if text2speech module is enabled
+            for module in modules:
+                if module.get('name') == 'text2speech' and module.get('enabled', False):
+                    try:
+                        # Import and initialize text2speech module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from text2speech import TextToSpeech
+                        self.tts = TextToSpeech()
+                        logger.info("Text-to-Speech module loaded and enabled for GUI")
+                    except Exception as e:
+                        logger.warning(f"Failed to load text2speech module: {e}")
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to load module registry: {e}")
+
     def check_server_on_startup(self) -> Tuple[bool, str]:
         """
         Check if server needs to be started on GUI launch (like llf chat).
@@ -138,6 +175,13 @@ class LLMFrameworkGUI:
                 # Update history with partial response
                 current_history = history + [{"role": "assistant", "content": response_text}]
                 yield "", current_history
+
+            # If TTS is enabled, speak the complete response
+            if self.tts and response_text:
+                try:
+                    self.tts.speak(response_text)
+                except Exception as e:
+                    logger.warning(f"Text-to-Speech error: {e}")
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
