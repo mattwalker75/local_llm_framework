@@ -101,15 +101,15 @@ The module can be configured through the `module_info.json` file:
 
 ## Integration with LLM Framework
 
-### Future Integration (Planned)
+The text-to-speech module is fully integrated with the LLM Framework and supports both CLI and GUI interfaces.
 
-Once integrated with the LLM Framework:
+### CLI Integration
 
 ```bash
 # Enable the module
 llf module enable text2speech
 
-# Start chat with TTS enabled
+# Start chat with TTS enabled (speaks responses on server)
 llf chat
 
 # Disable the module
@@ -117,7 +117,58 @@ llf module disable text2speech
 
 # View module info
 llf module info text2speech
+
+# List all modules
+llf module list
 ```
+
+### GUI Integration
+
+The module works seamlessly with the GUI in two modes:
+
+**Local Mode (default):**
+```bash
+# Start GUI locally
+llf gui start
+
+# TTS uses pyttsx3 to speak responses on the server machine
+# Audio plays through the server's speakers
+```
+
+**Share Mode (network access):**
+```bash
+# Start GUI with network sharing
+llf gui start --share
+
+# TTS uses Web Speech API in the browser
+# Audio plays on the client's device, not the server
+# Supports all major modern browsers (Chrome, Firefox, Safari, Edge)
+```
+
+### How TTS Modes Work
+
+**Local Mode:**
+- Uses **pyttsx3** for server-side text-to-speech
+- Audio plays on the machine running the LLM server
+- High-quality system voices
+- Works offline
+- Best for local usage
+
+**Share Mode:**
+- Uses **Web Speech API** for browser-based text-to-speech
+- Audio plays on the client's browser/device
+- Uses client's system voices
+- Requires modern browser (96%+ compatibility)
+- Ideal for remote/network access via `--share`
+- Gracefully degrades if browser doesn't support TTS
+
+### Module Management GUI
+
+You can also enable/disable the module from the GUI:
+1. Navigate to the **Modules** tab
+2. Select "text2speech" from the list
+3. Click **Enable** or **Disable**
+4. Changes take effect immediately (no restart required)
 
 ## Dependencies
 
@@ -206,7 +257,16 @@ Unit tests:
 
 Part of the Local LLM Framework project.
 
-## Version
+## Version History
+
+**0.2.0** - Share Mode Support (2025-12-20)
+- Added browser-based TTS for share mode (`llf gui start --share`)
+- Hybrid TTS architecture: pyttsx3 for local, Web Speech API for remote
+- Browser TTS with 96%+ browser compatibility
+- 8 additional unit tests for share mode functionality
+- Total: 32 unit tests (24 TTS module + 8 GUI share mode)
+- Full CLI and GUI integration
+- Dynamic module reload without restart
 
 **0.1.0** - Initial release
 - Text-to-speech using pyttsx3
@@ -214,3 +274,4 @@ Part of the Local LLM Framework project.
 - 24 unit tests with 96% coverage
 - Standalone test scripts
 - Voice management utilities
+- CLI and GUI integration

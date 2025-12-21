@@ -666,7 +666,7 @@ class TestStartGUI:
 
             start_gui()
 
-            mock_gui_class.assert_called_once_with(config=None, prompt_config=None, auth_key=None)
+            mock_gui_class.assert_called_once_with(config=None, prompt_config=None, auth_key=None, share=False)
             # Check that launch was called (with no kwargs by default)
             mock_gui_instance.launch.assert_called_once()
 
@@ -691,7 +691,8 @@ class TestStartGUI:
             mock_gui_class.assert_called_once_with(
                 config=mock_config,
                 prompt_config=mock_prompt_config,
-                auth_key="test_key"
+                auth_key="test_key",
+                share=False
             )
             mock_gui_instance.launch.assert_called_once_with(
                 server_name="0.0.0.0",
@@ -897,3 +898,126 @@ class TestNewGUIMethods:
             result = results[-1] if results else ""
             assert "error" in result.lower()
             assert "download failed" in result.lower()
+
+
+class TestShareModeTTS:
+    """Test share mode TTS functionality."""
+
+    @pytest.fixture
+    def temp_config(self, tmp_path):
+        """Create mock config for testing."""
+        config_file = tmp_path / "config.json"
+        config_data = {
+            "models_dir": str(tmp_path / "models"),
+            "external_api": {
+                "provider": "openai",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-3.5-turbo"
+            }
+        }
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        return Config(config_file)
+
+    @pytest.fixture
+    def temp_prompt_config(self, tmp_path):
+        """Create mock prompt config for testing."""
+        config_file = tmp_path / "config_prompt.json"
+        config_data = {
+            "system_prompt": "Test system prompt",
+            "conversation_format": "standard"
+        }
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        return PromptConfig(config_file)
+
+    def test_initialization_with_share_mode(self, temp_config, temp_prompt_config):
+        """Test GUI initialization with share mode enabled."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=True)
+        assert gui.is_share_mode is True
+
+    def test_initialization_without_share_mode(self, temp_config, temp_prompt_config):
+        """Test GUI initialization without share mode (default)."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config)
+        assert gui.is_share_mode is False
+
+    def test_chat_respond_share_mode_no_tts(self, temp_config, temp_prompt_config):
+        """Test chat_respond in share mode without TTS enabled."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=True)
+        gui.tts = None  # No TTS module
+
+        with patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
+            results = list(gui.chat_respond("test", []))
+            # Should complete without errors
+            assert len(results) > 0
+            final_result = results[-1]
+            assert final_result[0] == ""  # Message cleared
+            assert len(final_result[1]) == 2  # User + assistant messages
+
+    def test_chat_respond_share_mode_with_tts(self, temp_config, temp_prompt_config):
+        """Test chat_respond in share mode with TTS enabled (should not call pyttsx3)."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=True)
+
+        # Mock TTS module
+        mock_tts = Mock()
+        gui.tts = mock_tts
+
+        with patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
+            results = list(gui.chat_respond("test", []))
+
+            # Should complete without errors
+            assert len(results) > 0
+
+            # In share mode, pyttsx3.speak should NOT be called (browser handles TTS)
+            mock_tts.speak.assert_not_called()
+
+    def test_chat_respond_local_mode_with_tts(self, temp_config, temp_prompt_config):
+        """Test chat_respond in local mode with TTS enabled (should call pyttsx3)."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=False)
+
+        # Mock TTS module
+        mock_tts = Mock()
+        gui.tts = mock_tts
+
+        with patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
+            results = list(gui.chat_respond("test", []))
+
+            # Should complete without errors
+            assert len(results) > 0
+
+            # In local mode, pyttsx3.speak SHOULD be called
+            mock_tts.speak.assert_called_once_with("Hello world")
+
+    def test_start_gui_with_share_true(self, temp_config, temp_prompt_config):
+        """Test that start_gui correctly passes share=True to GUI constructor."""
+        with patch('llf.gui.get_config', return_value=temp_config), \
+             patch('llf.gui.get_prompt_config', return_value=temp_prompt_config), \
+             patch.object(LLMFrameworkGUI, 'launch') as mock_launch:
+
+            start_gui(share=True)
+
+            # Verify launch was called
+            mock_launch.assert_called_once()
+
+    def test_create_interface_share_mode(self, temp_config, temp_prompt_config):
+        """Test that create_interface adds JavaScript TTS handlers in share mode."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=True)
+
+        # Mock TTS module
+        mock_tts = Mock()
+        gui.tts = mock_tts
+
+        # Create interface should not raise errors
+        interface = gui.create_interface()
+        assert interface is not None
+
+    def test_create_interface_local_mode(self, temp_config, temp_prompt_config):
+        """Test that create_interface works in local mode without JavaScript handlers."""
+        gui = LLMFrameworkGUI(config=temp_config, prompt_config=temp_prompt_config, share=False)
+
+        # Create interface should not raise errors
+        interface = gui.create_interface()
+        assert interface is not None

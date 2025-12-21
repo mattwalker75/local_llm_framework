@@ -43,7 +43,7 @@ class LLMFrameworkGUI:
     - Config: Edit config.json and config_prompt.json
     """
 
-    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None):
+    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None, share: bool = False):
         """
         Initialize GUI.
 
@@ -51,6 +51,7 @@ class LLMFrameworkGUI:
             config: Configuration instance (defaults to global config)
             prompt_config: Prompt configuration instance (defaults to global)
             auth_key: Optional authentication key for securing GUI access
+            share: Whether GUI is running in share mode (--share flag)
         """
         self.config = config or get_config()
         self.prompt_config = prompt_config or get_prompt_config()
@@ -59,6 +60,7 @@ class LLMFrameworkGUI:
         self.chat_history: List[Tuple[str, str]] = []
         self.started_server = False  # Track if GUI started the server
         self.auth_key = auth_key  # Authentication key (None = no auth required)
+        self.is_share_mode = share  # Track if running in share mode
 
         # Load module registry and initialize text-to-speech if enabled
         self.tts = None
@@ -204,12 +206,15 @@ class LLMFrameworkGUI:
                 current_history = history + [{"role": "assistant", "content": response_text}]
                 yield "", current_history
 
-            # If TTS is enabled, speak the complete response
+            # If TTS is enabled, handle based on mode
             if self.tts and response_text:
-                try:
-                    self.tts.speak(response_text)
-                except Exception as e:
-                    logger.warning(f"Text-to-Speech error: {e}")
+                if not self.is_share_mode:
+                    # Local mode: Use pyttsx3 server-side TTS
+                    try:
+                        self.tts.speak(response_text)
+                    except Exception as e:
+                        logger.warning(f"Text-to-Speech error: {e}")
+                # Note: Share mode TTS is handled by browser JavaScript
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
@@ -870,7 +875,78 @@ class LLMFrameworkGUI:
     
                         # Chat interactions
                         # Submit button always works
-                        submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+                        submit_event = submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+
+                        # Add browser TTS for share mode
+                        if self.is_share_mode and self.tts:
+                            submit_event.then(
+                                None,
+                                None,
+                                None,
+                                js="""
+                                () => {
+                                    console.log('[TTS] Browser TTS triggered');
+
+                                    if (!('speechSynthesis' in window)) {
+                                        console.warn('[TTS] Web Speech API not supported');
+                                        return;
+                                    }
+
+                                    console.log('[TTS] Web Speech API available');
+
+                                    // Wait for DOM to update, then get last message
+                                    setTimeout(() => {
+                                        console.log('[TTS] Looking for chatbot messages...');
+
+                                        // Try multiple selectors to find messages
+                                        let messages = [];
+
+                                        // Try Gradio's chatbot message structure
+                                        messages = document.querySelectorAll('.message.bot, .bot, [data-testid="bot"], .chatbot .message:last-child');
+                                        console.log('[TTS] Found ' + messages.length + ' potential message elements');
+
+                                        if (messages.length === 0) {
+                                            // Fallback: look for any message in chatbot
+                                            const chatbot = document.querySelector('.chatbot');
+                                            if (chatbot) {
+                                                messages = chatbot.querySelectorAll('.message, p, div[class*="message"]');
+                                                console.log('[TTS] Fallback found ' + messages.length + ' elements');
+                                            }
+                                        }
+
+                                        if (messages.length === 0) {
+                                            console.warn('[TTS] No messages found in chatbot');
+                                            return;
+                                        }
+
+                                        const lastMessage = messages[messages.length - 1];
+                                        const text = lastMessage.textContent || lastMessage.innerText;
+                                        console.log('[TTS] Last message text:', text.substring(0, 100));
+
+                                        if (!text || text.trim().length === 0) {
+                                            console.warn('[TTS] Message text is empty');
+                                            return;
+                                        }
+
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        // Create and speak utterance
+                                        console.log('[TTS] Speaking message...');
+                                        const utterance = new SpeechSynthesisUtterance(text);
+                                        utterance.rate = 1.0;
+                                        utterance.pitch = 1.0;
+                                        utterance.volume = 1.0;
+
+                                        utterance.onstart = () => console.log('[TTS] Speech started');
+                                        utterance.onend = () => console.log('[TTS] Speech ended');
+                                        utterance.onerror = (e) => console.error('[TTS] Speech error:', e);
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }, 1000);
+                                }
+                                """
+                            )
 
                         # Enter key submission - conditional based on checkbox
                         # When disabled, we want multiline input (Enter creates newline)
@@ -887,11 +963,82 @@ class LLMFrameworkGUI:
                                 # Gradio cleared the textbox, so we put the text back with a newline
                                 yield message + "\n", history
 
-                        msg.submit(
+                        enter_event = msg.submit(
                             handle_enter_key,
                             inputs=[msg, chatbot, submit_on_enter],
                             outputs=[msg, chatbot]
                         )
+
+                        # Add browser TTS for share mode on Enter key
+                        if self.is_share_mode and self.tts:
+                            enter_event.then(
+                                None,
+                                None,
+                                None,
+                                js="""
+                                () => {
+                                    console.log('[TTS] Browser TTS triggered (Enter key)');
+
+                                    if (!('speechSynthesis' in window)) {
+                                        console.warn('[TTS] Web Speech API not supported');
+                                        return;
+                                    }
+
+                                    console.log('[TTS] Web Speech API available');
+
+                                    // Wait for DOM to update, then get last message
+                                    setTimeout(() => {
+                                        console.log('[TTS] Looking for chatbot messages...');
+
+                                        // Try multiple selectors to find messages
+                                        let messages = [];
+
+                                        // Try Gradio's chatbot message structure
+                                        messages = document.querySelectorAll('.message.bot, .bot, [data-testid="bot"], .chatbot .message:last-child');
+                                        console.log('[TTS] Found ' + messages.length + ' potential message elements');
+
+                                        if (messages.length === 0) {
+                                            // Fallback: look for any message in chatbot
+                                            const chatbot = document.querySelector('.chatbot');
+                                            if (chatbot) {
+                                                messages = chatbot.querySelectorAll('.message, p, div[class*="message"]');
+                                                console.log('[TTS] Fallback found ' + messages.length + ' elements');
+                                            }
+                                        }
+
+                                        if (messages.length === 0) {
+                                            console.warn('[TTS] No messages found in chatbot');
+                                            return;
+                                        }
+
+                                        const lastMessage = messages[messages.length - 1];
+                                        const text = lastMessage.textContent || lastMessage.innerText;
+                                        console.log('[TTS] Last message text:', text.substring(0, 100));
+
+                                        if (!text || text.trim().length === 0) {
+                                            console.warn('[TTS] Message text is empty');
+                                            return;
+                                        }
+
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        // Create and speak utterance
+                                        console.log('[TTS] Speaking message...');
+                                        const utterance = new SpeechSynthesisUtterance(text);
+                                        utterance.rate = 1.0;
+                                        utterance.pitch = 1.0;
+                                        utterance.volume = 1.0;
+
+                                        utterance.onstart = () => console.log('[TTS] Speech started');
+                                        utterance.onend = () => console.log('[TTS] Speech ended');
+                                        utterance.onerror = (e) => console.error('[TTS] Speech error:', e);
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }, 1000);
+                                }
+                                """
+                            )
 
                         clear.click(self.clear_chat, None, chatbot)
     
@@ -1158,5 +1305,7 @@ def start_gui(config: Optional[Config] = None, prompt_config: Optional[PromptCon
         auth_key: Optional authentication key for securing GUI access
         **kwargs: Additional arguments to pass to Gradio launch()
     """
-    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config, auth_key=auth_key)
+    # Extract share parameter from kwargs to pass to GUI constructor
+    share = kwargs.get('share', False)
+    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config, auth_key=auth_key, share=share)
     gui.launch(**kwargs)

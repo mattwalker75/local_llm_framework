@@ -8,13 +8,31 @@
       "description": "Converts LLM text output to spoken audio using pyttsx3",
       "type": "output_processor",
       "directory": "text2speech",
-      "enabled": false,
+      "enabled": true,
       "loaded": false,
       "info_file": "text2speech/module_info.json",
       "main_module": "text2speech",
       "version": "0.1.0",
       "dependencies": [
         "pyttsx3>=2.90"
+      ]
+    },
+    {
+      "name": "speech2text",
+      "display_name": "Speech-to-Text",
+      "description": "Converts user voice to text input for the LLM using openai-whisper",
+      "type": "input_processor",
+      "directory": "speech2text",
+      "enabled": false,
+      "loaded": false,
+      "info_file": "speech2text/module_info.json",
+      "main_module": "speech2text",
+      "version": "0.1.0",
+      "dependencies": [
+        "sounddevice>=0.5.3",
+        "scipy>=1.16.3",
+        "openai-whisper>=20250625",
+        "brew install ffmpeg"
       ]
     }
   ],
