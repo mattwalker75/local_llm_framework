@@ -124,7 +124,7 @@ class SpeechToText:
             temp_wav_path = temp_wav.name
 
         model = whisper.load_model("base")
-        result = model.transcribe(temp_wav_path)
+        result = model.transcribe(temp_wav_path, fp16=False)
 
         os.remove(temp_wav_path)
 
