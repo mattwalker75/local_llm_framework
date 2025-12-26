@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 import signal
 from datetime import datetime
+import json
 
 from rich.console import Console
 from rich.panel import Panel
@@ -57,9 +58,17 @@ class CLI:
         self.no_server_start = no_server_start
         self.started_server = False  # Track if this instance started the server
 
-        # Setup signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        # Load module registry and initialize text-to-speech and speech-to-text if enabled
+        self.tts = None
+        self.stt = None
+        self._load_modules()
+
+        # Setup signal handlers for graceful shutdown (skip during testing)
+        # Pytest's coverage plugin interferes with signal handlers during teardown,
+        # so we skip registration when running under pytest
+        if not os.environ.get('PYTEST_CURRENT_TEST'):
+            signal.signal(signal.SIGINT, self._signal_handler)
+            signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, _signum, _frame):
         """Handle shutdown signals gracefully."""
@@ -67,6 +76,63 @@ class CLI:
         self.running = False
         self.shutdown()
         sys.exit(0)
+
+    def _load_modules(self) -> None:
+        """Load enabled modules from registry."""
+        try:
+            # Path to modules registry
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Check if text2speech module is enabled
+            for module in modules:
+                if module.get('name') == 'text2speech' and module.get('enabled', False):
+                    try:
+                        # Import and initialize text2speech module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from text2speech import TextToSpeech
+
+                        # Load settings from module info
+                        settings = module.get('settings', {})
+                        self.tts = TextToSpeech(
+                            voice_id=settings.get('voice_id'),
+                            rate=settings.get('rate', 200),
+                            volume=settings.get('volume', 1.0)
+                        )
+                        logger.info("Text-to-Speech module loaded and enabled")
+                    except Exception as e:
+                        logger.warning(f"Failed to load text2speech module: {e}")
+                    break
+
+            # Check if speech2text module is enabled
+            for module in modules:
+                if module.get('name') == 'speech2text' and module.get('enabled', False):
+                    try:
+                        # Import and initialize speech2text module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from speech2text import SpeechToText
+                        self.stt = SpeechToText()
+                        logger.info("Speech-to-Text module loaded and enabled")
+                    except Exception as e:
+                        logger.warning(f"Failed to load speech2text module: {e}")
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to load module registry: {e}")
 
     def print_welcome(self) -> None:
         """Print welcome message."""
@@ -84,13 +150,26 @@ class CLI:
                 # If query fails, fall back to config model name
                 pass
 
+        # Build mode description
+        mode_description = "Interactive Chat"
+        if self.stt:
+            mode_description += " (Voice Input)"
+        if self.tts:
+            if self.stt:
+                mode_description += " + (Voice Output)"
+            else:
+                mode_description += " (Voice Output)"
+
+        # Build input instructions
+        input_instruction = "Speak your messages (pause when done)." if self.stt else "Type your messages and press Enter to send."
+
         welcome_text = f"""
 # Local LLM Framework
 
 **Model:** {model_display}
-**Mode:** Interactive Chat
+**Mode:** {mode_description}
 
-Type your messages and press Enter to send.
+{input_instruction}
 For multiline input, type `START`, paste your content, then type `END`.
 
 Commands:
@@ -124,8 +203,18 @@ This is useful for pasting content from PDFs, documents, or code files.
 
 # Chat Mode
 
-Simply type your message and press Enter to chat with the LLM.
-        """
+"""
+        # Add voice or text input instructions based on STT status
+        if self.stt:
+            help_text += "Simply speak your message and pause when done. The system will detect silence and process your speech.\n\n"
+            help_text += """# Voice Input
+
+Speech-to-Text is enabled. Speak clearly and pause for 1.5 seconds when done.
+If STT fails, the system will automatically fall back to keyboard input.
+"""
+        else:
+            help_text += "Simply type your message and press Enter to chat with the LLM.\n"
+
         console.print(Panel(Markdown(help_text), title="Help", border_style="blue"))
 
     def print_info(self) -> None:
@@ -273,8 +362,18 @@ Simply type your message and press Enter to chat with the LLM.
                 # Print "You:" label on separate line with blank line after
                 console.print("\n[green]You[/green]:\n")
 
-                # Get user input
-                user_input = input()
+                # Get user input - use STT if enabled, otherwise keyboard input
+                if self.stt:
+                    try:
+                        console.print("[dim]🎤 Listening... (speak now, pause when done)[/dim]")
+                        user_input = self.stt.listen()
+                        console.print(f"[dim]Transcribed:[/dim] {user_input}")
+                    except Exception as e:
+                        logger.warning(f"Speech-to-Text error: {e}")
+                        console.print("[yellow]⚠️  STT failed, falling back to keyboard input[/yellow]")
+                        user_input = input()
+                else:
+                    user_input = input()
 
                 if not user_input.strip():
                     continue
@@ -353,6 +452,22 @@ Simply type your message and press Enter to chat with the LLM.
                     # Print separator line after response
                     console.print("\n[dim]" + "─" * 60 + "[/dim]")
 
+                    # If TTS is enabled, speak the response BEFORE next loop iteration
+                    # This ensures STT doesn't start listening until TTS finishes
+                    if self.tts:
+                        try:
+                            # If STT is also enabled, ensure audio clearance before next input
+                            if self.stt:
+                                from .tts_stt_utils import wait_for_tts_clearance
+                                console.print(f"[dim]🔊 Speaking...[/dim]")
+                                wait_for_tts_clearance(self.tts, self.stt, full_response)
+                                console.print(f"[dim]✅ Audio cleared, ready for next input[/dim]")
+                            else:
+                                # No STT enabled, just speak normally
+                                self.tts.speak(full_response)
+                        except Exception as e:
+                            logger.warning(f"Text-to-Speech error: {e}")
+
                 except Exception as e:
                     console.print(f"[red]Error generating response: {e}[/red]")
                     logger.error(f"Generation error: {e}")
@@ -403,6 +518,13 @@ Simply type your message and press Enter to chat with the LLM.
 
             # Print response
             console.print(response)
+
+            # If TTS is enabled, speak the response
+            if self.tts:
+                try:
+                    self.tts.speak(response)
+                except Exception as e:
+                    logger.warning(f"Text-to-Speech error: {e}")
 
             return 0
 
@@ -863,8 +985,10 @@ Examples:
   # Module management
   llf module list                  List modules
   llf module list --enabled        List only enabled modules
-  llf module enable                Enable a module
-  llf module disable               Disable a module
+  llf module enable MODULE_NAME    Enable a module
+  llf module enable all            Enable all modules
+  llf module disable MODULE_NAME   Disable a module
+  llf module disable all           Disable all modules
   llf module info MODULE_NAME      Show module information
 
   # Tool management
@@ -1273,7 +1397,9 @@ actions:
   list                      List modules
   list --enabled            List only enabled modules
   enable MODULE_NAME        Enable a module
+  enable all                Enable all modules
   disable MODULE_NAME       Disable a module
+  disable all               Disable all modules
   info MODULE_NAME          Show module information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1650,16 +1776,238 @@ finally:
         return 0
 
     elif args.command == 'module':
-        # Module Management (placeholder for future functionality)
-        console.print("[yellow]Module Management[/yellow]")
-        console.print("This command is reserved for future functionality.")
-        console.print("\n[dim]Planned features:[/dim]")
-        console.print("  • Install and manage framework modules")
-        console.print("  • Enable/disable plugins and extensions")
-        console.print("  • Module configuration and updates")
-        console.print("  • List available and installed modules")
-        if args.action:
-            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        # Module Management
+        action = args.action if args.action else 'list'
+
+        # Path to modules registry
+        modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+        if action == 'list':
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Filter by enabled status if requested
+                if args.enabled:
+                    modules = [m for m in modules if m.get('enabled', False)]
+
+                if not modules:
+                    if args.enabled:
+                        console.print("No enabled modules found")
+                    else:
+                        console.print("No modules available")
+                else:
+                    for module in modules:
+                        display_name = module.get('display_name', module.get('name', 'unknown'))
+                        enabled = module.get('enabled', False)
+                        status = "enabled" if enabled else "disabled"
+                        console.print(f"{display_name:<30} {status}")
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read modules registry: {e}")
+                return 1
+
+        elif action == 'enable':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for enable command")
+                console.print("[dim]Usage: llf module enable MODULE_NAME[/dim]")
+                console.print("[dim]       llf module enable all[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Handle "all" keyword
+                if args.module_name.lower() == 'all':
+                    enabled_count = 0
+                    already_enabled = []
+                    for module in modules:
+                        if module.get('enabled', False):
+                            already_enabled.append(module.get('name'))
+                        else:
+                            module['enabled'] = True
+                            enabled_count += 1
+
+                    # Write back to registry
+                    with open(modules_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    if enabled_count > 0:
+                        console.print(f"[green]Enabled {enabled_count} module(s) successfully[/green]")
+                    if already_enabled:
+                        console.print(f"[dim]Already enabled: {', '.join(already_enabled)}[/dim]")
+                    if enabled_count == 0 and not already_enabled:
+                        console.print("[yellow]No modules available to enable[/yellow]")
+                else:
+                    # Find the module by name or display_name
+                    module_found = False
+                    for module in modules:
+                        if module.get('name') == args.module_name or module.get('display_name') == args.module_name:
+                            if module.get('enabled', False):
+                                console.print(f"[yellow]Module '{args.module_name}' is already enabled[/yellow]")
+                            else:
+                                module['enabled'] = True
+                                # Write back to registry
+                                with open(modules_registry_path, 'w') as f:
+                                    json.dump(registry, f, indent=2)
+                                console.print(f"[green]Module '{args.module_name}' enabled successfully[/green]")
+                            module_found = True
+                            break
+
+                    if not module_found:
+                        console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to enable module: {e}")
+                return 1
+
+        elif action == 'disable':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for disable command")
+                console.print("[dim]Usage: llf module disable MODULE_NAME[/dim]")
+                console.print("[dim]       llf module disable all[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Handle "all" keyword
+                if args.module_name.lower() == 'all':
+                    disabled_count = 0
+                    already_disabled = []
+                    for module in modules:
+                        if not module.get('enabled', False):
+                            already_disabled.append(module.get('name'))
+                        else:
+                            module['enabled'] = False
+                            disabled_count += 1
+
+                    # Write back to registry
+                    with open(modules_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    if disabled_count > 0:
+                        console.print(f"[green]Disabled {disabled_count} module(s) successfully[/green]")
+                    if already_disabled:
+                        console.print(f"[dim]Already disabled: {', '.join(already_disabled)}[/dim]")
+                    if disabled_count == 0 and not already_disabled:
+                        console.print("[yellow]No modules available to disable[/yellow]")
+                else:
+                    # Find the module by name or display_name
+                    module_found = False
+                    for module in modules:
+                        if module.get('name') == args.module_name or module.get('display_name') == args.module_name:
+                            if not module.get('enabled', False):
+                                console.print(f"[yellow]Module '{args.module_name}' is already disabled[/yellow]")
+                            else:
+                                module['enabled'] = False
+                                # Write back to registry
+                                with open(modules_registry_path, 'w') as f:
+                                    json.dump(registry, f, indent=2)
+                                console.print(f"[green]Module '{args.module_name}' disabled successfully[/green]")
+                            module_found = True
+                            break
+
+                    if not module_found:
+                        console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to disable module: {e}")
+                return 1
+
+        elif action == 'info':
+            if not args.module_name:
+                console.print("[red]Error:[/red] Module name required for info command")
+                console.print("[dim]Usage: llf module info MODULE_NAME[/dim]")
+                return 1
+
+            # Read modules registry
+            try:
+                with open(modules_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                modules = registry.get('modules', [])
+
+                # Find the module by name or display_name
+                module = None
+                for m in modules:
+                    if m.get('name') == args.module_name or m.get('display_name') == args.module_name:
+                        module = m
+                        break
+
+                if not module:
+                    console.print(f"[red]Error:[/red] Module '{args.module_name}' not found")
+                    return 1
+
+                # Display detailed module information
+                name = module.get('name', 'unknown')
+                display_name = module.get('display_name', name)
+                description = module.get('description', 'No description')
+                enabled = module.get('enabled', False)
+                version = module.get('version', '0.0.0')
+                module_type = module.get('type', 'unknown')
+                directory = module.get('directory', name)
+
+                # Calculate module path relative to project root
+                module_path = Path(__file__).parent.parent / 'modules' / directory
+
+                # Status indicator
+                status = "[green]✓ enabled[/green]" if enabled else "[dim]○ disabled[/dim]"
+
+                console.print()
+                console.print(f"[bold]{display_name}[/bold] ({name}) [dim]v{version}[/dim]")
+                console.print(f"  {status}")
+                console.print(f"  [dim]Type:[/dim] {module_type}")
+                console.print(f"  [dim]Description:[/dim] {description}")
+                console.print(f"  [dim]Location:[/dim] {module_path}")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Modules registry not found at {modules_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in modules registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read module info: {e}")
+                return 1
+
+        else:
+            console.print(f"[red]Error:[/red] Unknown action '{action}'")
+            console.print("[dim]Valid actions: list, enable, disable, info[/dim]")
+            return 1
+
         return 0
 
     elif args.command == 'tool':

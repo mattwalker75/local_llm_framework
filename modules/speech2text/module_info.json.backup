@@ -1,0 +1,27 @@
+{
+  "name": "speech2text",
+  "display_name": "Speech-to-Text",
+  "version": "0.1.0",
+  "description": "Converts spoken audio to text using speech recognition",
+  "author": "LLM Framework",
+  "type": "input_processor",
+  "enabled": false,
+  "dependencies": [
+    "sounddevice>=0.5.3",
+    "scipy>=1.16.3",
+    "openai-whisper>=2025062"
+  ],
+  "settings": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "dtype": "int16",
+    "max_duration": 60,
+    "silence_timeout": 1.5,
+    "silence_threshold": 500,
+    "chunk_duration": 0.1
+  },
+  "hooks": {
+    "on_llm_response_chunk": "process_chunk",
+    "on_llm_response_complete": "process_complete"
+  }
+}

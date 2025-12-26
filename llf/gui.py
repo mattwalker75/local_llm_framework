@@ -43,7 +43,7 @@ class LLMFrameworkGUI:
     - Config: Edit config.json and config_prompt.json
     """
 
-    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None):
+    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None, share: bool = False):
         """
         Initialize GUI.
 
@@ -51,6 +51,7 @@ class LLMFrameworkGUI:
             config: Configuration instance (defaults to global config)
             prompt_config: Prompt configuration instance (defaults to global)
             auth_key: Optional authentication key for securing GUI access
+            share: Whether GUI is running in share mode (--share flag)
         """
         self.config = config or get_config()
         self.prompt_config = prompt_config or get_prompt_config()
@@ -59,6 +60,126 @@ class LLMFrameworkGUI:
         self.chat_history: List[Tuple[str, str]] = []
         self.started_server = False  # Track if GUI started the server
         self.auth_key = auth_key  # Authentication key (None = no auth required)
+        self.is_share_mode = share  # Track if running in share mode
+
+        # Load module registry and initialize text-to-speech and speech-to-text if enabled
+        self.tts = None
+        self.stt = None
+        self.tts_enabled_state = True  # Track if user wants TTS enabled (separate from module availability)
+        self.listening_mode_active = False  # Track if continuous listening mode is active
+        self._load_modules()
+
+    def _load_modules(self) -> None:
+        """Load enabled modules from registry."""
+        try:
+            # Path to modules registry
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Check if text2speech module is enabled
+            for module in modules:
+                if module.get('name') == 'text2speech' and module.get('enabled', False):
+                    try:
+                        # Import and initialize text2speech module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from text2speech import TextToSpeech
+
+                        # Load settings from module info
+                        settings = module.get('settings', {})
+                        self.tts = TextToSpeech(
+                            voice_id=settings.get('voice_id'),
+                            rate=settings.get('rate', 200),
+                            volume=settings.get('volume', 1.0)
+                        )
+                        logger.info("Text-to-Speech module loaded and enabled for GUI")
+                    except Exception as e:
+                        logger.warning(f"Failed to load text2speech module: {e}")
+                    break
+
+            # Check if speech2text module is enabled
+            for module in modules:
+                if module.get('name') == 'speech2text' and module.get('enabled', False):
+                    try:
+                        # Import and initialize speech2text module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from speech2text import SpeechToText
+                        self.stt = SpeechToText()
+                        logger.info("Speech-to-Text module loaded and enabled for GUI")
+                    except Exception as e:
+                        logger.warning(f"Failed to load speech2text module: {e}")
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to load module registry: {e}")
+
+    def reload_modules(self):
+        """
+        Reload modules from registry (used when modules are enabled/disabled).
+
+        Returns:
+            Tuple of (status_message, tts_checkbox_visible, voice_controls_row_visible, stop_button_visible)
+        """
+        try:
+            # Stop listening mode if active
+            self.listening_mode_active = False
+
+            # Clear existing TTS instance if it exists
+            if self.tts:
+                try:
+                    self.tts.stop()
+                except Exception:
+                    pass
+                self.tts = None
+
+            # Clear existing STT instance if it exists
+            if self.stt:
+                self.stt = None
+
+            # Reload modules using the same logic as initialization
+            self._load_modules()
+
+            # Build status message
+            active_modules = []
+            if self.tts:
+                active_modules.append("Text-to-Speech")
+            if self.stt:
+                active_modules.append("Speech-to-Text")
+
+            if active_modules:
+                status_msg = f"✅ Modules reloaded: {', '.join(active_modules)}"
+            else:
+                status_msg = "⭕ No modules currently enabled"
+
+            # Return UI visibility updates
+            return (
+                status_msg,
+                gr.update(visible=self.tts is not None),  # TTS checkbox
+                gr.update(visible=self.stt is not None),  # Voice controls row
+                gr.update(visible=False)  # Stop listening button (hide on reload)
+            )
+
+        except Exception as e:
+            logger.error(f"Error reloading modules: {e}")
+            return (
+                f"❌ Error reloading modules: {str(e)}",
+                gr.update(),  # Keep TTS checkbox as-is
+                gr.update(),  # Keep voice controls as-is
+                gr.update()   # Keep stop button as-is
+            )
 
     def check_server_on_startup(self) -> Tuple[bool, str]:
         """
@@ -138,6 +259,25 @@ class LLMFrameworkGUI:
                 # Update history with partial response
                 current_history = history + [{"role": "assistant", "content": response_text}]
                 yield "", current_history
+
+            # If TTS is enabled AND user has it toggled on, handle based on mode
+            if self.tts and self.tts_enabled_state and response_text:
+                if not self.is_share_mode:
+                    # Local mode: Use platform-appropriate TTS backend
+                    try:
+                        # If STT is also enabled, ensure audio clearance before next input
+                        if self.stt:
+                            from .tts_stt_utils import wait_for_tts_clearance
+                            logger.info("Speaking and waiting for audio clearance...")
+                            wait_for_tts_clearance(self.tts, self.stt, response_text)
+                            logger.info("Audio cleared, ready for next input")
+                        else:
+                            # No STT enabled, just speak normally
+                            self.tts.speak(response_text)
+                    except Exception as e:
+                        logger.warning(f"Text-to-Speech error: {e}")
+                # Note: Share mode TTS is handled by browser JavaScript (controlled by tts_enabled checkbox)
+                # In share mode, browser handles both TTS and STT separately, so no feedback loop
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
@@ -526,6 +666,162 @@ class LLMFrameworkGUI:
         else:
             return gr.update(visible=False), gr.update(visible=True)
 
+    # ===== Module Management Functions =====
+
+    def get_available_modules(self) -> List[str]:
+        """List available modules for Radio component."""
+        try:
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return []
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+            return [m.get('display_name', m.get('name', 'Unknown')) for m in modules]
+        except Exception as e:
+            logger.error(f"Error listing modules: {e}")
+            return []
+
+    def get_module_info(self, selected_module: str) -> str:
+        """Get detailed information about the selected module."""
+        try:
+            if not selected_module:
+                return "Select a module to view its details"
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            if not modules_registry_path.exists():
+                return "❌ Modules registry not found"
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find module by display name or name
+            module = None
+            for m in modules:
+                if m.get('display_name') == selected_module or m.get('name') == selected_module:
+                    module = m
+                    break
+
+            if not module:
+                return f"❌ Module '{selected_module}' not found"
+
+            # Build info display
+            name = module.get('name', 'unknown')
+            display_name = module.get('display_name', name)
+            description = module.get('description', 'No description')
+            enabled = module.get('enabled', False)
+            version = module.get('version', '0.0.0')
+            module_type = module.get('type', 'unknown')
+            directory = module.get('directory', name)
+            dependencies = module.get('dependencies', [])
+
+            status = "✅ Enabled" if enabled else "⭕ Disabled"
+            module_path = Path(__file__).parent.parent / 'modules' / directory
+
+            info = f"""**{display_name}** ({name}) v{version}
+
+**Status:** {status}
+**Type:** {module_type}
+**Description:** {description}
+**Location:** {module_path}
+
+**Dependencies:**
+"""
+            if dependencies:
+                for dep in dependencies:
+                    info += f"  • {dep}\n"
+            else:
+                info += "  • None\n"
+
+            return info
+
+        except Exception as e:
+            return f"❌ Error getting module info: {str(e)}"
+
+    def enable_module(self, selected_module: str) -> Tuple[str, str]:
+        """Enable the selected module."""
+        try:
+            if not selected_module:
+                return "Please select a module first", self.get_module_info(selected_module)
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find and enable module
+            module_found = False
+            for module in modules:
+                if module.get('display_name') == selected_module or module.get('name') == selected_module:
+                    if module.get('enabled', False):
+                        return f"⚠️ Module '{selected_module}' is already enabled", self.get_module_info(selected_module)
+                    else:
+                        module['enabled'] = True
+                        module_found = True
+                        break
+
+            if not module_found:
+                return f"❌ Module '{selected_module}' not found", self.get_module_info(selected_module)
+
+            # Write back to registry
+            with open(modules_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            # Reload modules to apply changes immediately
+            reload_status = self.reload_modules()
+
+            return f"✅ Module '{selected_module}' enabled successfully\n{reload_status}", self.get_module_info(selected_module)
+
+        except Exception as e:
+            return f"❌ Error enabling module: {str(e)}", self.get_module_info(selected_module)
+
+    def disable_module(self, selected_module: str) -> Tuple[str, str]:
+        """Disable the selected module."""
+        try:
+            if not selected_module:
+                return "Please select a module first", self.get_module_info(selected_module)
+
+            modules_registry_path = Path(__file__).parent.parent / 'modules' / 'modules_registry.json'
+
+            with open(modules_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            modules = registry.get('modules', [])
+
+            # Find and disable module
+            module_found = False
+            for module in modules:
+                if module.get('display_name') == selected_module or module.get('name') == selected_module:
+                    if not module.get('enabled', False):
+                        return f"⚠️ Module '{selected_module}' is already disabled", self.get_module_info(selected_module)
+                    else:
+                        module['enabled'] = False
+                        module_found = True
+                        break
+
+            if not module_found:
+                return f"❌ Module '{selected_module}' not found", self.get_module_info(selected_module)
+
+            # Write back to registry
+            with open(modules_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            # Reload modules to apply changes immediately
+            reload_status = self.reload_modules()
+
+            return f"✅ Module '{selected_module}' disabled successfully\n{reload_status}", self.get_module_info(selected_module)
+
+        except Exception as e:
+            return f"❌ Error disabling module: {str(e)}", self.get_module_info(selected_module)
+
     # ===== Main Interface Builder =====
 
     def create_interface(self) -> gr.Blocks:
@@ -638,11 +934,123 @@ class LLMFrameworkGUI:
                                         scale=1,
                                         container=False
                                     )
+                                # TTS toggle (always create, hide if module not available)
+                                tts_enabled = gr.Checkbox(
+                                    label="🔊 Voice Output",
+                                    value=True,  # Enabled by default
+                                    container=False,
+                                    info="Enable/disable spoken responses",
+                                    visible=self.tts is not None
+                                )
+                                # Voice listening control buttons (always create, hide if module not available)
+                                with gr.Row(visible=self.stt is not None) as voice_controls_row:
+                                    start_listening_btn = gr.Button("🎤 Start Listening", size="sm", variant="primary")
+                                    stop_listening_btn = gr.Button("🛑 Stop Listening", size="sm", variant="stop", visible=False)
                                 clear = gr.Button("Clear Chat")
+                                # Add reload modules button
+                                reload_modules_btn = gr.Button("🔄 Reload Modules", size="sm", variant="secondary")
+
+                        # Module reload status message
+                        reload_status = gr.Textbox(
+                            label="Module Status",
+                            value="",
+                            interactive=False,
+                            visible=False,
+                            lines=1,
+                            show_label=False
+                        )
+
+                        # Voice input status message (always create, hide if STT not available)
+                        voice_status = gr.Textbox(
+                            label="Voice Status",
+                            value="",
+                            interactive=False,
+                            visible=False,
+                            lines=1,
+                            show_label=False
+                        )
     
                         # Chat interactions
                         # Submit button always works
-                        submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+                        submit_event = submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+
+                        # Add browser TTS for share mode
+                        if self.is_share_mode and self.tts:
+                            submit_event.then(
+                                None,
+                                None,
+                                None,
+                                js="""
+                                () => {
+                                    console.log('[TTS] Browser TTS triggered');
+
+                                    // Check if TTS is enabled via checkbox
+                                    const ttsCheckbox = document.querySelector('input[type="checkbox"][aria-label*="Voice Output"]');
+                                    if (ttsCheckbox && !ttsCheckbox.checked) {
+                                        console.log('[TTS] Voice Output is disabled, skipping TTS');
+                                        return;
+                                    }
+
+                                    if (!('speechSynthesis' in window)) {
+                                        console.warn('[TTS] Web Speech API not supported');
+                                        return;
+                                    }
+
+                                    console.log('[TTS] Web Speech API available');
+
+                                    // Wait for DOM to update, then get last message
+                                    setTimeout(() => {
+                                        console.log('[TTS] Looking for chatbot messages...');
+
+                                        // Try multiple selectors to find messages
+                                        let messages = [];
+
+                                        // Try Gradio's chatbot message structure
+                                        messages = document.querySelectorAll('.message.bot, .bot, [data-testid="bot"], .chatbot .message:last-child');
+                                        console.log('[TTS] Found ' + messages.length + ' potential message elements');
+
+                                        if (messages.length === 0) {
+                                            // Fallback: look for any message in chatbot
+                                            const chatbot = document.querySelector('.chatbot');
+                                            if (chatbot) {
+                                                messages = chatbot.querySelectorAll('.message, p, div[class*="message"]');
+                                                console.log('[TTS] Fallback found ' + messages.length + ' elements');
+                                            }
+                                        }
+
+                                        if (messages.length === 0) {
+                                            console.warn('[TTS] No messages found in chatbot');
+                                            return;
+                                        }
+
+                                        const lastMessage = messages[messages.length - 1];
+                                        const text = lastMessage.textContent || lastMessage.innerText;
+                                        console.log('[TTS] Last message text:', text.substring(0, 100));
+
+                                        if (!text || text.trim().length === 0) {
+                                            console.warn('[TTS] Message text is empty');
+                                            return;
+                                        }
+
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        // Create and speak utterance
+                                        console.log('[TTS] Speaking message...');
+                                        const utterance = new SpeechSynthesisUtterance(text);
+                                        utterance.rate = 1.0;
+                                        utterance.pitch = 1.0;
+                                        utterance.volume = 1.0;
+
+                                        utterance.onstart = () => console.log('[TTS] Speech started');
+                                        utterance.onend = () => console.log('[TTS] Speech ended');
+                                        utterance.onerror = (e) => console.error('[TTS] Speech error:', e);
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }, 1000);
+                                }
+                                """
+                            )
 
                         # Enter key submission - conditional based on checkbox
                         # When disabled, we want multiline input (Enter creates newline)
@@ -659,14 +1067,394 @@ class LLMFrameworkGUI:
                                 # Gradio cleared the textbox, so we put the text back with a newline
                                 yield message + "\n", history
 
-                        msg.submit(
+                        enter_event = msg.submit(
                             handle_enter_key,
                             inputs=[msg, chatbot, submit_on_enter],
                             outputs=[msg, chatbot]
                         )
 
+                        # Add browser TTS for share mode on Enter key
+                        if self.is_share_mode and self.tts:
+                            enter_event.then(
+                                None,
+                                None,
+                                None,
+                                js="""
+                                () => {
+                                    console.log('[TTS] Browser TTS triggered (Enter key)');
+
+                                    if (!('speechSynthesis' in window)) {
+                                        console.warn('[TTS] Web Speech API not supported');
+                                        return;
+                                    }
+
+                                    console.log('[TTS] Web Speech API available');
+
+                                    // Wait for DOM to update, then get last message
+                                    setTimeout(() => {
+                                        console.log('[TTS] Looking for chatbot messages...');
+
+                                        // Try multiple selectors to find messages
+                                        let messages = [];
+
+                                        // Try Gradio's chatbot message structure
+                                        messages = document.querySelectorAll('.message.bot, .bot, [data-testid="bot"], .chatbot .message:last-child');
+                                        console.log('[TTS] Found ' + messages.length + ' potential message elements');
+
+                                        if (messages.length === 0) {
+                                            // Fallback: look for any message in chatbot
+                                            const chatbot = document.querySelector('.chatbot');
+                                            if (chatbot) {
+                                                messages = chatbot.querySelectorAll('.message, p, div[class*="message"]');
+                                                console.log('[TTS] Fallback found ' + messages.length + ' elements');
+                                            }
+                                        }
+
+                                        if (messages.length === 0) {
+                                            console.warn('[TTS] No messages found in chatbot');
+                                            return;
+                                        }
+
+                                        const lastMessage = messages[messages.length - 1];
+                                        const text = lastMessage.textContent || lastMessage.innerText;
+                                        console.log('[TTS] Last message text:', text.substring(0, 100));
+
+                                        if (!text || text.trim().length === 0) {
+                                            console.warn('[TTS] Message text is empty');
+                                            return;
+                                        }
+
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        // Create and speak utterance
+                                        console.log('[TTS] Speaking message...');
+                                        const utterance = new SpeechSynthesisUtterance(text);
+                                        utterance.rate = 1.0;
+                                        utterance.pitch = 1.0;
+                                        utterance.volume = 1.0;
+
+                                        utterance.onstart = () => console.log('[TTS] Speech started');
+                                        utterance.onend = () => console.log('[TTS] Speech ended');
+                                        utterance.onerror = (e) => console.error('[TTS] Speech error:', e);
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }, 1000);
+                                }
+                                """
+                            )
+
                         clear.click(self.clear_chat, None, chatbot)
-    
+
+                        # Reload modules button event handler
+                        def handle_reload_modules():
+                            """Handle module reload and show status briefly."""
+                            # Reload and get UI updates
+                            status_msg, tts_vis, voice_row_vis, stop_btn_vis = self.reload_modules()
+
+                            # Show status
+                            yield (
+                                gr.update(value=status_msg, visible=True),  # reload_status
+                                tts_vis,  # tts_enabled visibility
+                                voice_row_vis,  # voice_controls_row visibility
+                                stop_btn_vis,  # stop_listening_btn visibility
+                                gr.update(visible=True)  # start_listening_btn visibility (always show when row visible)
+                            )
+
+                            # Hide status after 3 seconds
+                            import time
+                            time.sleep(3)
+                            yield (
+                                gr.update(value="", visible=False),  # reload_status
+                                gr.update(),  # tts_enabled unchanged
+                                gr.update(),  # voice_controls_row unchanged
+                                gr.update(),  # stop_listening_btn unchanged
+                                gr.update()   # start_listening_btn unchanged
+                            )
+
+                        reload_modules_btn.click(
+                            handle_reload_modules,
+                            inputs=[],
+                            outputs=[reload_status, tts_enabled, voice_controls_row, stop_listening_btn, start_listening_btn]
+                        )
+
+                        # TTS toggle event handler (always wire up, works even if TTS not initially loaded)
+                        def toggle_tts(enabled):
+                            """Update TTS enabled state when user toggles checkbox."""
+                            self.tts_enabled_state = enabled
+                            return None  # No UI update needed
+
+                        tts_enabled.change(toggle_tts, inputs=[tts_enabled], outputs=[])
+
+                        # Voice input event handlers (always wire up, work even if STT not initially loaded)
+                        # We'll check self.stt and self.listening_mode_active inside the handlers
+                        def start_listening_mode():
+                            """Enable continuous listening mode. Returns (start_vis, stop_vis, status_vis, status_val, proceed_flag)."""
+                            if not self.stt:
+                                # Show error but don't proceed to listening loop
+                                return (
+                                    gr.update(visible=True),   # Keep start button visible
+                                    gr.update(visible=False),  # Keep stop button hidden
+                                    gr.update(visible=True),   # Show status
+                                    "⚠️ Speech-to-Text module not enabled. Use 'llf module enable speech2text' and click Reload Modules.",
+                                    False  # Don't proceed to loop
+                                )
+
+                            self.listening_mode_active = True
+                            logger.info("Continuous listening mode activated")
+
+                            return (
+                                gr.update(visible=False),  # Hide Start button
+                                gr.update(visible=True),   # Show Stop button
+                                gr.update(visible=True),   # Show status
+                                "🎤 Listening mode active - waiting for your voice...",
+                                True  # Proceed to loop
+                            )
+
+                        def stop_listening_mode():
+                            """Disable continuous listening mode."""
+                            self.listening_mode_active = False
+                            logger.info("Continuous listening mode deactivated")
+                            return (
+                                gr.update(visible=True),   # Show Start button
+                                gr.update(visible=False),  # Hide Stop button
+                                gr.update(visible=False, value="")  # Hide status
+                            )
+
+                        def listen_once():
+                            """
+                            Listen for voice input once (used in continuous mode).
+                            Returns updates for: voice_status, msg, chatbot
+                            """
+                            if not self.listening_mode_active:
+                                # Mode was turned off, don't listen
+                                return (
+                                    gr.update(visible=False, value=""),
+                                    gr.update(),  # msg unchanged
+                                    gr.update()   # chatbot unchanged
+                                )
+
+                            try:
+                                # Show status: Listening
+                                yield (
+                                    gr.update(visible=True, value="🎤 Listening... (speak now, pause when done)"),
+                                    gr.update(),  # msg unchanged
+                                    gr.update()   # chatbot unchanged
+                                )
+
+                                # Record and transcribe
+                                text = self.stt.listen()
+
+                                if not text or not text.strip():
+                                    # Empty transcription, show status and continue listening
+                                    yield (
+                                        gr.update(visible=True, value="⚠️ No speech detected, listening again..."),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+                                    import time
+                                    time.sleep(1)
+                                    # Will re-trigger via continuous mode
+                                    return
+
+                                # Show status: Transcribed
+                                transcribed_msg = f"✅ Transcribed: {text}"
+                                yield (
+                                    gr.update(visible=True, value=transcribed_msg),
+                                    gr.update(value=text),  # Populate message box
+                                    gr.update()
+                                )
+
+                                # Brief pause so user sees the transcription
+                                import time
+                                time.sleep(0.5)
+
+                            except Exception as e:
+                                logger.error(f"Voice input error: {e}")
+                                error_msg = f"⚠️ Voice input failed: {str(e)}"
+                                yield (
+                                    gr.update(visible=True, value=error_msg),
+                                    gr.update(value=""),  # Clear message box on error
+                                    gr.update()
+                                )
+
+                                # Show error briefly
+                                import time
+                                time.sleep(2)
+
+                                # If still in listening mode, show ready status
+                                if self.listening_mode_active:
+                                    yield (
+                                        gr.update(visible=True, value="🎤 Ready to listen again..."),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+                                else:
+                                    yield (
+                                        gr.update(visible=False, value=""),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+
+                        def continuous_listen_respond_loop(chatbot_history):
+                            """
+                            Continuous loop: listen -> transcribe -> respond -> listen again.
+                            Runs while listening_mode_active is True.
+                            """
+                            # Safety check: STT must be available
+                            if not self.stt:
+                                yield (
+                                    gr.update(visible=True, value="⚠️ Speech-to-Text module not available"),
+                                    gr.update(),
+                                    chatbot_history if chatbot_history else []
+                                )
+                                return
+
+                            current_history = chatbot_history if chatbot_history else []
+
+                            while self.listening_mode_active:
+                                try:
+                                    # Show status: Listening
+                                    yield (
+                                        gr.update(visible=True, value="🎤 Listening... (speak now, pause when done)"),
+                                        gr.update(),  # msg unchanged
+                                        current_history  # chatbot unchanged
+                                    )
+
+                                    # Record and transcribe
+                                    text = self.stt.listen()
+
+                                    if not text or not text.strip():
+                                        # Empty transcription, continue listening
+                                        yield (
+                                            gr.update(visible=True, value="⚠️ No speech detected, listening again..."),
+                                            gr.update(),
+                                            current_history
+                                        )
+                                        import time
+                                        time.sleep(1)
+                                        continue
+
+                                    # Show status: Transcribed
+                                    transcribed_msg = f"✅ Transcribed: {text}"
+                                    yield (
+                                        gr.update(visible=True, value=transcribed_msg),
+                                        gr.update(value=text),  # Populate message box
+                                        current_history
+                                    )
+
+                                    # Process with LLM
+                                    if not text.strip():
+                                        continue
+
+                                    # Add user message to history
+                                    messages = []
+                                    for msg in current_history:
+                                        if isinstance(msg, dict) and 'role' in msg:
+                                            messages.append(msg)
+
+                                    messages.append({"role": "user", "content": text})
+                                    current_history = current_history + [{"role": "user", "content": text}]
+
+                                    # Get LLM response
+                                    response_text = ""
+                                    for chunk in self.runtime.chat(messages, stream=True):
+                                        response_text += chunk
+                                        streaming_history = current_history + [{"role": "assistant", "content": response_text}]
+                                        yield (
+                                            gr.update(),  # status unchanged
+                                            gr.update(value=""),  # Clear message box
+                                            streaming_history
+                                        )
+
+                                    # Update history with complete response
+                                    current_history = current_history + [{"role": "assistant", "content": response_text}]
+
+                                    # Speak response if TTS enabled
+                                    if self.tts and self.tts_enabled_state and response_text:
+                                        if not self.is_share_mode:
+                                            try:
+                                                from .tts_stt_utils import wait_for_tts_clearance
+                                                logger.info("Speaking and waiting for audio clearance...")
+                                                yield (
+                                                    gr.update(visible=True, value="🔊 Speaking..."),
+                                                    gr.update(),
+                                                    gr.update()
+                                                )
+                                                wait_for_tts_clearance(self.tts, self.stt, response_text)
+                                                logger.info("Audio cleared, ready for next input")
+                                            except Exception as e:
+                                                logger.warning(f"Text-to-Speech error: {e}")
+
+                                    # Brief pause before next listen cycle
+                                    import time
+                                    time.sleep(0.5)
+
+                                except Exception as e:
+                                    logger.error(f"Error in continuous listen loop: {e}")
+                                    yield (
+                                        gr.update(visible=True, value=f"⚠️ Error: {str(e)}"),
+                                        gr.update(),
+                                        current_history
+                                    )
+                                    import time
+                                    time.sleep(2)
+
+                            # Loop exited (listening mode stopped)
+                            yield (
+                                gr.update(visible=False, value=""),
+                                gr.update(),
+                                current_history
+                            )
+
+                        # Start listening button: activate continuous mode and conditionally start loop
+                        def start_and_maybe_loop(chatbot_history):
+                            """Start listening mode, and if successful, run the continuous loop."""
+                            # Try to start listening mode
+                            start_vis, stop_vis, status_vis, status_val, proceed = start_listening_mode()
+
+                            # Combine status visibility and value
+                            # status_vis is a gr.update() dict, we need to merge it with the value
+                            if isinstance(status_vis, dict):
+                                status_update = status_vis.copy()
+                                status_update['value'] = status_val
+                            else:
+                                status_update = gr.update(visible=True, value=status_val)
+
+                            # Update UI first
+                            yield (
+                                start_vis,
+                                stop_vis,
+                                status_update,
+                                gr.update(),  # msg
+                                chatbot_history if chatbot_history else []  # chatbot
+                            )
+
+                            # If STT is available, proceed with continuous loop
+                            if proceed and self.stt:
+                                # Run the continuous listen loop
+                                for update in continuous_listen_respond_loop(chatbot_history):
+                                    yield (
+                                        gr.update(),  # start_btn
+                                        gr.update(),  # stop_btn
+                                        update[0],    # voice_status
+                                        update[1],    # msg
+                                        update[2]     # chatbot
+                                    )
+
+                        start_listening_btn.click(
+                            start_and_maybe_loop,
+                            inputs=[chatbot],
+                            outputs=[start_listening_btn, stop_listening_btn, voice_status, msg, chatbot]
+                        )
+
+                        # Stop listening button: deactivate continuous mode
+                        stop_listening_btn.click(
+                            stop_listening_mode,
+                            inputs=[],
+                            outputs=[start_listening_btn, stop_listening_btn, voice_status]
+                        )
+
                     # ===== Server Tab =====
                     with gr.Tab("🖥️ Server"):
                         gr.Markdown("### Server Management")
@@ -829,7 +1617,40 @@ class LLMFrameworkGUI:
                     # ===== Modules Tab =====
                     with gr.Tab("🔌 Modules"):
                         gr.Markdown("### Module Management")
-                        gr.Markdown("For future use...")
+                        gr.Markdown("Enable or disable framework modules")
+
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Available Modules")
+                                modules_radio = gr.Radio(
+                                    label="Select a Module",
+                                    choices=self.get_available_modules(),
+                                    value=self.get_available_modules()[0] if self.get_available_modules() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Module Information")
+                                module_info_output = gr.Textbox(
+                                    label="Module Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_module_info(self.get_available_modules()[0] if self.get_available_modules() else "")
+                                )
+
+                        with gr.Row():
+                            enable_btn = gr.Button("Enable Module", variant="primary")
+                            disable_btn = gr.Button("Disable Module")
+
+                        module_status = gr.Textbox(
+                            label="Status",
+                            lines=2,
+                            interactive=False
+                        )
+
+                        # Module interactions
+                        modules_radio.change(self.get_module_info, modules_radio, module_info_output)
+                        enable_btn.click(self.enable_module, modules_radio, [module_status, module_info_output])
+                        disable_btn.click(self.disable_module, modules_radio, [module_status, module_info_output])
 
                     # ===== Tools Tab =====
                     with gr.Tab("🛠️ Tools"):
@@ -897,5 +1718,7 @@ def start_gui(config: Optional[Config] = None, prompt_config: Optional[PromptCon
         auth_key: Optional authentication key for securing GUI access
         **kwargs: Additional arguments to pass to Gradio launch()
     """
-    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config, auth_key=auth_key)
+    # Extract share parameter from kwargs to pass to GUI constructor
+    share = kwargs.get('share', False)
+    gui = LLMFrameworkGUI(config=config, prompt_config=prompt_config, auth_key=auth_key, share=share)
     gui.launch(**kwargs)

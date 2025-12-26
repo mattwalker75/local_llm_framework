@@ -1,0 +1,135 @@
+{
+  "name": "speech2text",
+  "display_name": "Speech-to-Text",
+  "version": "0.1.0",
+  "description": "Converts spoken audio to text using OpenAI Whisper (offline, no internet required)",
+  "author": "LLM Framework",
+  "type": "input_processor",
+  "enabled": false,
+  "dependencies": [
+    "sounddevice>=0.5.3",
+    "scipy>=1.16.3",
+    "openai-whisper>=2025062"
+  ],
+  "settings": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "dtype": "int16",
+    "max_duration": 60,
+    "silence_timeout": 1.5,
+    "silence_threshold": 500,
+    "chunk_duration": 0.1,
+    "min_speech_duration": 0.3,
+    "whisper_model": "base",
+    "whisper_language": null,
+    "debug_logging": false,
+    "log_level": "INFO",
+    "audio_stabilization_delay": 0.1,
+    "required_silence_clearance": 0.5,
+    "audio_clearance_timeout": 120.0
+  },
+  "hooks": {
+    "on_llm_response_chunk": "process_chunk",
+    "on_llm_response_complete": "process_complete"
+  },
+  "configuration": {
+    "sample_rate": {
+      "type": "integer",
+      "description": "Sample rate for audio recording in Hz",
+      "default": 16000,
+      "min": 8000,
+      "max": 48000
+    },
+    "channels": {
+      "type": "integer",
+      "description": "Number of audio channels (1=mono, 2=stereo)",
+      "default": 1,
+      "min": 1,
+      "max": 2
+    },
+    "dtype": {
+      "type": "string",
+      "description": "Audio data type for recording",
+      "default": "int16",
+      "options": ["int16", "int32", "float32"]
+    },
+    "max_duration": {
+      "type": "integer",
+      "description": "Maximum recording duration in seconds before auto-stop",
+      "default": 60,
+      "min": 5,
+      "max": 300
+    },
+    "silence_timeout": {
+      "type": "float",
+      "description": "Duration of silence in seconds before stopping recording",
+      "default": 1.5,
+      "min": 0.5,
+      "max": 5.0
+    },
+    "silence_threshold": {
+      "type": "integer",
+      "description": "Audio amplitude threshold to detect silence vs speech",
+      "default": 500,
+      "min": 100,
+      "max": 2000
+    },
+    "chunk_duration": {
+      "type": "float",
+      "description": "Duration of each audio processing chunk in seconds",
+      "default": 0.1,
+      "min": 0.05,
+      "max": 1.0
+    },
+    "min_speech_duration": {
+      "type": "float",
+      "description": "Minimum speech duration before detecting silence (prevents cutting off words)",
+      "default": 0.3,
+      "min": 0.1,
+      "max": 2.0
+    },
+    "whisper_model": {
+      "type": "string",
+      "description": "Whisper model size (tiny, base, small, medium, large)",
+      "default": "base",
+      "options": ["tiny", "base", "small", "medium", "large"]
+    },
+    "whisper_language": {
+      "type": "string",
+      "description": "Language code for transcription (null for auto-detect)",
+      "default": null
+    },
+    "debug_logging": {
+      "type": "boolean",
+      "description": "Enable detailed debug logging for troubleshooting",
+      "default": false
+    },
+    "log_level": {
+      "type": "string",
+      "description": "Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+      "default": "INFO",
+      "options": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    },
+    "audio_stabilization_delay": {
+      "type": "float",
+      "description": "Delay in seconds after opening audio stream to let device stabilize",
+      "default": 0.1,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "required_silence_clearance": {
+      "type": "float",
+      "description": "Duration of silence required to confirm TTS audio has cleared",
+      "default": 0.5,
+      "min": 0.1,
+      "max": 3.0
+    },
+    "audio_clearance_timeout": {
+      "type": "float",
+      "description": "Maximum time to wait for TTS audio clearance before timing out",
+      "default": 120.0,
+      "min": 10.0,
+      "max": 300.0
+    }
+  }
+}

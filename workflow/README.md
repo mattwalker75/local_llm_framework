@@ -263,7 +263,16 @@ with which prompts I passed to the AI.
 8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 #### Work on modules ( text to speech )
+1.  Start development of a text to speech module that will be used
+    to take text generated from the LLM and play it as audio along with
+    print the text on the screen.
+2.  Module location for the text to speech module:
+       -  modules/text2speech
+3.  Used the following prompt to being the development of the
+    text to speech module:
+       -  7_Text_to_Speech.txt
 
+        
      
 
       

@@ -33,7 +33,13 @@ def config(temp_dir):
 @pytest.fixture
 def cli(config):
     """Create CLI instance."""
-    return CLI(config)
+    with patch.object(CLI, '_load_modules'):
+        # Prevent loading TTS/STT modules during tests (causes hangs)
+        cli_instance = CLI(config)
+        # Ensure tts and stt are None (not loaded)
+        cli_instance.tts = None
+        cli_instance.stt = None
+        return cli_instance
 
 
 class TestCLI:
@@ -1360,36 +1366,70 @@ class TestPlaceholderCommands:
     def test_module_list_command(self, mock_setup_logging, mock_print):
         """Test module list command."""
         from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": False
+                }
+            ]
+        }
 
         test_args = ['llf', 'module', 'list']
         mock_config = MagicMock()
         mock_config.log_level = 'INFO'
+
         with patch.object(sys, 'argv', test_args), \
-             patch('llf.cli.get_config', return_value=mock_config):
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
 
             result = main()
 
             assert result == 0
+            # Should print the module list
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any('module' in str(call).lower() for call in print_calls)
+            assert any('Test Module' in str(call) or 'disabled' in str(call).lower() for call in print_calls)
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.setup_logging')
     def test_module_list_enabled_command(self, mock_setup_logging, mock_print):
         """Test module list --enabled command."""
         from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with no enabled modules
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": False
+                }
+            ]
+        }
 
         test_args = ['llf', 'module', 'list', '--enabled']
         mock_config = MagicMock()
         mock_config.log_level = 'INFO'
+
         with patch.object(sys, 'argv', test_args), \
-             patch('llf.cli.get_config', return_value=mock_config):
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
 
             result = main()
 
             assert result == 0
-            # Should print module management placeholder
-            mock_print.assert_called()
+            # Should print no enabled modules message
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('no enabled' in str(call).lower() for call in print_calls)
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.setup_logging')
