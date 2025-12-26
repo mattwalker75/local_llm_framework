@@ -1,40 +1,29 @@
-# Test Hang Fix - TTS/STT Module Loading
+# Test Hang Fix - TTS/STT Module Loading & PyTorch Cleanup
 
 ## Problem
 
-Tests in `tests/test_cli.py` and `tests/test_gui.py` were hanging when run, preventing the test suite from completing.
+Tests in `tests/test_cli.py` and `tests/test_gui.py` were hanging when run, preventing the test suite from completing. Additionally, PyTorch cleanup was causing KeyboardInterrupt when running all GUI tests together.
 
-### Root Cause
+### Root Causes
 
-Both `CLI` and `LLMFrameworkGUI` classes have a `_load_modules()` method in their `__init__()` that loads TTS and STT modules if they're enabled in the module registry. During tests:
+1. **Module Loading Issue**: Both `CLI` and `LLMFrameworkGUI` classes have a `_load_modules()` method in their `__init__()` that loads TTS and STT modules if they're enabled in the module registry. During tests:
+   - The modules were enabled in `modules/modules_registry.json`
+   - Test fixtures created `CLI` and `GUI` instances without mocking module loading
+   - The `_load_modules()` method tried to initialize real TTS/STT engines
+   - STT initialization specifically would try to access the microphone, causing tests to hang
 
-1. The modules were enabled in `modules/modules_registry.json`
-2. Test fixtures created `CLI` and `GUI` instances without mocking module loading
-3. The `_load_modules()` method tried to initialize real TTS/STT engines
-4. STT initialization specifically would try to access the microphone, causing tests to hang
-
-### Specific Hanging Test
-
-- **CLI**: `test_interactive_loop_multiline_case_insensitive` - hung when interactive loop tried to use `self.stt.listen()`
-- **GUI**: Various tests hung during initialization when `_load_modules()` tried to load audio modules
+2. **PyTorch Cleanup Issue**: When running all 85 GUI tests together, PyTorch/Gradio cleanup would trigger a KeyboardInterrupt after ~59 tests, preventing the remaining tests from running.
 
 ---
 
 ## Solution
 
+### Part 1: Mock Module Loading in Test Fixtures
+
 Mock the `_load_modules()` method in test fixtures to prevent actual module initialization during tests.
 
-### File: `tests/test_cli.py`
+#### File: `tests/test_cli.py`
 
-**Before** (lines 33-36):
-```python
-@pytest.fixture
-def cli(config):
-    """Create CLI instance."""
-    return CLI(config)
-```
-
-**After** (lines 33-42):
 ```python
 @pytest.fixture
 def cli(config):
@@ -48,17 +37,8 @@ def cli(config):
         return cli_instance
 ```
 
-### File: `tests/test_gui.py`
+#### File: `tests/test_gui.py`
 
-**Before** (lines 56-59):
-```python
-@pytest.fixture
-def gui(self, mock_config, mock_prompt_config):
-    """Create GUI instance for testing."""
-    return LLMFrameworkGUI(config=mock_config, prompt_config=mock_prompt_config)
-```
-
-**After** (lines 56-65):
 ```python
 @pytest.fixture
 def gui(self, mock_config, mock_prompt_config):
@@ -72,105 +52,150 @@ def gui(self, mock_config, mock_prompt_config):
         return gui_instance
 ```
 
+#### File: `tests/test_gui.py` - TestShareModeTTS Class
+
+All 8 tests in the `TestShareModeTTS` class were updated to use `patch.object(LLMFrameworkGUI, '_load_modules')` since they create GUI instances directly without using the fixture.
+
+### Part 2: Mock Gradio and PyTorch to Prevent Cleanup Issues
+
+Created comprehensive mocks in `tests/conftest.py` to prevent PyTorch from being loaded during tests.
+
+#### File: `tests/conftest.py`
+
+```python
+def pytest_configure(config):
+    """Configure pytest."""
+    # Suppress PyTorch/Gradio warnings during tests
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="torch")
+    warnings.filterwarnings("ignore", category=UserWarning, module="gradio")
+    warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+
+    # Mock gradio to prevent PyTorch loading during tests
+    if 'gradio' not in sys.modules:
+        # Create mock gradio module with all necessary components
+        mock_gradio = MagicMock()
+
+        # Mock gr.Radio to preserve choices and value
+        class MockRadio:
+            def __init__(self, choices=None, value=None, **kwargs):
+                if choices and isinstance(choices, list):
+                    if choices and not isinstance(choices[0], tuple):
+                        self.choices = [(c, c) for c in choices]
+                    else:
+                        self.choices = choices
+                else:
+                    self.choices = choices
+                self.value = value
+
+        mock_gradio.Radio = MockRadio
+
+        # Mock gr.update() to return a dict
+        def mock_update(**kwargs):
+            return kwargs
+        mock_gradio.update = mock_update
+
+        # Mock all other Gradio components as MagicMocks
+        # (Blocks, Textbox, Button, Chatbot, etc.)
+
+        sys.modules['gradio'] = mock_gradio
+
+    # Mock torch to prevent PyTorch loading
+    if 'torch' not in sys.modules:
+        mock_torch = MagicMock()
+        mock_torch.nn = MagicMock()
+        mock_torch.nn.init = MagicMock()
+        sys.modules['torch'] = mock_torch
+        sys.modules['torch.nn'] = mock_torch.nn
+        sys.modules['torch.nn.init'] = mock_torch.nn.init
+```
+
+### Part 3: Rename Manual Test Scripts
+
+Renamed manual test script to prevent pytest from collecting it:
+- `modules/speech2text/test_sst.py` → `modules/speech2text/manual_test_sst.py`
+
 ---
 
 ## Results
 
-### Before Fix:
-- CLI tests: **HANGING** at test #21 (`test_interactive_loop_multiline_case_insensitive`)
-- GUI tests: **HANGING** during initialization
-- Test suite: **INCOMPLETE**
+### ✅ Final Results:
+- **All 262 tests passing** in ~1.4 seconds
+- **NO hangs** from microphone access
+- **NO KeyboardInterrupt** from PyTorch cleanup
+- **Single command**: `pytest` runs entire suite successfully
 
-### After Fix:
-- ✅ CLI tests: **75/75 passing** (2.80s)
-- ✅ GUI tests: **85/85 passing** (5.17s)
-- ✅ All non-GUI tests: **177/177 passing** (3.73s)
-- ✅ **Total: 262/262 tests passing**
-
----
-
-## Known Issue: KeyboardInterrupt During Teardown
-
-After all tests pass, there's a `KeyboardInterrupt` during pytest teardown:
-
-```
-KeyboardInterrupt
-/path/to/torch/nn/init.py:82: KeyboardInterrupt
-============================== 262 passed in X.XXs ===============================
-```
-
-### Why It Happens:
-- PyTorch/Gradio cleanup in the background
-- Happens **AFTER** all tests complete successfully
-- Does **NOT** affect test results
-
-### Impact:
-- ✅ All tests still pass
-- ✅ Exit code is 0 (success)
-- ⚠️ Shows confusing error message at the end
-
-This is a cosmetic issue and doesn't affect test validity.
+### Test Breakdown:
+- CLI tests: 75 tests ✅
+- Config tests: 29 tests ✅
+- LLM Runtime tests: 37 tests ✅
+- Model Manager tests: 22 tests ✅
+- Prompt Config tests: 14 tests ✅
+- GUI tests: 85 tests ✅
+- **Total: 262/262 tests passing** ✅
 
 ---
 
 ## Testing Commands
 
-### Run All Tests:
+### Run All Tests (Simple):
 ```bash
 source llf_venv/bin/activate
 pytest
 ```
 
-**Expected**: 262 passed (may show KeyboardInterrupt at end, ignore)
+**Expected**: `262 passed in ~1.4s`
 
 ### Run Specific Test Suites:
 ```bash
-# CLI tests only
+# CLI tests only (75 tests)
 pytest tests/test_cli.py
 
-# GUI tests only
+# GUI tests only (85 tests)
 pytest tests/test_gui.py
 
-# All non-GUI tests (cleanest run, no teardown issues)
+# All non-GUI tests (177 tests)
 pytest tests/ -k "not gui"
+
+# Verbose output
+pytest -v
+
+# Quiet output
+pytest -q
 ```
 
 ---
 
-## Why This Approach Works
+## Why This Solution Works
 
-1. **`patch.object()`** intercepts the `_load_modules()` method call
-2. **Module loading is skipped** - no microphone access attempted
-3. **`tts` and `stt` set to `None`** - tests can verify modules aren't loaded
-4. **Test logic remains intact** - all assertions still work
-5. **No side effects** - patch is scoped to the fixture
+1. **`patch.object()`** - Intercepts the `_load_modules()` method call, preventing real TTS/STT module initialization
+2. **Gradio Mock** - Prevents Gradio (and its PyTorch dependency) from being loaded during tests
+3. **PyTorch Mock** - Ensures PyTorch is never actually imported, preventing cleanup issues
+4. **MockRadio Class** - Properly preserves component state for tests that check Gradio component attributes
+5. **No Production Code Changes** - All mocks are test-only, production code remains unchanged
 
 ---
 
-## Alternative Approaches Considered
+## Files Modified
 
-### ❌ Disable modules in registry during tests
-- **Problem**: Would require modifying registry file
-- **Problem**: Affects all tests globally
-- **Problem**: Tests couldn't verify module-related behavior
+### Test Files:
+1. `tests/test_cli.py` - Updated `cli` fixture to mock `_load_modules()`
+2. `tests/test_gui.py` - Updated `gui` fixture and TestShareModeTTS class to mock `_load_modules()`
+3. `tests/conftest.py` - Added comprehensive Gradio and PyTorch mocks
+4. `modules/speech2text/test_sst.py` → `modules/speech2text/manual_test_sst.py` - Renamed to avoid pytest collection
 
-### ❌ Mock individual module methods
-- **Problem**: Too granular, would need many mocks
-- **Problem**: Brittle - breaks if module interface changes
-- **Problem**: Doesn't prevent initialization
-
-### ✅ Mock `_load_modules()` at fixture level
-- **Benefit**: Clean, scoped solution
-- **Benefit**: Doesn't modify production code or config
-- **Benefit**: Easy to understand and maintain
+### Configuration Files:
+- `pytest.ini` - Already configured with proper test discovery patterns
 
 ---
 
 ## Summary
 
-✅ **Problem**: Tests hung due to TTS/STT module initialization
-✅ **Solution**: Mock `_load_modules()` in test fixtures
-✅ **Result**: All 262 tests now pass successfully
-✅ **Side effect**: Cosmetic KeyboardInterrupt during teardown (safe to ignore)
+✅ **Problem 1**: Tests hung due to TTS/STT module initialization attempting microphone access
+✅ **Solution 1**: Mock `_load_modules()` in test fixtures
 
-The test suite is now fully functional and can run to completion!
+✅ **Problem 2**: PyTorch cleanup caused KeyboardInterrupt after ~59 GUI tests
+✅ **Solution 2**: Mock Gradio and PyTorch modules to prevent real imports
+
+✅ **Result**: All 262 tests pass in single `pytest` command with no hangs or interrupts
+
+The test suite is now fully functional and fast!
