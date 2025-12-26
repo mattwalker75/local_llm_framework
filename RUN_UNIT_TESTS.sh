@@ -13,7 +13,10 @@ fi
 #
 #  Check code coverage percentage
 #
+echo "-------------------------------------------------------------"
+echo "----          INDIVIDUAL  UNIT  TESTS  COMPLETE          ----"
+echo "-------------------------------------------------------------"
 echo ""
 echo "Checking code coverage:"
-pytest --cov=.
-
+#pytest --cov=.
+pytest --cov --cov-report=term -p no:unraisableexception

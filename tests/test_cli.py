@@ -33,7 +33,13 @@ def config(temp_dir):
 @pytest.fixture
 def cli(config):
     """Create CLI instance."""
-    return CLI(config)
+    with patch.object(CLI, '_load_modules'):
+        # Prevent loading TTS/STT modules during tests (causes hangs)
+        cli_instance = CLI(config)
+        # Ensure tts and stt are None (not loaded)
+        cli_instance.tts = None
+        cli_instance.stt = None
+        return cli_instance
 
 
 class TestCLI:

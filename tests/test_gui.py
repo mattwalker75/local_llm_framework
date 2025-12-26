@@ -56,7 +56,13 @@ class TestLLMFrameworkGUI:
     @pytest.fixture
     def gui(self, mock_config, mock_prompt_config):
         """Create GUI instance for testing."""
-        return LLMFrameworkGUI(config=mock_config, prompt_config=mock_prompt_config)
+        with patch.object(LLMFrameworkGUI, '_load_modules'):
+            # Prevent loading TTS/STT modules during tests (causes hangs)
+            gui_instance = LLMFrameworkGUI(config=mock_config, prompt_config=mock_prompt_config)
+            # Ensure tts and stt are None (not loaded)
+            gui_instance.tts = None
+            gui_instance.stt = None
+            return gui_instance
 
     def test_initialization(self, gui):
         """Test GUI initialization."""
