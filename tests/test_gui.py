@@ -286,6 +286,7 @@ class TestLLMFrameworkGUI:
         gui.config._has_local_server_section = True
 
         with patch.object(gui.runtime, 'is_server_running', return_value=False), \
+             patch.object(gui.model_manager, 'is_model_downloaded', return_value=True), \
              patch.object(gui.runtime, 'start_server', side_effect=Exception("Test error")):
 
             result = gui.start_server()

@@ -5,6 +5,7 @@ openai>=1.0.0
 
 # Model downloading
 huggingface-hub>=0.20.0
+transformers>=4.57.3
 
 # CLI and UI
 rich>=13.0.0
@@ -18,6 +19,7 @@ psutil>=5.9.0
 
 # Text-to-Speech (for modules)
 pyttsx3>=2.90
+pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'  # macOS TTS backend
 
 # Speech-to-Text (for modules)
 sounddevice

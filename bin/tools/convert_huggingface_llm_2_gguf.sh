@@ -28,6 +28,7 @@ CONVERT_TOOL="../../../llama.cpp/convert_hf_to_gguf.py"
 #  Quantizing the GGUF converted LLM
 QUANTIZER="../../../llama.cpp/build/bin/llama-quantize"
 
+FORCE=0
 MODEL_ROOT="../../models"
 OUTTYPE="f16"
 QUANT_TYPE="q5_K_M"
@@ -58,17 +59,18 @@ function description {
 #  Print out usage information
 #
 function usage {
-   echo "Usage:  $0 -s <HuggingFace Model> -d <GGUF Model Name>"
+   echo "Usage:  $0 -s <HuggingFace Model> -d <GGUF Model Name> [-f]"
    echo ""
    echo "   -s <HuggingFace Model> - This is the name of the downloaded HuggingFace"
    echo "                            that you want to convert to a GGUF Model"
    echo "   -d <GGUF Model Name> - This is the name that you want to give to the"
    echo "                          LLM model after it is convert to the GGUF format"
+   echo "   -f   - Optionally delete the GGUF Model if it exists and rebuild it"
    echo ""
    echo " NOTE:  The models will be located in the \"models\" directory"
    echo ""
    echo "EXAMPLE:" 
-   echo " $0 -s Qwen--Qwen2.5-Coder-7B-Instruct -d Qwen--Qwen2.5-Coder-7B-Instruct-GGUF"
+   echo " $0 -f -s Qwen--Qwen2.5-Coder-7B-Instruct -d Qwen--Qwen2.5-Coder-7B-Instruct-GGUF"
    echo ""
    exit 255
 }
@@ -76,11 +78,12 @@ function usage {
 ########################################################
 
 #  Get command line parms
-while getopts "s:d:h" opt
+while getopts "s:d:hf" opt
 do
    case $opt in
       s) HF_MODEL=${OPTARG} ;; 
       d) GGUF_MODEL=${OPTARG} ;;
+      f) FORCE=1 ;;
       h) description; usage ;; 
       *) usage ;;
    esac
@@ -103,9 +106,20 @@ fi
 #  Verify the destination model doesn't exist
 if [[ -d "${MODEL_ROOT}/${GGUF_MODEL}" ]]
 then
-   echo "Looks like a model exists with that name already"
-   echo "model location:  ${MODEL_ROOT}/${GGUF_MODEL}"
-   exit 255
+   if (( $FORCE == 0 ))
+   then
+      echo "Looks like a model exists with that name already"
+      echo "model location:  ${MODEL_ROOT}/${GGUF_MODEL}"
+      exit 255
+   else
+      rm -Rf ${MODEL_ROOT}/${GGUF_MODEL}
+      if (( $? != 0 ))
+      then
+         echo "Error deleting the old GGUF model"
+         echo "model location:  ${MODEL_ROOT}/${GGUF_MODEL}"
+         exit 1
+      fi
+   fi
 fi
 
 mkdir "${MODEL_ROOT}/${GGUF_MODEL}"

@@ -1,7 +1,8 @@
 """
-Text-to-Speech Module for LLM Framework.
+Speech-to-Text Module for LLM Framework.
 
-This module provides text-to-speech capabilities using pyttsx3.
+This module provides speech-to-text capabilities using OpenAI Whisper.
+Works completely offline with no internet connection required.
 It can be used standalone or integrated with the LLM Framework.
 """
 

@@ -62,8 +62,11 @@ class LLMFrameworkGUI:
         self.auth_key = auth_key  # Authentication key (None = no auth required)
         self.is_share_mode = share  # Track if running in share mode
 
-        # Load module registry and initialize text-to-speech if enabled
+        # Load module registry and initialize text-to-speech and speech-to-text if enabled
         self.tts = None
+        self.stt = None
+        self.tts_enabled_state = True  # Track if user wants TTS enabled (separate from module availability)
+        self.listening_mode_active = False  # Track if continuous listening mode is active
         self._load_modules()
 
     def _load_modules(self) -> None:
@@ -91,22 +94,49 @@ class LLMFrameworkGUI:
                             sys.path.insert(0, str(modules_path))
 
                         from text2speech import TextToSpeech
-                        self.tts = TextToSpeech()
+
+                        # Load settings from module info
+                        settings = module.get('settings', {})
+                        self.tts = TextToSpeech(
+                            voice_id=settings.get('voice_id'),
+                            rate=settings.get('rate', 200),
+                            volume=settings.get('volume', 1.0)
+                        )
                         logger.info("Text-to-Speech module loaded and enabled for GUI")
                     except Exception as e:
                         logger.warning(f"Failed to load text2speech module: {e}")
                     break
+
+            # Check if speech2text module is enabled
+            for module in modules:
+                if module.get('name') == 'speech2text' and module.get('enabled', False):
+                    try:
+                        # Import and initialize speech2text module
+                        import sys
+                        modules_path = Path(__file__).parent.parent / 'modules'
+                        if str(modules_path) not in sys.path:
+                            sys.path.insert(0, str(modules_path))
+
+                        from speech2text import SpeechToText
+                        self.stt = SpeechToText()
+                        logger.info("Speech-to-Text module loaded and enabled for GUI")
+                    except Exception as e:
+                        logger.warning(f"Failed to load speech2text module: {e}")
+                    break
         except Exception as e:
             logger.warning(f"Failed to load module registry: {e}")
 
-    def reload_modules(self) -> str:
+    def reload_modules(self):
         """
         Reload modules from registry (used when modules are enabled/disabled).
 
         Returns:
-            Status message about reload
+            Tuple of (status_message, tts_checkbox_visible, voice_controls_row_visible, stop_button_visible)
         """
         try:
+            # Stop listening mode if active
+            self.listening_mode_active = False
+
             # Clear existing TTS instance if it exists
             if self.tts:
                 try:
@@ -115,17 +145,41 @@ class LLMFrameworkGUI:
                     pass
                 self.tts = None
 
+            # Clear existing STT instance if it exists
+            if self.stt:
+                self.stt = None
+
             # Reload modules using the same logic as initialization
             self._load_modules()
 
+            # Build status message
+            active_modules = []
             if self.tts:
-                return "✅ Text-to-Speech module reloaded and active"
+                active_modules.append("Text-to-Speech")
+            if self.stt:
+                active_modules.append("Speech-to-Text")
+
+            if active_modules:
+                status_msg = f"✅ Modules reloaded: {', '.join(active_modules)}"
             else:
-                return "⭕ No modules currently enabled"
+                status_msg = "⭕ No modules currently enabled"
+
+            # Return UI visibility updates
+            return (
+                status_msg,
+                gr.update(visible=self.tts is not None),  # TTS checkbox
+                gr.update(visible=self.stt is not None),  # Voice controls row
+                gr.update(visible=False)  # Stop listening button (hide on reload)
+            )
 
         except Exception as e:
             logger.error(f"Error reloading modules: {e}")
-            return f"❌ Error reloading modules: {str(e)}"
+            return (
+                f"❌ Error reloading modules: {str(e)}",
+                gr.update(),  # Keep TTS checkbox as-is
+                gr.update(),  # Keep voice controls as-is
+                gr.update()   # Keep stop button as-is
+            )
 
     def check_server_on_startup(self) -> Tuple[bool, str]:
         """
@@ -206,15 +260,24 @@ class LLMFrameworkGUI:
                 current_history = history + [{"role": "assistant", "content": response_text}]
                 yield "", current_history
 
-            # If TTS is enabled, handle based on mode
-            if self.tts and response_text:
+            # If TTS is enabled AND user has it toggled on, handle based on mode
+            if self.tts and self.tts_enabled_state and response_text:
                 if not self.is_share_mode:
-                    # Local mode: Use pyttsx3 server-side TTS
+                    # Local mode: Use platform-appropriate TTS backend
                     try:
-                        self.tts.speak(response_text)
+                        # If STT is also enabled, ensure audio clearance before next input
+                        if self.stt:
+                            from .tts_stt_utils import wait_for_tts_clearance
+                            logger.info("Speaking and waiting for audio clearance...")
+                            wait_for_tts_clearance(self.tts, self.stt, response_text)
+                            logger.info("Audio cleared, ready for next input")
+                        else:
+                            # No STT enabled, just speak normally
+                            self.tts.speak(response_text)
                     except Exception as e:
                         logger.warning(f"Text-to-Speech error: {e}")
-                # Note: Share mode TTS is handled by browser JavaScript
+                # Note: Share mode TTS is handled by browser JavaScript (controlled by tts_enabled checkbox)
+                # In share mode, browser handles both TTS and STT separately, so no feedback loop
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
@@ -871,7 +934,41 @@ class LLMFrameworkGUI:
                                         scale=1,
                                         container=False
                                     )
+                                # TTS toggle (always create, hide if module not available)
+                                tts_enabled = gr.Checkbox(
+                                    label="🔊 Voice Output",
+                                    value=True,  # Enabled by default
+                                    container=False,
+                                    info="Enable/disable spoken responses",
+                                    visible=self.tts is not None
+                                )
+                                # Voice listening control buttons (always create, hide if module not available)
+                                with gr.Row(visible=self.stt is not None) as voice_controls_row:
+                                    start_listening_btn = gr.Button("🎤 Start Listening", size="sm", variant="primary")
+                                    stop_listening_btn = gr.Button("🛑 Stop Listening", size="sm", variant="stop", visible=False)
                                 clear = gr.Button("Clear Chat")
+                                # Add reload modules button
+                                reload_modules_btn = gr.Button("🔄 Reload Modules", size="sm", variant="secondary")
+
+                        # Module reload status message
+                        reload_status = gr.Textbox(
+                            label="Module Status",
+                            value="",
+                            interactive=False,
+                            visible=False,
+                            lines=1,
+                            show_label=False
+                        )
+
+                        # Voice input status message (always create, hide if STT not available)
+                        voice_status = gr.Textbox(
+                            label="Voice Status",
+                            value="",
+                            interactive=False,
+                            visible=False,
+                            lines=1,
+                            show_label=False
+                        )
     
                         # Chat interactions
                         # Submit button always works
@@ -886,6 +983,13 @@ class LLMFrameworkGUI:
                                 js="""
                                 () => {
                                     console.log('[TTS] Browser TTS triggered');
+
+                                    // Check if TTS is enabled via checkbox
+                                    const ttsCheckbox = document.querySelector('input[type="checkbox"][aria-label*="Voice Output"]');
+                                    if (ttsCheckbox && !ttsCheckbox.checked) {
+                                        console.log('[TTS] Voice Output is disabled, skipping TTS');
+                                        return;
+                                    }
 
                                     if (!('speechSynthesis' in window)) {
                                         console.warn('[TTS] Web Speech API not supported');
@@ -1041,7 +1145,316 @@ class LLMFrameworkGUI:
                             )
 
                         clear.click(self.clear_chat, None, chatbot)
-    
+
+                        # Reload modules button event handler
+                        def handle_reload_modules():
+                            """Handle module reload and show status briefly."""
+                            # Reload and get UI updates
+                            status_msg, tts_vis, voice_row_vis, stop_btn_vis = self.reload_modules()
+
+                            # Show status
+                            yield (
+                                gr.update(value=status_msg, visible=True),  # reload_status
+                                tts_vis,  # tts_enabled visibility
+                                voice_row_vis,  # voice_controls_row visibility
+                                stop_btn_vis,  # stop_listening_btn visibility
+                                gr.update(visible=True)  # start_listening_btn visibility (always show when row visible)
+                            )
+
+                            # Hide status after 3 seconds
+                            import time
+                            time.sleep(3)
+                            yield (
+                                gr.update(value="", visible=False),  # reload_status
+                                gr.update(),  # tts_enabled unchanged
+                                gr.update(),  # voice_controls_row unchanged
+                                gr.update(),  # stop_listening_btn unchanged
+                                gr.update()   # start_listening_btn unchanged
+                            )
+
+                        reload_modules_btn.click(
+                            handle_reload_modules,
+                            inputs=[],
+                            outputs=[reload_status, tts_enabled, voice_controls_row, stop_listening_btn, start_listening_btn]
+                        )
+
+                        # TTS toggle event handler (always wire up, works even if TTS not initially loaded)
+                        def toggle_tts(enabled):
+                            """Update TTS enabled state when user toggles checkbox."""
+                            self.tts_enabled_state = enabled
+                            return None  # No UI update needed
+
+                        tts_enabled.change(toggle_tts, inputs=[tts_enabled], outputs=[])
+
+                        # Voice input event handlers (always wire up, work even if STT not initially loaded)
+                        # We'll check self.stt and self.listening_mode_active inside the handlers
+                        def start_listening_mode():
+                            """Enable continuous listening mode. Returns (start_vis, stop_vis, status_vis, status_val, proceed_flag)."""
+                            if not self.stt:
+                                # Show error but don't proceed to listening loop
+                                return (
+                                    gr.update(visible=True),   # Keep start button visible
+                                    gr.update(visible=False),  # Keep stop button hidden
+                                    gr.update(visible=True),   # Show status
+                                    "⚠️ Speech-to-Text module not enabled. Use 'llf module enable speech2text' and click Reload Modules.",
+                                    False  # Don't proceed to loop
+                                )
+
+                            self.listening_mode_active = True
+                            logger.info("Continuous listening mode activated")
+
+                            return (
+                                gr.update(visible=False),  # Hide Start button
+                                gr.update(visible=True),   # Show Stop button
+                                gr.update(visible=True),   # Show status
+                                "🎤 Listening mode active - waiting for your voice...",
+                                True  # Proceed to loop
+                            )
+
+                        def stop_listening_mode():
+                            """Disable continuous listening mode."""
+                            self.listening_mode_active = False
+                            logger.info("Continuous listening mode deactivated")
+                            return (
+                                gr.update(visible=True),   # Show Start button
+                                gr.update(visible=False),  # Hide Stop button
+                                gr.update(visible=False, value="")  # Hide status
+                            )
+
+                        def listen_once():
+                            """
+                            Listen for voice input once (used in continuous mode).
+                            Returns updates for: voice_status, msg, chatbot
+                            """
+                            if not self.listening_mode_active:
+                                # Mode was turned off, don't listen
+                                return (
+                                    gr.update(visible=False, value=""),
+                                    gr.update(),  # msg unchanged
+                                    gr.update()   # chatbot unchanged
+                                )
+
+                            try:
+                                # Show status: Listening
+                                yield (
+                                    gr.update(visible=True, value="🎤 Listening... (speak now, pause when done)"),
+                                    gr.update(),  # msg unchanged
+                                    gr.update()   # chatbot unchanged
+                                )
+
+                                # Record and transcribe
+                                text = self.stt.listen()
+
+                                if not text or not text.strip():
+                                    # Empty transcription, show status and continue listening
+                                    yield (
+                                        gr.update(visible=True, value="⚠️ No speech detected, listening again..."),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+                                    import time
+                                    time.sleep(1)
+                                    # Will re-trigger via continuous mode
+                                    return
+
+                                # Show status: Transcribed
+                                transcribed_msg = f"✅ Transcribed: {text}"
+                                yield (
+                                    gr.update(visible=True, value=transcribed_msg),
+                                    gr.update(value=text),  # Populate message box
+                                    gr.update()
+                                )
+
+                                # Brief pause so user sees the transcription
+                                import time
+                                time.sleep(0.5)
+
+                            except Exception as e:
+                                logger.error(f"Voice input error: {e}")
+                                error_msg = f"⚠️ Voice input failed: {str(e)}"
+                                yield (
+                                    gr.update(visible=True, value=error_msg),
+                                    gr.update(value=""),  # Clear message box on error
+                                    gr.update()
+                                )
+
+                                # Show error briefly
+                                import time
+                                time.sleep(2)
+
+                                # If still in listening mode, show ready status
+                                if self.listening_mode_active:
+                                    yield (
+                                        gr.update(visible=True, value="🎤 Ready to listen again..."),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+                                else:
+                                    yield (
+                                        gr.update(visible=False, value=""),
+                                        gr.update(),
+                                        gr.update()
+                                    )
+
+                        def continuous_listen_respond_loop(chatbot_history):
+                            """
+                            Continuous loop: listen -> transcribe -> respond -> listen again.
+                            Runs while listening_mode_active is True.
+                            """
+                            # Safety check: STT must be available
+                            if not self.stt:
+                                yield (
+                                    gr.update(visible=True, value="⚠️ Speech-to-Text module not available"),
+                                    gr.update(),
+                                    chatbot_history if chatbot_history else []
+                                )
+                                return
+
+                            current_history = chatbot_history if chatbot_history else []
+
+                            while self.listening_mode_active:
+                                try:
+                                    # Show status: Listening
+                                    yield (
+                                        gr.update(visible=True, value="🎤 Listening... (speak now, pause when done)"),
+                                        gr.update(),  # msg unchanged
+                                        current_history  # chatbot unchanged
+                                    )
+
+                                    # Record and transcribe
+                                    text = self.stt.listen()
+
+                                    if not text or not text.strip():
+                                        # Empty transcription, continue listening
+                                        yield (
+                                            gr.update(visible=True, value="⚠️ No speech detected, listening again..."),
+                                            gr.update(),
+                                            current_history
+                                        )
+                                        import time
+                                        time.sleep(1)
+                                        continue
+
+                                    # Show status: Transcribed
+                                    transcribed_msg = f"✅ Transcribed: {text}"
+                                    yield (
+                                        gr.update(visible=True, value=transcribed_msg),
+                                        gr.update(value=text),  # Populate message box
+                                        current_history
+                                    )
+
+                                    # Process with LLM
+                                    if not text.strip():
+                                        continue
+
+                                    # Add user message to history
+                                    messages = []
+                                    for msg in current_history:
+                                        if isinstance(msg, dict) and 'role' in msg:
+                                            messages.append(msg)
+
+                                    messages.append({"role": "user", "content": text})
+                                    current_history = current_history + [{"role": "user", "content": text}]
+
+                                    # Get LLM response
+                                    response_text = ""
+                                    for chunk in self.runtime.chat(messages, stream=True):
+                                        response_text += chunk
+                                        streaming_history = current_history + [{"role": "assistant", "content": response_text}]
+                                        yield (
+                                            gr.update(),  # status unchanged
+                                            gr.update(value=""),  # Clear message box
+                                            streaming_history
+                                        )
+
+                                    # Update history with complete response
+                                    current_history = current_history + [{"role": "assistant", "content": response_text}]
+
+                                    # Speak response if TTS enabled
+                                    if self.tts and self.tts_enabled_state and response_text:
+                                        if not self.is_share_mode:
+                                            try:
+                                                from .tts_stt_utils import wait_for_tts_clearance
+                                                logger.info("Speaking and waiting for audio clearance...")
+                                                yield (
+                                                    gr.update(visible=True, value="🔊 Speaking..."),
+                                                    gr.update(),
+                                                    gr.update()
+                                                )
+                                                wait_for_tts_clearance(self.tts, self.stt, response_text)
+                                                logger.info("Audio cleared, ready for next input")
+                                            except Exception as e:
+                                                logger.warning(f"Text-to-Speech error: {e}")
+
+                                    # Brief pause before next listen cycle
+                                    import time
+                                    time.sleep(0.5)
+
+                                except Exception as e:
+                                    logger.error(f"Error in continuous listen loop: {e}")
+                                    yield (
+                                        gr.update(visible=True, value=f"⚠️ Error: {str(e)}"),
+                                        gr.update(),
+                                        current_history
+                                    )
+                                    import time
+                                    time.sleep(2)
+
+                            # Loop exited (listening mode stopped)
+                            yield (
+                                gr.update(visible=False, value=""),
+                                gr.update(),
+                                current_history
+                            )
+
+                        # Start listening button: activate continuous mode and conditionally start loop
+                        def start_and_maybe_loop(chatbot_history):
+                            """Start listening mode, and if successful, run the continuous loop."""
+                            # Try to start listening mode
+                            start_vis, stop_vis, status_vis, status_val, proceed = start_listening_mode()
+
+                            # Combine status visibility and value
+                            # status_vis is a gr.update() dict, we need to merge it with the value
+                            if isinstance(status_vis, dict):
+                                status_update = status_vis.copy()
+                                status_update['value'] = status_val
+                            else:
+                                status_update = gr.update(visible=True, value=status_val)
+
+                            # Update UI first
+                            yield (
+                                start_vis,
+                                stop_vis,
+                                status_update,
+                                gr.update(),  # msg
+                                chatbot_history if chatbot_history else []  # chatbot
+                            )
+
+                            # If STT is available, proceed with continuous loop
+                            if proceed and self.stt:
+                                # Run the continuous listen loop
+                                for update in continuous_listen_respond_loop(chatbot_history):
+                                    yield (
+                                        gr.update(),  # start_btn
+                                        gr.update(),  # stop_btn
+                                        update[0],    # voice_status
+                                        update[1],    # msg
+                                        update[2]     # chatbot
+                                    )
+
+                        start_listening_btn.click(
+                            start_and_maybe_loop,
+                            inputs=[chatbot],
+                            outputs=[start_listening_btn, stop_listening_btn, voice_status, msg, chatbot]
+                        )
+
+                        # Stop listening button: deactivate continuous mode
+                        stop_listening_btn.click(
+                            stop_listening_mode,
+                            inputs=[],
+                            outputs=[start_listening_btn, stop_listening_btn, voice_status]
+                        )
+
                     # ===== Server Tab =====
                     with gr.Tab("🖥️ Server"):
                         gr.Markdown("### Server Management")

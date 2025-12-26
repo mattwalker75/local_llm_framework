@@ -2,18 +2,25 @@
   "name": "text2speech",
   "display_name": "Text-to-Speech",
   "version": "0.1.0",
-  "description": "Converts LLM text output to spoken audio using pyttsx3",
+  "description": "Platform-aware text-to-speech using NSSpeechSynthesizer (macOS) or pyttsx3 (Windows/Linux)",
   "author": "LLM Framework",
   "type": "output_processor",
   "enabled": false,
   "dependencies": [
-    "pyttsx3>=2.90"
+    "pyttsx3>=2.90",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'"
   ],
   "settings": {
     "voice_id": null,
     "rate": 200,
     "volume": 1.0,
-    "auto_speak": true
+    "auto_speak": true,
+    "debug_logging": false,
+    "log_level": "INFO",
+    "audio_clearance_buffer_macos": 0.5,
+    "audio_clearance_buffer_pyttsx3": 1.0,
+    "audio_verification_timeout": 10.0,
+    "required_silence_duration": 0.5
   },
   "hooks": {
     "on_llm_response_chunk": "process_chunk",
@@ -43,6 +50,45 @@
       "type": "boolean",
       "description": "Automatically speak LLM responses when enabled",
       "default": true
+    },
+    "debug_logging": {
+      "type": "boolean",
+      "description": "Enable detailed debug logging for troubleshooting",
+      "default": false
+    },
+    "log_level": {
+      "type": "string",
+      "description": "Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+      "default": "INFO",
+      "options": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    },
+    "audio_clearance_buffer_macos": {
+      "type": "float",
+      "description": "Buffer time in seconds after speech completion on macOS to let audio system drain",
+      "default": 0.5,
+      "min": 0.0,
+      "max": 5.0
+    },
+    "audio_clearance_buffer_pyttsx3": {
+      "type": "float",
+      "description": "Buffer time in seconds after audio verification on Windows/Linux to let buffers drain",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 5.0
+    },
+    "audio_verification_timeout": {
+      "type": "float",
+      "description": "Maximum time in seconds to wait for audio clearance verification",
+      "default": 10.0,
+      "min": 1.0,
+      "max": 60.0
+    },
+    "required_silence_duration": {
+      "type": "float",
+      "description": "Duration of silence in seconds required to confirm audio has cleared",
+      "default": 0.5,
+      "min": 0.1,
+      "max": 3.0
     }
   }
 }

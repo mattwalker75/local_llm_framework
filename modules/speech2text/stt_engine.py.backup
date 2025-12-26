@@ -1,0 +1,325 @@
+"""
+Speech-to-Text Engine using the following:
+
+Python packages:
+sounddevice
+openai-whisper
+scipy
+
+on Mac:  brew install ffmpeg
+
+This module provides a simple, clean interface for converting speech to text.
+"""
+
+import sounddevice as sd
+import numpy as np
+import whisper
+import tempfile
+import os
+from scipy.io.wavfile import write
+import time
+from typing import Optional, List, Dict
+import logging
+
+
+class SpeechToText:
+    """
+    Speech-to-Text engine using openai-whisper.
+
+    Provides a simple interface for converting speech to text with customizable
+    speech recognition settings.
+
+    Example:
+        stt = SpeechToText()
+        text = stt.listen()
+    """
+    def __init__(self,
+                 sample_rate: int = 16000,
+                 channels: int = 1,
+                 dtype: str = "int16",
+                 max_duration: int = 60,
+                 silence_timeout: float = 1.5,
+                 silence_threshold: int = 500,
+                 chunk_duration: float = 0.1,
+                 min_speech_duration: float = 0.3):
+        """
+        Initialize the Speech-to-Text engine.
+
+        Args:
+            sample_rate: Sample rate for audio recording (default: 16000).
+            channels: Number of audio channels (default: 1).
+            dtype: Data type for audio recording (default: "int16").
+            max_duration: Maximum duration to record in seconds (default: 60).
+            silence_timeout: Duration of silence to stop recording (default: 1.5 seconds).
+            silence_threshold: Amplitude threshold to detect silence (default: 500).
+            chunk_duration: Duration of each audio chunk to process (default: 0.1 seconds).
+            min_speech_duration: Minimum speech duration before detecting silence (default: 0.3 seconds).
+        """
+        self.logger = logging.getLogger(__name__)
+
+        try:
+            self.sample_rate = sample_rate
+            self.channels = channels
+            self.dtype = dtype
+            self.max_duration = max_duration
+            self.silence_timeout = silence_timeout
+            self.silence_threshold = silence_threshold
+            self.chunk_duration = chunk_duration
+            self.min_speech_duration = min_speech_duration
+
+            # Load Whisper model once during initialization (CRITICAL FIX)
+            # This prevents 5-10 second hangs on every transcription
+            self.logger.info("Loading Whisper model (this may take a few seconds)...")
+            self.whisper_model = whisper.load_model("base")
+            self.logger.info("Whisper model loaded successfully")
+
+            self.logger.info("Speech-to-Text engine initialized successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize STT engine: {e}")
+            raise
+    
+    def record_until_silence(self) -> np.ndarray:
+        """
+        Record audio from the microphone until silence is detected.
+
+        Returns:
+            Recorded audio data as a NumPy array.
+
+        Raises:
+            RuntimeError: If audio recording fails or times out.
+        """
+        self.logger.info("Starting audio recording...")
+
+        recorded_chunks = []
+        silence_start = None
+        speech_start = None
+        total_duration = 0.0
+        chunk_size = int(self.sample_rate * self.chunk_duration)
+
+        try:
+            with sd.InputStream(samplerate=self.sample_rate,
+                                channels=self.channels,
+                                dtype=self.dtype) as stream:
+
+                # Give audio device a moment to stabilize
+                time.sleep(0.1)
+
+                while total_duration < self.max_duration:
+                    try:
+                        # Read with timeout to prevent indefinite hangs
+                        chunk, overflowed = stream.read(chunk_size)
+
+                        if overflowed:
+                            self.logger.warning("Audio buffer overflow detected")
+
+                        recorded_chunks.append(chunk)
+
+                        amplitude = np.max(np.abs(chunk))
+
+                        # Detect when speech starts
+                        if amplitude >= self.silence_threshold:
+                            if speech_start is None:
+                                speech_start = time.time()
+                                self.logger.debug("Speech detected, starting recording")
+                            silence_start = None  # Reset silence timer
+                        else:
+                            # Only start silence detection after minimum speech duration
+                            if speech_start is not None and (time.time() - speech_start) >= self.min_speech_duration:
+                                if silence_start is None:
+                                    silence_start = time.time()
+                                elif time.time() - silence_start >= self.silence_timeout:
+                                    self.logger.info("Silence detected after speech, stopping recording.")
+                                    break
+
+                        total_duration += self.chunk_duration
+
+                    except Exception as read_error:
+                        self.logger.error(f"Error reading audio chunk: {read_error}")
+                        # Try to continue recording unless we have no data at all
+                        if len(recorded_chunks) == 0:
+                            raise RuntimeError(f"Failed to read audio: {read_error}")
+                        break
+
+            if len(recorded_chunks) == 0:
+                raise RuntimeError("No audio data recorded")
+
+            audio_data = np.concatenate(recorded_chunks, axis=0)
+
+            # Validate we have some actual audio
+            if len(audio_data) == 0:
+                raise RuntimeError("Recorded audio is empty")
+
+            self.logger.info(f"Audio recording completed. Duration: {total_duration:.2f}s")
+            return audio_data
+
+        except sd.PortAudioError as e:
+            self.logger.error(f"Audio device error: {e}")
+            raise RuntimeError(f"Audio device error: {e}. Check if microphone is connected and accessible.")
+        except Exception as e:
+            self.logger.error(f"Unexpected error during recording: {e}")
+            raise RuntimeError(f"Recording failed: {e}")
+    
+    def transcribe_audio(self, audio_data: np.ndarray) -> str:
+        """
+        Transcribe audio data to text using Whisper.
+
+        Args:
+            audio_data: Recorded audio data as a NumPy array.
+
+        Returns:
+            Transcribed text from the audio data.
+
+        Raises:
+            RuntimeError: If transcription fails.
+        """
+        self.logger.info("Transcribing audio data...")
+
+        temp_wav_path = None
+        try:
+            # Validate audio data
+            if audio_data is None or len(audio_data) == 0:
+                raise ValueError("Audio data is empty or None")
+
+            # Create temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
+                write(temp_wav.name, self.sample_rate, audio_data)
+                temp_wav_path = temp_wav.name
+
+            # Use pre-loaded model (CRITICAL FIX - prevents hang)
+            self.logger.debug(f"Transcribing audio file: {temp_wav_path}")
+            result = self.whisper_model.transcribe(temp_wav_path, fp16=False)
+
+            # Extract text from result
+            if "text" not in result:
+                raise RuntimeError("Whisper transcription returned no text")
+
+            transcribed_text = result["text"].strip()
+
+            self.logger.info(f"Transcription completed. Length: {len(transcribed_text)} chars")
+            return transcribed_text
+
+        except Exception as e:
+            self.logger.error(f"Transcription error: {e}")
+            raise RuntimeError(f"Failed to transcribe audio: {e}")
+
+        finally:
+            # Always clean up temp file, even if transcription fails
+            if temp_wav_path and os.path.exists(temp_wav_path):
+                try:
+                    os.remove(temp_wav_path)
+                    self.logger.debug(f"Cleaned up temp file: {temp_wav_path}")
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_wav_path}: {cleanup_error}")
+    
+    def wait_for_audio_clearance(self, timeout: float = 120.0, startup_delay: float = 0.0) -> float:
+        """
+        Monitor microphone and wait until audio amplitude drops below silence threshold.
+
+        This is used to detect when TTS has finished playing through speakers by
+        monitoring the microphone for residual audio.
+
+        Args:
+            timeout: Maximum time to wait in seconds (default: 120s)
+            startup_delay: Seconds to wait before monitoring to let audio start (default: 0.5s)
+
+        Returns:
+            Actual time waited in seconds (including startup delay)
+
+        Raises:
+            RuntimeError: If monitoring fails or times out
+        """
+        self.logger.info("Monitoring audio for clearance...")
+
+        start_time = time.time()
+
+        # Give TTS audio time to actually start playing
+        # pyttsx3 on macOS returns from runAndWait() immediately, but audio plays async
+        if startup_delay > 0:
+            self.logger.debug(f"Waiting {startup_delay}s for TTS audio to start...")
+            time.sleep(startup_delay)
+
+        chunk_size = int(self.sample_rate * self.chunk_duration)
+        silence_duration = 0.0
+        required_silence = 0.5  # Wait for 0.5 seconds of silence
+        audio_detected = False  # Track if we've detected any audio yet
+
+        try:
+            with sd.InputStream(samplerate=self.sample_rate,
+                                channels=self.channels,
+                                dtype=self.dtype) as stream:
+
+                while (time.time() - start_time) < timeout:
+                    try:
+                        chunk, _ = stream.read(chunk_size)
+                        amplitude = np.max(np.abs(chunk))
+
+                        if amplitude >= self.silence_threshold:
+                            # Audio detected - TTS is playing
+                            audio_detected = True
+                            silence_duration = 0.0  # Reset silence counter
+                            self.logger.debug(f"Audio detected: amplitude={amplitude}")
+                        else:
+                            # Below threshold - might be silence
+                            if audio_detected:
+                                # We've already detected audio, so now we're waiting for it to clear
+                                silence_duration += self.chunk_duration
+                                if silence_duration >= required_silence:
+                                    elapsed = time.time() - start_time
+                                    self.logger.info(f"Audio cleared after {elapsed:.2f}s")
+                                    return elapsed
+                            # else: Still waiting for audio to start playing
+
+                    except Exception as read_error:
+                        self.logger.error(f"Error reading audio chunk: {read_error}")
+                        break
+
+            # Timeout reached or loop exited
+            elapsed = time.time() - start_time
+            if not audio_detected:
+                # No audio detected means it already cleared before we started monitoring
+                # This is actually SUCCESS - the estimate was accurate
+                self.logger.info(f"No audio detected - already cleared (verified in {elapsed:.2f}s)")
+                return 0.0  # Return 0 to indicate immediate clearance
+            else:
+                # Audio was detected but didn't clear within timeout - this is unusual
+                self.logger.warning(f"Audio clearance timeout after {elapsed:.2f}s")
+                return elapsed
+
+        except sd.PortAudioError as e:
+            self.logger.error(f"Audio device error: {e}")
+            raise RuntimeError(f"Audio monitoring failed: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error during audio monitoring: {e}")
+            raise RuntimeError(f"Audio monitoring failed: {e}")
+
+    def listen(self) -> str:
+        """
+        Listen to microphone input and convert speech to text.
+
+        Returns:
+            Transcribed text from the recorded speech.
+
+        Raises:
+            RuntimeError: If recording or transcription fails.
+        """
+        try:
+            self.logger.info("Listening for speech...")
+            audio_data = self.record_until_silence()
+            text = self.transcribe_audio(audio_data)
+
+            # Validate we got some text
+            if not text or text.strip() == "":
+                self.logger.warning("Transcription returned empty text")
+                return ""
+
+            self.logger.info(f"Transcribed Text: {text}")
+            return text
+
+        except RuntimeError as e:
+            # Re-raise runtime errors (already logged in sub-methods)
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error in listen(): {e}")
+            raise RuntimeError(f"Speech-to-text failed: {e}")
+
