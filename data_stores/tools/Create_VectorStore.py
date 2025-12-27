@@ -455,10 +455,28 @@ Examples:
   %(prog)s -i data/ -o vectorstore --model sentence-transformers/all-MiniLM-L6-v2 -v
 
 Recommended Models:
-  sentence-transformers/all-MiniLM-L6-v2          Fast, lightweight (384 dim, ~80 MB)
-  sentence-transformers/all-mpnet-base-v2         High-quality general (768 dim, ~420 MB)
-  sentence-transformers/multi-qa-mpnet-base-cos-v1  Q&A optimized (768 dim)
-  jinaai/jina-embeddings-v2-base-code             Code & 30+ languages (768 dim, ~500 MB)
+  sentence-transformers/all-MiniLM-L6-v2
+    - Fast, lightweight (384 dim, ~80 MB, max 256 tokens)
+    - Recommended: --chunk-size 800-1000 --overlap 150-200
+    - (200-250 tokens with 15-20%% overlap)
+
+  sentence-transformers/all-mpnet-base-v2
+    - High-quality general (768 dim, ~420 MB, max 384 tokens)
+    - Recommended: --chunk-size 1200-1500 --overlap 200-250
+    - (300-350 tokens with 15-20%% overlap)
+
+  sentence-transformers/multi-qa-mpnet-base-cos-v1
+    - Q&A optimized (768 dim, max 384 tokens)
+    - Recommended: --chunk-size 1200-1500 --overlap 200-250
+    - (300-350 tokens with 15-20%% overlap)
+
+  jinaai/jina-embeddings-v2-base-code
+    - Code & 30+ languages (768 dim, ~500 MB, max 8192 tokens)
+    - Recommended: --chunk-size 2000-4000 --overlap 400-600
+    - (500-1000 tokens with 15-20%% overlap)
+
+NOTE: Current chunking is CHARACTER-based (not token-based).
+      Approximate conversion: 1 token ≈ 4 characters
 
 For more models: https://huggingface.co/models?library=sentence-transformers
 """
