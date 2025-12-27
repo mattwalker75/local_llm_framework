@@ -6,7 +6,7 @@
       "name": "matt_docx",
       "display_name": "DOCX Resume",
       "description": "My resume in DOCX format",
-      "enabled": false,
+      "attached": false,
       "vector_store_path": "data_stores/vector_stores/matt_docx",
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
       "embedding_dimension": 768,
@@ -28,7 +28,7 @@
       "name": "matt_pdf",
       "display_name": "PDF Resume",
       "description": "My resume in PDF format",
-      "enabled": false,
+      "attached": false,
       "vector_store_path": "data_stores/vector_stores/matt_pdf",
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
       "embedding_dimension": 768,
@@ -49,7 +49,7 @@
   ],
   "metadata": {
     "description": "Registry of all available RAG vector stores for the LLM Framework",
-    "note": "This file tracks which vector stores are available and their enabled/disabled status. The LLM will search through all enabled stores.",
+    "note": "This file tracks which vector stores are available and their enabled/disabled status. The LLM will search through all attached stores.",
     "schema_version": "1.0",
     "configuration_notes": {
       "enabled": "Set to true to enable searching this vector store, false to disable",

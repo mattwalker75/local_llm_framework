@@ -284,5 +284,22 @@ with which prompts I passed to the AI.
 4.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 #### Work on custom memory utilizing RAG
- 
+1.  Built out the "data_store" directory structure to be used to store RAG 
+    data.
+2.  Built a number of tooling scripts that are in the "data_store/tools" directory
+    and have them do the following:
+       - Read the following type of documentation and convert it to a .JSONL format
+         that can be loaded into a RAG data store
+            - PDF files
+            - Microsoft Word files
+            - TXT files
+            - Web site text data
+       - Validation tool to verify the .JSONL files are good for data loading
+       - Create a RAG Vector Store and load the .JSONL files into them
+3.  Created a data_store_registry.json file that will be used similarly as the 
+    modules_registry.json file in the "modules" directory
+4.  Used the following prompt to being development of the "llf datastore" code
+       -  8_Data_Store.txt
+
+
 

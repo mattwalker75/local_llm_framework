@@ -1,0 +1,72 @@
+
+I passed the following prompt to Claude to begin coding of the data store management code:
+
+
+We will now start working on a RAG data store management system utilizing the "llf datastore" command.  We will be using a lot of the same concepts that the "llf module" command uses.  For example, the "llf module" command uses a "module_registry.json" file to collect information about the modules and determine if the are enabled or disabled via the "enabled" parameter within the file.  We will be doing something very similar with a file called "data_store_registery.json".  Except with the "data_store_registery.json", we will be using "attached" instead of "enabled".
+
+High level functionality:
+
+We will want to dynamically attach and detach RAG data stores that are "attached" to the LLM for use.  If a data store is 
+disabled then it will not be included as a data source for the LLM to search.  If a data store is attached then it will be
+included as a RAG data source for the LLM to search for information.  The creation and management of the RAG data stores will
+be handled outside of the system so the only thing to reference and use is the "data_store_registery.json" file.
+
+File and data location:
+
+  - For reference, the module data is located here:  modules
+  - For reference, the module registery is located here:  modules/modules_registry.json
+  - For reference, review the code for "llf module <COMMAND>"
+  - All the data stores, will be located here:  data_stores
+  - The data store registery is located here:  data_stores/data_store_registry.json
+     - The data_store_registry.json is already built and and is ready to use
+
+Focusing on the data_store_registry.json and how it is used:
+
+  - All data stores are located in the following:  data_stores: [ ]
+  - The following are required parameters:
+     - name
+     - display_name
+     - description
+     - attached
+     - vector_store_path
+     - embedding_model
+     - embedding_dimension
+     - index_type
+  - The following are optional parameters and should have a default if they are not set:
+     - model_cache_dir
+     - top_k_results
+     - similarity_threshold
+     - max_context_length
+     - created_date
+     - num_vectors
+     - metadata  
+
+Current in scope items:
+  - Listing state of the data stores:
+     - COMMAND:  llf datastore list
+         - Displays the "display_name" of the data store and its "attached" state
+     - COMMAND:  llf datastore list --attached
+         - Same as "llf datastore list" but only show data stores that have "attached" set to "true"
+     - COMMAND:  llf datastore attach DATASTORE_NAME
+         - This will update the "attached" field for the data store to "true"
+     - COMMAND:  llf datastore attach all
+         - This will update the "attached" field for all the data stores to "true"
+     - COMMAND:  llf datastore detach DATASTORE_NAME
+         - This will update the "attached" field for the data store to "false"
+     - COMMAND:  llf datastore detach all
+         - This will update the "attached" field for all the data stores to "false"
+     - COMMAND:  llf datastore info DATASTORE_NAME
+         - This will print out the following information about the datastore
+            - display_name (name) 
+            - description
+            - location of RAG datastore ( this can be obtained from vector_store_path ) 
+  - Remember to update online documentation:  "llf -h" and "llf datastore -h"
+  - Add unit tests for the additional functionality
+     - Remember to use the "llf_venv" virtual environment when doing testing
+
+Current out of scope items:
+  - incorporating the RAG data stores to be used by the LLM
+
+
+
+
