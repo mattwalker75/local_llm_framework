@@ -35,3 +35,13 @@ pytest-mock>=3.12.0
 black>=24.0.0
 flake8>=7.0.0
 mypy>=1.8.0
+
+# RAG data store tools
+pymupdf>=1.23.0  # PDF processing (Process_PDF.py)
+python-docx>=1.1.0  # Word document processing - .docx files (Process_DOC.py)
+striprtf>=0.0.26  # Rich Text Format processing - .rtf files (Process_DOC.py)
+beautifulsoup4>=4.12.0  # HTML parsing for web pages (Process_WEB.py)
+sentence-transformers>=2.2.0  # Embedding models for vector store creation (Create_VectorStore.py)
+faiss-cpu>=1.7.4  # FAISS vector database (Create_VectorStore.py)
+tqdm>=4.65.0  # Progress bars for vector store creation
+
