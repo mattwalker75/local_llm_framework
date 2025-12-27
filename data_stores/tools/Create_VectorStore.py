@@ -35,10 +35,21 @@ License: MIT
 import argparse
 import json
 import sys
+import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
+
+# Fix for Python 3.13+ multiprocessing issues on macOS
+# Disable tokenizer parallelism to prevent segmentation faults
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+# Disable OpenMP threading which can cause issues on macOS
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
 
 # Import dependencies with helpful error messages
 try:
@@ -61,6 +72,14 @@ except ImportError:
     print("Error: tqdm is required.", file=sys.stderr)
     print("Install: pip install tqdm", file=sys.stderr)
     sys.exit(1)
+
+# Set PyTorch to single-threaded mode (must be done after import)
+try:
+    import torch
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+except ImportError:
+    pass  # torch not yet imported
 
 # Set up logging
 logging.basicConfig(
@@ -329,12 +348,14 @@ def create_embeddings(model: SentenceTransformer, text_chunks: List[str],
 
     try:
         # Encode with progress bar
+        # Use single-process encoding to avoid segmentation faults on Python 3.13+/macOS
         embeddings = model.encode(
             text_chunks,
             batch_size=batch_size,
             show_progress_bar=verbose,
             convert_to_numpy=True,
-            normalize_embeddings=True  # Normalize for cosine similarity
+            normalize_embeddings=True,  # Normalize for cosine similarity
+            device=model.device  # Use model's device explicitly
         )
 
         if verbose:

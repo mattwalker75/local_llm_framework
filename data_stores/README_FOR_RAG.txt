@@ -36,6 +36,8 @@ Convert files to a data format that can be loaded into RAG:
 Review generated output files with the .jsonl extention:
    - Look at the .jsonl files and ensure the data looks good and there are no 
      empty text slots in the file
+   - Use the Validat_JSONL.py script to help validate
+      - ./Validate_JSONL.py -i output.jsonl
 
 
 Pick an embedding model to load the .jsonl data into a new RAG datastore
@@ -61,7 +63,7 @@ Pick an embedding model to load the .jsonl data into a new RAG datastore
          - Select a overlap:  400 - 600
 
 
-Create a RAG data store and load your data into it
+Make note of which embedding model to use and associated values
    - Make note of the following from the above section
       - Model you are going to use
          - We will pick:  sentence-transformers/all-mpnet-base-v2
@@ -75,6 +77,9 @@ Create a RAG data store and load your data into it
 
 
 Generate local vector store using the embedding model and .jsonl data
+   - IMPORTANT:  Due to how the terminal environment may process the command, you will want to
+                 put the command in a stand along temp script to execute
+                   - Update and use the following script:  CREATE_VECTOR_STORE.sh
    - The Vector Store will consist of a directory of data.  You can move the generated
      directory to any location you want but do not modify any of the contents
    - Convert a single small file not worried about chunk size
@@ -83,7 +88,9 @@ Generate local vector store using the embedding model and .jsonl data
       - ./Create_VectorStore.py -i document.jsonl -o my_vectorstore --model sentence-transformers/all-mpnet-base-v2 --chunk-size 1200 --overlap 200
    - Convert a directory of .jonsl files 
       - ./Create_VectorStore.py -i data_dir -o my_vectorstore --model sentence-transformers/all-mpnet-base-v2 --chunk-size 1200 --overlap 200
-   
+   - Update the CREATE_VECTOR_STORE.sh script with the long command that you will want to run
+   - Execute the CREATE_VECTOR_STORE.sh script
+ 
 
 Update the data_store_registry.json file
    - Make note of the following data
