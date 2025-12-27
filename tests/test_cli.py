@@ -1466,3 +1466,747 @@ class TestPlaceholderCommands:
             assert result == 0
             # Should print tool management placeholder
             mock_print.assert_called()
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_specific_module(self, mock_setup_logging, mock_print):
+        """Test module enable command for specific module."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with disabled module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'enable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        # Mock file operations
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should enable the module and write to file
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('enabled successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_already_enabled(self, mock_setup_logging, mock_print):
+        """Test module enable command when module is already enabled."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with already enabled module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'enable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already enabled
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already enabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_not_found(self, mock_setup_logging, mock_print):
+        """Test module enable command when module doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "other_module",
+                    "display_name": "Other Module",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'enable', 'nonexistent_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_all(self, mock_setup_logging, mock_print):
+        """Test module enable all command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with multiple disabled modules
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "module1",
+                    "display_name": "Module 1",
+                    "enabled": False
+                },
+                {
+                    "name": "module2",
+                    "display_name": "Module 2",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'enable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should enable all modules
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('enabled 2' in str(call).lower() or 'enabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_specific_module(self, mock_setup_logging, mock_print):
+        """Test module disable command for specific module."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with enabled module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'disable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should disable the module
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('disabled successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_already_disabled(self, mock_setup_logging, mock_print):
+        """Test module disable command when module is already disabled."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with already disabled module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'disable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already disabled
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already disabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_not_found(self, mock_setup_logging, mock_print):
+        """Test module disable command when module doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "other_module",
+                    "display_name": "Other Module",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'disable', 'nonexistent_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_all(self, mock_setup_logging, mock_print):
+        """Test module disable all command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with multiple enabled modules
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "module1",
+                    "display_name": "Module 1",
+                    "enabled": True
+                },
+                {
+                    "name": "module2",
+                    "display_name": "Module 2",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'disable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should disable all modules
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('disabled 2' in str(call).lower() or 'disabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_info_command(self, mock_setup_logging, mock_print):
+        """Test module info command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "test_module",
+                    "display_name": "Test Module",
+                    "description": "A test module for testing",
+                    "enabled": True,
+                    "version": "1.0.0",
+                    "type": "enhancement",
+                    "directory": "test_module"
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'info', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should display module info
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('test module' in str(call).lower() or 'test_module' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_info_not_found(self, mock_setup_logging, mock_print):
+        """Test module info command when module doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target module
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "other_module",
+                    "display_name": "Other Module",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'info', 'nonexistent_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_missing_name(self, mock_setup_logging, mock_print):
+        """Test module enable command without module name."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {"version": "2.0", "modules": []}
+        test_args = ['llf', 'module', 'enable']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module name required
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('required' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_missing_name(self, mock_setup_logging, mock_print):
+        """Test module disable command without module name."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {"version": "2.0", "modules": []}
+        test_args = ['llf', 'module', 'disable']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module name required
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('required' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_info_missing_name(self, mock_setup_logging, mock_print):
+        """Test module info command without module name."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {"version": "2.0", "modules": []}
+        test_args = ['llf', 'module', 'info']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report module name required
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('required' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_file_not_found(self, mock_setup_logging, mock_print):
+        """Test module list command when registry file doesn't exist."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', side_effect=FileNotFoundError):
+
+            result = main()
+
+            assert result == 1
+            # Should report file not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_invalid_json(self, mock_setup_logging, mock_print):
+        """Test module list command with invalid JSON."""
+        from llf.cli import main
+        from unittest.mock import mock_open
+
+        test_args = ['llf', 'module', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        # Invalid JSON
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data='invalid json')):
+
+            result = main()
+
+            assert result == 1
+            # Should report JSON error
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('invalid json' in str(call).lower() or 'json' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_no_modules(self, mock_setup_logging, mock_print):
+        """Test module list command when registry has no modules."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Empty modules list
+        registry_data = {
+            "version": "2.0",
+            "modules": []
+        }
+
+        test_args = ['llf', 'module', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report no modules available
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('no modules' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_list_generic_error(self, mock_setup_logging, mock_print):
+        """Test module list command with generic exception."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', side_effect=PermissionError("Access denied")):
+
+            result = main()
+
+            assert result == 1
+            # Should report generic error
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('failed' in str(call).lower() or 'error' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_all_already_enabled(self, mock_setup_logging, mock_print):
+        """Test module enable all when all modules already enabled."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # All modules already enabled
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "module1",
+                    "display_name": "Module 1",
+                    "enabled": True
+                },
+                {
+                    "name": "module2",
+                    "display_name": "Module 2",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'enable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already enabled
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already enabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_all_no_modules(self, mock_setup_logging, mock_print):
+        """Test module enable all when no modules exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # No modules
+        registry_data = {
+            "version": "2.0",
+            "modules": []
+        }
+
+        test_args = ['llf', 'module', 'enable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should report no modules available to enable
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('no modules' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_all_already_disabled(self, mock_setup_logging, mock_print):
+        """Test module disable all when all modules already disabled."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # All modules already disabled
+        registry_data = {
+            "version": "2.0",
+            "modules": [
+                {
+                    "name": "module1",
+                    "display_name": "Module 1",
+                    "enabled": False
+                },
+                {
+                    "name": "module2",
+                    "display_name": "Module 2",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'module', 'disable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already disabled
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already disabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_all_no_modules(self, mock_setup_logging, mock_print):
+        """Test module disable all when no modules exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # No modules
+        registry_data = {
+            "version": "2.0",
+            "modules": []
+        }
+
+        test_args = ['llf', 'module', 'disable', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should report no modules available to disable
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('no modules' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_enable_error_handling(self, mock_setup_logging, mock_print):
+        """Test module enable command with generic exception."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'enable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', side_effect=PermissionError("Access denied")):
+
+            result = main()
+
+            assert result == 1
+            # Should report error
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('error' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_disable_error_handling(self, mock_setup_logging, mock_print):
+        """Test module disable command with generic exception."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'disable', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', side_effect=PermissionError("Access denied")):
+
+            result = main()
+
+            assert result == 1
+            # Should report error
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('error' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_module_info_error_handling(self, mock_setup_logging, mock_print):
+        """Test module info command with generic exception."""
+        from llf.cli import main
+
+        test_args = ['llf', 'module', 'info', 'test_module']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', side_effect=PermissionError("Access denied")):
+
+            result = main()
+
+            assert result == 1
+            # Should report error
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('error' in str(call).lower() or 'failed' in str(call).lower() for call in print_calls)

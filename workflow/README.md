@@ -262,7 +262,7 @@ with which prompts I passed to the AI.
 7.  More testing     
 8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
-#### Work on modules ( text to speech )
+#### Work on modules ( text to speech AND speech to text )
 1.  Start development of a text to speech module that will be used
     to take text generated from the LLM and play it as audio along with
     print the text on the screen.
@@ -271,9 +271,18 @@ with which prompts I passed to the AI.
 3.  Used the following prompt to being the development of the
     text to speech module:
        -  7_Text_to_Speech.txt
+4.  Worked through integration issues so it would work via the CLI and GUI
+5.  Created a Speech To Text module to be used in interactive Terminal chat
+    and GUI
+6.  Work through small integration issues
+7.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
-        
-     
+#### Fix all unit tests and improve code coverage
+1.  Work on fixing unit test issues
+2.  Increase code coverage 
+3.  Work through issues     
+4.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
-      
+#### Work on custom memory utilizing RAG
+ 
 

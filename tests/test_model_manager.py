@@ -273,3 +273,182 @@ class TestModelManager:
 
         assert info['name'] == "custom/model"
         assert info['downloaded']
+
+    def test_is_model_downloaded_gguf_model_with_files(self, model_manager, config):
+        """Test GGUF model detection with .gguf files."""
+        # Create a GGUF model
+        gguf_manager = ModelManager(config)
+        gguf_manager.config.model_name = "test/model-GGUF"
+
+        model_path = gguf_manager.get_model_path()
+        model_path.mkdir(parents=True)
+        (model_path / "model.gguf").write_text("gguf content")
+
+        assert gguf_manager.is_model_downloaded()
+
+    def test_is_model_downloaded_gguf_model_no_files(self, model_manager, config):
+        """Test GGUF model detection without .gguf files."""
+        # Create a GGUF model directory without .gguf files
+        gguf_manager = ModelManager(config)
+        gguf_manager.config.model_name = "test/model-GGUF"
+
+        model_path = gguf_manager.get_model_path()
+        model_path.mkdir(parents=True)
+        (model_path / "other.txt").write_text("not a gguf")
+
+        assert not gguf_manager.is_model_downloaded()
+
+    @patch('llf.model_manager.snapshot_download')
+    def test_download_model_hfhub_http_error(self, mock_snapshot, model_manager):
+        """Test download_model with HfHubHTTPError."""
+        from huggingface_hub.errors import HfHubHTTPError
+
+        # Create a mock HfHubHTTPError
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.text = "Not found"
+
+        mock_snapshot.side_effect = HfHubHTTPError("Not found", response=mock_response)
+
+        with pytest.raises(ValueError, match="Failed to download model"):
+            model_manager.download_model()
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_success(self, mock_urlretrieve, model_manager):
+        """Test successful URL download."""
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Mock successful download
+        mock_urlretrieve.return_value = (None, None)
+
+        result = model_manager.download_from_url(url, name)
+
+        assert result == model_manager.model_dir / name
+        mock_urlretrieve.assert_called_once()
+        # Check file path in call
+        call_args = mock_urlretrieve.call_args[0]
+        assert call_args[0] == url
+        assert "model.gguf" in str(call_args[1])
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_with_query_params(self, mock_urlretrieve, model_manager):
+        """Test URL download with query parameters in URL."""
+        url = "https://example.com/model.gguf?download=true&token=abc"
+        name = "test-model"
+
+        mock_urlretrieve.return_value = (None, None)
+
+        result = model_manager.download_from_url(url, name)
+
+        # Should strip query parameters from filename
+        call_args = mock_urlretrieve.call_args[0]
+        assert "model.gguf" in str(call_args[1])
+        assert "?" not in str(call_args[1])
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_already_exists(self, mock_urlretrieve, model_manager):
+        """Test URL download when file already exists."""
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Create existing file
+        model_path = model_manager.model_dir / name
+        model_path.mkdir(parents=True)
+        (model_path / "model.gguf").write_text("existing")
+
+        result = model_manager.download_from_url(url, name)
+
+        # Should not download if exists
+        mock_urlretrieve.assert_not_called()
+        assert result == model_path
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_force_redownload(self, mock_urlretrieve, model_manager):
+        """Test URL download with force flag."""
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Create existing file
+        model_path = model_manager.model_dir / name
+        model_path.mkdir(parents=True)
+        (model_path / "model.gguf").write_text("existing")
+
+        mock_urlretrieve.return_value = (None, None)
+
+        result = model_manager.download_from_url(url, name, force=True)
+
+        # Should download even if exists
+        mock_urlretrieve.assert_called_once()
+        assert result == model_path
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_http_error(self, mock_urlretrieve, model_manager):
+        """Test URL download with HTTP error."""
+        import urllib.error
+
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Mock HTTP error
+        mock_urlretrieve.side_effect = urllib.error.HTTPError(
+            url, 404, "Not Found", {}, None
+        )
+
+        with pytest.raises(ValueError, match="HTTP error downloading"):
+            model_manager.download_from_url(url, name)
+
+        # Verify partial file is cleaned up
+        file_path = model_manager.model_dir / name / "model.gguf"
+        assert not file_path.exists()
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_network_error(self, mock_urlretrieve, model_manager):
+        """Test URL download with network error."""
+        import urllib.error
+
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Mock URL error
+        mock_urlretrieve.side_effect = urllib.error.URLError("Network unreachable")
+
+        with pytest.raises(ValueError, match="URL error downloading"):
+            model_manager.download_from_url(url, name)
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_unexpected_error(self, mock_urlretrieve, model_manager):
+        """Test URL download with unexpected error."""
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Mock unexpected error
+        mock_urlretrieve.side_effect = RuntimeError("Unexpected error")
+
+        with pytest.raises(ValueError, match="Unexpected error downloading"):
+            model_manager.download_from_url(url, name)
+
+    @patch('urllib.request.urlretrieve')
+    def test_download_from_url_cleanup_on_error(self, mock_urlretrieve, model_manager):
+        """Test that partial downloads are cleaned up on error."""
+        import urllib.error
+
+        url = "https://example.com/model.gguf"
+        name = "test-model"
+
+        # Create partial download
+        model_path = model_manager.model_dir / name
+        model_path.mkdir(parents=True)
+        file_path = model_path / "model.gguf"
+        file_path.write_text("partial")
+
+        # Mock error during download
+        mock_urlretrieve.side_effect = urllib.error.HTTPError(
+            url, 500, "Server Error", {}, None
+        )
+
+        with pytest.raises(ValueError):
+            model_manager.download_from_url(url, name, force=True)
+
+        # Verify file was cleaned up
+        assert not file_path.exists()
