@@ -155,6 +155,9 @@ Update the data_store_registry.json file
             - When the vector store was created
          "num_vectors": 0,
             - Total number of text chunks created
+               - Go to the RAG Vector Store directory
+                  - Look at the config.json file
+                     - Look at the num_vectors value and use it 
          "metadata": {
            "source_type": "documentation",
               - Type of data ( used for organization purposes )

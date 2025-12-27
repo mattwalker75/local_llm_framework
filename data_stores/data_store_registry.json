@@ -1,32 +1,15 @@
 {
-  "_comment": "========== EMBEDDING MODEL DIMENSIONS ==========",
-  "_dimensions_reference": {
-    "sentence-transformers/all-MiniLM-L6-v2": 384,
-    "sentence-transformers/all-mpnet-base-v2": 768,
-    "sentence-transformers/multi-qa-mpnet-base-cos-v1": 768,
-    "jinaai/jina-embeddings-v2-base-code": 768
-  },
-  "_comment2": "========== FAISS INDEX TYPES ==========",
-  "_index_types_reference": {
-    "IndexFlatIP": "Exact cosine similarity search (inner product with normalized vectors). Best for <100K vectors. 100% accurate, slower.",
-    "IndexFlatL2": "Exact L2 (Euclidean) distance search. Best for <100K vectors. 100% accurate, slower.",
-    "IndexIVFFlat": "Approximate search with inverted file index. Best for >100K vectors. Faster, slightly less accurate.",
-    "IndexHNSWFlat": "Hierarchical graph-based approximate search. Best for large datasets needing speed. High memory, very fast.",
-    "IndexIVFPQ": "Compressed approximate search with product quantization. Best for millions of vectors. Low memory, approximate."
-  },
-  "_recommended_index": "IndexFlatIP (exact cosine similarity, best for RAG accuracy)",
   "version": "1.0",
   "last_updated": "2025-12-26",
   "data_stores": [
     {
-      "_comment": "========== REQUIRED PARAMETERS ==========",
-      "name": "example_docs",
-      "display_name": "Example Documentation Store",
-      "description": "Sample RAG vector store for documentation and guides",
+      "name": "matt_docx",
+      "display_name": "DOCX Resume",
+      "description": "My resume in DOCX format",
       "enabled": false,
-      "vector_store_path": "data_stores/vector_stores/example_docs",
+      "vector_store_path": "data_stores/vector_stores/matt_docx",
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-      "embedding_dimension": 384,
+      "embedding_dimension": 768,
       "index_type": "IndexFlatIP",
       "_comment2": "========== OPTIONAL PARAMETERS ==========",
       "model_cache_dir": "data_stores/embedding_models",
@@ -34,82 +17,35 @@
       "similarity_threshold": 0.3,
       "max_context_length": 4000,
       "created_date": "2025-12-26",
-      "num_vectors": 0,
+      "num_vectors": 50,
       "metadata": {
         "source_type": "documentation",
-        "content_description": "General documentation and user guides",
+        "content_description": "General documentation",
         "search_mode": "semantic"
       }
     },
     {
-      "_comment": "========== REQUIRED PARAMETERS ==========",
-      "name": "code_knowledge",
-      "display_name": "Code Knowledge Base",
-      "description": "RAG vector store for source code and technical documentation",
+      "name": "matt_pdf",
+      "display_name": "PDF Resume",
+      "description": "My resume in PDF format",
       "enabled": false,
-      "vector_store_path": "data_stores/vector_stores/code_knowledge",
-      "embedding_model": "jinaai/jina-embeddings-v2-base-code",
-      "embedding_dimension": 768,
-      "index_type": "IndexFlatIP",
-      "_comment2": "========== OPTIONAL PARAMETERS ==========",
-      "model_cache_dir": "data_stores/embedding_models",
-      "top_k_results": 8,
-      "similarity_threshold": 0.25,
-      "max_context_length": 8000,
-      "created_date": null,
-      "num_vectors": 0,
-      "metadata": {
-        "source_type": "code",
-        "content_description": "Source code, API documentation, and programming tutorials",
-        "search_mode": "semantic"
-      }
-    },
-    {
-      "_comment": "========== REQUIRED PARAMETERS ==========",
-      "name": "qa_knowledge",
-      "display_name": "Q&A Knowledge Base",
-      "description": "RAG vector store optimized for question-answering systems",
-      "enabled": false,
-      "vector_store_path": "data_stores/vector_stores/qa_knowledge",
-      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-cos-v1",
-      "embedding_dimension": 768,
-      "index_type": "IndexFlatIP",
-      "_comment2": "========== OPTIONAL PARAMETERS ==========",
-      "model_cache_dir": "data_stores/embedding_models",
-      "top_k_results": 5,
-      "similarity_threshold": 0.35,
-      "max_context_length": 6000,
-      "created_date": null,
-      "num_vectors": 0,
-      "metadata": {
-        "source_type": "qa_pairs",
-        "content_description": "FAQ, help articles, and Q&A pairs",
-        "search_mode": "semantic"
-      }
-    },
-    {
-      "_comment": "========== REQUIRED PARAMETERS ==========",
-      "name": "general_knowledge",
-      "display_name": "General Knowledge Base",
-      "description": "High-quality RAG vector store for general text documents",
-      "enabled": false,
-      "vector_store_path": "data_stores/vector_stores/general_knowledge",
-      "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+      "vector_store_path": "data_stores/vector_stores/matt_pdf",
+      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
       "embedding_dimension": 768,
       "index_type": "IndexFlatIP",
       "_comment2": "========== OPTIONAL PARAMETERS ==========",
       "model_cache_dir": "data_stores/embedding_models",
       "top_k_results": 5,
       "similarity_threshold": 0.3,
-      "max_context_length": 5000,
-      "created_date": null,
-      "num_vectors": 0,
+      "max_context_length": 4000,
+      "created_date": "2025-12-26",
+      "num_vectors": 9,
       "metadata": {
-        "source_type": "general",
-        "content_description": "Articles, books, reports, and general text documents",
+        "source_type": "documentation",
+        "content_description": "General documentation",
         "search_mode": "semantic"
       }
-    }
+    }    
   ],
   "metadata": {
     "description": "Registry of all available RAG vector stores for the LLM Framework",
