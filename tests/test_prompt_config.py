@@ -158,6 +158,23 @@ class TestPromptConfig:
         assert data["system_prompt"] == "Test"
         assert len(data["prefix_messages"]) == 1
 
+    def test_load_from_file_with_custom_format(self, temp_dir):
+        """Test loading config with custom_format field."""
+        config_file = temp_dir / "config_prompt.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_data = {
+            "system_prompt": "Test prompt",
+            "custom_format": "custom value"
+        }
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f)
+
+        config = PromptConfig(config_file)
+
+        assert config.system_prompt == "Test prompt"
+        assert config.custom_format == "custom value"
+
+
 
 class TestGetPromptConfig:
     """Test get_prompt_config singleton function."""
