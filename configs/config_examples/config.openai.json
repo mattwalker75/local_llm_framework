@@ -1,15 +1,45 @@
 {
+  "_comment": "========== OPENAI API CONFIGURATION ==========",
+  "_info": "This config uses OpenAI's cloud API instead of local models",
+  "_setup_instructions": "1. Get API key from https://platform.openai.com/api-keys  2. Replace 'YOUR-OPENAI-API-KEY' below  3. Choose model (gpt-4, gpt-4-turbo, gpt-3.5-turbo, etc.)",
+
   "llm_endpoint": {
+    "_api_base_url_comment": "OpenAI API endpoint",
     "api_base_url": "https://api.openai.com/v1",
+
+    "_api_key_comment": "Your OpenAI API key (starts with 'sk-proj-' or 'sk-'). KEEP THIS SECRET!",
     "api_key": "sk-proj-YOUR-OPENAI-API-KEY",
-    "model_name": "gpt-4"
+
+    "_model_name_comment": "OpenAI model to use. Options: gpt-4, gpt-4-turbo, gpt-3.5-turbo, gpt-4o, etc.",
+    "model_name": "gpt-4",
+
+    "_tools_comment": "Optional: Tool configuration (OpenAI uses native JSON, not XML)",
+    "tools": {
+      "xml_format": "disable"
+    },
+
+    "_tool_execution_mode_comment": "Optional: Streaming behavior with memory. Recommended: 'dual_pass_write_only' for best UX",
+    "tool_execution_mode": "dual_pass_write_only"
   },
+
+  "_paths_comment": "Local directory paths (still used for caching even with external API)",
   "model_dir": "models",
   "cache_dir": ".cache",
+
+  "_log_level_comment": "Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
   "log_level": "ERROR",
+
+  "_inference_params_comment": "OpenAI API parameters (different from llama.cpp parameters)",
   "inference_params": {
+    "_temperature_comment": "Randomness 0.0-2.0 (OpenAI supports up to 2.0)",
     "temperature": 0.7,
+
+    "_max_tokens_comment": "Maximum tokens in response. NOTE: OpenAI may use 'max_completion_tokens' for newer models",
     "max_tokens": 2048,
-    "top_p": 0.9
+
+    "_top_p_comment": "Nucleus sampling (0.0-1.0). Alternative to temperature.",
+    "top_p": 0.9,
+
+    "_note": "OpenAI doesn't support top_k or repetition_penalty - these will be ignored"
   }
 }

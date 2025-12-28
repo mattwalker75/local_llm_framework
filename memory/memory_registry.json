@@ -7,7 +7,7 @@
       "display_name": "Main Memory",
       "description": "Long-term memory for persistent information storage",
       "directory": "main_memory",
-      "enabled": true,
+      "enabled": false,
       "type": "persistent",
       "created_date": null,
       "last_modified": null,

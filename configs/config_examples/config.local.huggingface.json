@@ -1,24 +1,70 @@
 {
+  "_comment": "========== LOCAL HUGGINGFACE MODEL CONFIGURATION ==========",
+  "_info": "This config downloads GGUF models from HuggingFace and runs them locally with llama-server",
+  "_setup_instructions": "1. Use 'llf download <huggingface-repo>' to download models  2. Model directory will be auto-created with sanitized name  3. Start server with 'llf server start'",
+
   "local_llm_server": {
+    "_comment": "Local llama-server configuration for HuggingFace GGUF models",
     "llama_server_path": "../llama.cpp/build/bin/llama-server",
     "server_host": "127.0.0.1",
     "server_port": 8000,
     "healthcheck_interval": 2.0,
-    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct"
+
+    "_model_dir_comment": "Subdirectory within models/ where HuggingFace downloaded the GGUF files. Auto-created by 'llf download'",
+    "_model_dir_example": "For 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', directory becomes 'Qwen--Qwen2.5-Coder-7B-Instruct-GGUF'",
+    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
+
+    "_gguf_file_note": "GGUF file is auto-detected from model_dir. No need to specify unless multiple files exist.",
+
+    "_server_params_comment": "Optional: Performance tuning for llama-server",
+    "_server_params_example": {
+      "_ctx-size": "4096",
+      "_n-gpu-layers": "35",
+      "_threads": "8",
+      "_batch-size": "512"
+    }
   },
+
   "llm_endpoint": {
+    "_comment": "Client-side API configuration (points to local server)",
     "api_base_url": "http://127.0.0.1:8000/v1",
     "api_key": "EMPTY",
-    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    "_model_name_comment": "Original HuggingFace model name (used for identification)",
+    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+
+    "_tools_comment": "Optional: Enable tools for memory and function calling",
+    "tools": {
+      "_xml_format_note": "Enable for models like Qwen3-Coder that output XML format. Disable for models using native JSON.",
+      "xml_format": "enable"
+    },
+
+    "_tool_execution_mode_comment": "Optional: Streaming behavior. Options: 'single_pass', 'dual_pass_write_only', 'dual_pass_all'",
+    "tool_execution_mode": "single_pass"
   },
+
+  "_paths_comment": "Directory structure",
   "model_dir": "models",
   "cache_dir": ".cache",
+
+  "_log_level_comment": "Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
   "log_level": "ERROR",
+
+  "_inference_params_comment": "LLM generation parameters (llama.cpp compatible)",
   "inference_params": {
+    "_temperature_comment": "Creativity level (0.0-2.0). Lower = more focused, higher = more creative",
     "temperature": 0.7,
+
+    "_max_tokens_comment": "Maximum response length in tokens",
     "max_tokens": 2048,
+
+    "_top_p_comment": "Nucleus sampling threshold (0.0-1.0)",
     "top_p": 0.9,
+
+    "_top_k_comment": "Top-K sampling - consider only top K tokens (llama.cpp specific)",
     "top_k": 50,
+
+    "_repetition_penalty_comment": "Discourage repetition (1.0 = no penalty, >1.0 = penalize) (llama.cpp specific)",
     "repetition_penalty": 1.1
   }
 }

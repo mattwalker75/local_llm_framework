@@ -1,15 +1,45 @@
 {
+  "_comment": "========== ANTHROPIC CLAUDE API CONFIGURATION ==========",
+  "_info": "This config uses Anthropic's Claude API instead of local models",
+  "_setup_instructions": "1. Get API key from https://console.anthropic.com/settings/keys  2. Replace 'YOUR-ANTHROPIC-API-KEY' below  3. Choose Claude model (claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.)",
+
   "llm_endpoint": {
+    "_api_base_url_comment": "Anthropic API endpoint",
     "api_base_url": "https://api.anthropic.com/v1",
+
+    "_api_key_comment": "Your Anthropic API key (starts with 'sk-ant-'). KEEP THIS SECRET!",
     "api_key": "sk-ant-YOUR-ANTHROPIC-API-KEY",
-    "model_name": "claude-3-opus-20240229"
+
+    "_model_name_comment": "Claude model to use. Options: claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307, claude-2.1, etc.",
+    "model_name": "claude-3-opus-20240229",
+
+    "_tools_comment": "Optional: Tool configuration (Claude uses native JSON, not XML)",
+    "tools": {
+      "xml_format": "disable"
+    },
+
+    "_tool_execution_mode_comment": "Optional: Streaming behavior with memory. Recommended: 'dual_pass_write_only' for best UX",
+    "tool_execution_mode": "dual_pass_write_only"
   },
+
+  "_paths_comment": "Local directory paths (still used for caching even with external API)",
   "model_dir": "models",
   "cache_dir": ".cache",
+
+  "_log_level_comment": "Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
   "log_level": "ERROR",
+
+  "_inference_params_comment": "Anthropic API parameters (different from llama.cpp parameters)",
   "inference_params": {
+    "_temperature_comment": "Randomness 0.0-1.0 (Anthropic range is 0.0-1.0, not 2.0 like OpenAI)",
     "temperature": 0.7,
+
+    "_max_tokens_comment": "Maximum tokens in response (Claude 3 supports up to 4096)",
     "max_tokens": 2048,
-    "top_p": 0.9
+
+    "_top_p_comment": "Nucleus sampling (0.0-1.0). Alternative to temperature.",
+    "top_p": 0.9,
+
+    "_note": "Anthropic doesn't support top_k or repetition_penalty - these will be ignored"
   }
 }

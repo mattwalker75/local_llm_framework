@@ -1,39 +1,95 @@
 {
-  "_comment": "LLF Configuration File - Copy this to config.json and customize",
+  "_comment": "LLF Configuration File - Copy this to ../config.json and customize for your setup",
 
-  "_local_llm_server_comment": "Local server settings (server-side, only used when starting local llama-server)",
+  "_local_llm_server_comment": "========== LOCAL SERVER SETTINGS (server-side) ==========",
+  "_local_llm_server_info": "Only used when starting local llama-server via 'llf server start'. Omit this section if using external APIs.",
   "local_llm_server": {
+    "_llama_server_path_comment": "Path to llama-server binary. Relative paths are from project root.",
     "llama_server_path": "../llama.cpp/build/bin/llama-server",
+
+    "_server_host_comment": "Server bind address: '127.0.0.1' for localhost only, '0.0.0.0' for network access",
     "server_host": "127.0.0.1",
+
+    "_server_port_comment": "Port for llama-server to listen on",
     "server_port": 8000,
-    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+
+    "_healthcheck_interval_comment": "Seconds between health checks during server startup",
+    "healthcheck_interval": 2.0,
+
+    "_model_dir_comment": "Subdirectory within models/ where GGUF file is located (optional)",
+    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
+
+    "_gguf_file_comment": "GGUF model file to load. Use 'llf download' to get models.",
+    "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+
+    "_server_params_comment": "Additional llama-server CLI parameters (optional)",
+    "_server_params_example": {
+      "_ctx-size": "4096",
+      "_n-gpu-layers": "35",
+      "_threads": "8"
+    }
   },
 
-  "_llm_endpoint_comment": "LLM API endpoint (client-side, change these to switch between local and external LLMs)",
+  "_llm_endpoint_comment": "========== LLM ENDPOINT (client-side) ==========",
+  "_llm_endpoint_info": "Configure which LLM API to use for inference. Change these to switch providers.",
   "_switching_examples": {
     "_local_example": "For local: api_base_url='http://127.0.0.1:8000/v1', model_name='Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', api_key='EMPTY'",
     "_openai_example": "For OpenAI: api_base_url='https://api.openai.com/v1', model_name='gpt-4', api_key='sk-proj-YOUR-KEY'",
     "_anthropic_example": "For Anthropic: api_base_url='https://api.anthropic.com/v1', model_name='claude-3-opus-20240229', api_key='sk-ant-YOUR-KEY'"
   },
   "llm_endpoint": {
+    "_api_base_url_comment": "API endpoint URL. Local server or external API (OpenAI, Anthropic, etc.)",
     "api_base_url": "http://127.0.0.1:8000/v1",
+
+    "_api_key_comment": "API key for authentication. Use 'EMPTY' for local server, real key for external APIs.",
     "api_key": "EMPTY",
-    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+
+    "_model_name_comment": "Model identifier for API requests",
+    "model_name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+
+    "_tools_comment": "Tool/feature configuration",
+    "tools": {
+      "_xml_format_comment": "Enable/disable XML function call parser (for models like Qwen3-Coder). Values: 'enable' or 'disable'",
+      "xml_format": "enable"
+    },
+
+    "_tool_execution_mode_comment": "Controls streaming vs tool calling behavior. See docs/TOOL_EXECUTION_MODES.md",
+    "_tool_execution_mode_options": {
+      "_single_pass": "Default. No streaming when memory enabled. Always accurate.",
+      "_dual_pass_write_only": "Recommended. Streams writes, accurate reads. Good UX + accuracy.",
+      "_dual_pass_all": "Advanced. Always streams, but may show wrong data for reads. Use with caution."
+    },
+    "tool_execution_mode": "single_pass"
   },
 
-  "_paths_comment": "Paths can be absolute or relative to project root",
+  "_paths_comment": "========== DIRECTORY PATHS ==========",
+  "_paths_info": "Paths can be absolute or relative to project root",
+  "_model_dir_comment": "Root directory for model storage",
   "model_dir": "models",
+
+  "_cache_dir_comment": "Directory for temporary cache files",
   "cache_dir": ".cache",
 
-  "_logging_comment": "Valid log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+  "_logging_comment": "========== LOGGING CONFIGURATION ==========",
+  "_log_level_comment": "Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL",
   "log_level": "ERROR",
 
-  "_inference_comment": "LLM inference parameters",
+  "_inference_comment": "========== INFERENCE PARAMETERS ==========",
+  "_inference_info": "These parameters control LLM text generation behavior",
   "inference_params": {
+    "_temperature_comment": "Randomness (0.0-2.0). Higher = more creative, lower = more deterministic. Default: 0.7",
     "temperature": 0.7,
+
+    "_max_tokens_comment": "Maximum tokens to generate in response. Default: 2048",
     "max_tokens": 2048,
+
+    "_top_p_comment": "Nucleus sampling (0.0-1.0). Considers top tokens with cumulative probability. Default: 0.9",
     "top_p": 0.9,
+
+    "_top_k_comment": "Consider only top K tokens at each step. 0 = disabled. Default: 50",
     "top_k": 50,
+
+    "_repetition_penalty_comment": "Penalty for repeating tokens (1.0 = no penalty, >1.0 = discourage repetition). Default: 1.1",
     "repetition_penalty": 1.1
   }
 }

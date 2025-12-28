@@ -319,7 +319,7 @@ class TestLLMRuntime:
 
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_message = MagicMock(content="Response text")
+        mock_message = MagicMock(content="Response text", tool_calls=None)
         mock_response.choices = [MagicMock(message=mock_message)]
         mock_client.chat.completions.create.return_value = mock_response
         runtime.client = mock_client
@@ -338,7 +338,7 @@ class TestLLMRuntime:
 
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_message = MagicMock(content="Response text")
+        mock_message = MagicMock(content="Response text", tool_calls=None)
         mock_response.choices = [MagicMock(message=mock_message)]
         mock_client.chat.completions.create.return_value = mock_response
         runtime.client = mock_client

@@ -313,5 +313,23 @@ with which prompts I passed to the AI.
 2.  Setup management tools for the memory module
        -  9_Memory_Commands.txt
 3.  Verify code works and do basic troubleshooting and testing
+4.  Start integrating long term memory system
+5.  Test the memory and perform any needed troubleshooting and unit testing
+6.  Found an interesting issue where the streaming data is breaking the memory usage
+      - Memory usage operates like a "tool"
+      - Added logic to not stream the LLM response if memory is being used
+      - Noticed the LLM model I was using was using XML instead of JSON
+         - Creating am "llf tool" command to enable/disable XML usage
+             CONVERT TOOL DATA TO XML:  llf tool xml_format enable
+             USE JSON:  llf tool xml_format disable  
+7.  Made minor tweaks and changes that will need to be documented later
+8.  Doing a number of minor code tweaks and testing.
+9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+#### Add proper documentation and perform detailed testing
+
+
+
+
 
 

@@ -430,17 +430,70 @@ If STT fails, the system will automatically fall back to keyboard input.
                         'content': user_input
                     })
 
-                    # Generate response using streaming chat API
-                    stream = self.runtime.chat(conversation_history, stream=True)
+                    # Generate response using chat API
+                    # Check if tools are available
+                    tools_available = False
+                    if self.prompt_config:
+                        tools = self.prompt_config.get_memory_tools()
+                        tools_available = tools is not None and len(tools) > 0
 
-                    # Collect response chunks for history
-                    response_chunks = []
-                    for chunk in stream:
-                        console.print(chunk, end="", markup=False)
-                        response_chunks.append(chunk)
+                    # Determine execution strategy based on configuration
+                    from llf.operation_detector import detect_operation_type, should_use_dual_pass
 
-                    # Complete the line
-                    console.print()
+                    operation_type = detect_operation_type(user_input)
+                    use_dual_pass = should_use_dual_pass(
+                        operation_type,
+                        self.config.tool_execution_mode,
+                        tools_available
+                    )
+
+                    if use_dual_pass:
+                        # Dual-pass mode: Stream first for UX, then execute with tools in background
+                        import asyncio
+                        import threading
+
+                        # Pass 1: Streaming response for user (no tools)
+                        stream = self.runtime.chat(conversation_history, stream=True, use_prompt_config=False)
+
+                        # Collect response chunks for history
+                        response_chunks = []
+                        for chunk in stream:
+                            console.print(chunk, end="", markup=False)
+                            response_chunks.append(chunk)
+
+                        # Complete the line
+                        console.print()
+
+                        # Pass 2: Execute with tools in background (non-streaming)
+                        # This runs after streaming completes to ensure tool execution happens
+                        def execute_with_tools():
+                            try:
+                                # Run the same request with tools enabled
+                                self.runtime.chat(conversation_history, stream=False)
+                            except Exception as e:
+                                logger.warning(f"Background tool execution failed: {e}")
+
+                        # Execute in background thread
+                        tool_thread = threading.Thread(target=execute_with_tools, daemon=True)
+                        tool_thread.start()
+
+                    elif tools_available:
+                        # Single-pass mode with tools (no streaming, accurate)
+                        response = self.runtime.chat(conversation_history, stream=False)
+                        console.print(response, markup=False)
+                        response_chunks = [response]
+                    else:
+                        # Streaming mode (no tools available)
+                        stream = self.runtime.chat(conversation_history, stream=True)
+
+                        # Collect response chunks for history
+                        response_chunks = []
+                        for chunk in stream:
+                            console.print(chunk, end="", markup=False)
+                            response_chunks.append(chunk)
+
+                        # Complete the line
+                        console.print()
 
                     # Combine chunks and add to history
                     full_response = "".join(response_chunks)
@@ -2480,16 +2533,124 @@ finally:
         return 0
 
     elif args.command == 'tool':
-        # Tool Management (placeholder for future functionality)
-        console.print("[yellow]Tool Management[/yellow]")
-        console.print("This command is reserved for future functionality.")
-        console.print("\n[dim]Planned features:[/dim]")
-        console.print("  • Manage LLM tool definitions")
-        console.print("  • Configure function calling")
-        console.print("  • Register and manage external integrations")
-        console.print("  • List and test available tools")
-        if args.action:
-            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        # Tool Management
+        from llf.tools_manager import ToolsManager
+
+        tools_manager = ToolsManager()
+
+        action = getattr(args, 'action', None)
+        tool_name = getattr(args, 'tool_name', None)
+        show_enabled_only = getattr(args, 'enabled', False)
+
+        if not action or action == 'list':
+            # List all features
+            console.print("\n[bold cyan]Tool Features[/bold cyan]\n")
+            features = tools_manager.list_features()
+
+            if not features:
+                console.print("[yellow]No tool features available[/yellow]")
+                return 0
+
+            for feature_name, feature_info in features.items():
+                enabled = feature_info.get('enabled', False)
+
+                # Skip if show_enabled_only is True and feature is disabled
+                if show_enabled_only and not enabled:
+                    continue
+
+                status_color = "green" if enabled else "red"
+                status_text = "enabled" if enabled else "disabled"
+                description = feature_info.get('description', 'No description')
+
+                console.print(f"[bold]{feature_name:<30}[/bold] [{status_color}]{status_text}[/{status_color}]")
+                console.print(f"  [dim]{description}[/dim]\n")
+
+        elif action == 'enable':
+            if not tool_name:
+                console.print("[red]Error: Feature name required[/red]")
+                console.print("Usage: llf tool enable <feature_name>")
+                return 1
+
+            if tools_manager.enable_feature(tool_name, session_only=True):
+                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' enabled (session override)")
+
+                # Show helpful info for xml_format
+                if tool_name == 'xml_format':
+                    console.print("\n[dim]This feature will parse XML-style function calls like:[/dim]")
+                    console.print("[dim]  <function=search_memories><parameter=query>value</parameter>[/dim]")
+                    console.print("[dim]and convert them to OpenAI JSON format.[/dim]")
+                    console.print("\n[dim]Note: This is a temporary override for this session.[/dim]")
+                    console.print("[dim]To reset to config file setting, use: llf tool xml_format auto[/dim]")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] Failed to enable feature '[bold]{tool_name}[/bold]'")
+                console.print("[yellow]Check that the feature name is correct[/yellow]")
+                return 1
+
+        elif action == 'disable':
+            if not tool_name:
+                console.print("[red]Error: Feature name required[/red]")
+                console.print("Usage: llf tool disable <feature_name>")
+                return 1
+
+            if tools_manager.disable_feature(tool_name, session_only=True):
+                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' disabled (session override)")
+                console.print("\n[dim]Note: This is a temporary override for this session.[/dim]")
+                console.print("[dim]To reset to config file setting, use: llf tool {tool_name} auto[/dim]")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] Failed to disable feature '[bold]{tool_name}[/bold]'")
+                return 1
+
+        elif action == 'auto':
+            if not tool_name:
+                console.print("[red]Error: Feature name required[/red]")
+                console.print("Usage: llf tool auto <feature_name>")
+                return 1
+
+            if tools_manager.reset_to_config(tool_name):
+                # Get the actual config setting
+                config_setting = tools_manager.is_feature_enabled(tool_name)
+                status_text = "enabled" if config_setting else "disabled"
+                status_color = "green" if config_setting else "red"
+
+                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' reset to config file setting")
+                console.print(f"Current status from config: [{status_color}]{status_text}[/{status_color}]")
+                console.print("\n[dim]Config location: configs/config.json -> llm_endpoint.tools.xml_format[/dim]")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] Failed to reset feature '[bold]{tool_name}[/bold]'")
+                return 1
+
+        elif action == 'info':
+            if not tool_name:
+                console.print("[red]Error: Feature name required[/red]")
+                console.print("Usage: llf tool info <feature_name>")
+                return 1
+
+            features = tools_manager.list_features()
+            if tool_name not in features:
+                console.print(f"[red]Error: Unknown feature '[bold]{tool_name}[/bold]'[/red]")
+                return 1
+
+            feature_info = features[tool_name]
+            enabled = feature_info.get('enabled', False)
+            status_color = "green" if enabled else "red"
+            status_text = "enabled" if enabled else "disabled"
+
+            console.print(f"\n[bold cyan]Feature: {tool_name}[/bold cyan]")
+            console.print(f"Status: [{status_color}]{status_text}[/{status_color}]")
+            console.print(f"Description: {feature_info.get('description', 'No description')}")
+
+            if 'note' in feature_info:
+                console.print(f"\n[dim]Note: {feature_info['note']}[/dim]")
+
+            return 0
+        else:
+            console.print(f"[red]Error: Unknown action '[bold]{action}[/bold]'[/red]")
+            console.print("\nValid actions: list, enable, disable, auto, info")
+            return 1
+
         return 0
 
     elif args.command == 'chat' or args.command is None:

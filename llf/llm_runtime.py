@@ -439,6 +439,7 @@ class LLMRuntime:
         model: Optional[str] = None,
         stream: bool = False,
         use_prompt_config: bool = True,
+        max_tool_iterations: int = 10,
         **kwargs
     ):
         """
@@ -453,6 +454,7 @@ class LLMRuntime:
             stream: If True, returns an iterator of response chunks. If False, returns complete text.
             use_prompt_config: If True and prompt_config is set, apply prompt formatting to messages.
                               Set to False to send raw messages without prompt config processing.
+            max_tool_iterations: Maximum number of tool calling iterations to prevent infinite loops.
             **kwargs: Additional parameters (same as generate()).
 
         Returns:
@@ -482,30 +484,136 @@ class LLMRuntime:
                 )
             # else: messages are already in full format, use as-is
 
-        openai_params = self._build_api_params(
-            model,
-            {'messages': processed_messages, 'stream': stream},
-            **kwargs
-        )
+        # ===== Tool Calling Setup =====
+        # Get memory tools if enabled
+        tools = None
+        memory_manager = None
+        if use_prompt_config and self.prompt_config:
+            tools = self.prompt_config.get_memory_tools()
+            memory_manager = self.prompt_config.get_memory_manager()
+
+        # Build API parameters
+        api_params = {'messages': processed_messages, 'stream': stream}
+        if tools:
+            api_params['tools'] = tools
+            api_params['tool_choice'] = 'auto'
+
+        openai_params = self._build_api_params(model, api_params, **kwargs)
 
         try:
-            logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream})")
+            logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream}, tools={'enabled' if tools else 'disabled'})")
 
-            # Use chat completion API
-            response = self.client.chat.completions.create(**openai_params)
+            # ===== Tool Calling Loop =====
+            # Handle multi-turn tool calling (LLM → tool execution → LLM)
+            current_messages = processed_messages.copy()
+            iteration = 0
 
-            if stream:
-                # Return iterator for streaming
-                def stream_generator():
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
-                return stream_generator()
-            else:
-                # Extract response text
-                response_text = response.choices[0].message.content
-                logger.debug(f"Generated {len(response_text)} characters")
-                return response_text
+            while iteration < max_tool_iterations:
+                iteration += 1
+
+                # Update messages in params
+                openai_params['messages'] = current_messages
+
+                # Call LLM
+                response = self.client.chat.completions.create(**openai_params)
+
+                # Handle streaming separately (no tool calling in streaming mode)
+                if stream:
+                    if iteration > 1:
+                        logger.warning("Tool calling not supported in streaming mode, returning after first iteration")
+                    def stream_generator():
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                yield chunk.choices[0].delta.content
+                    return stream_generator()
+
+                # Non-streaming: check for tool calls
+                message = response.choices[0].message
+
+                # Check for XML-style function calls if feature is enabled and no native tool calls
+                if not message.tool_calls and message.content:
+                    from llf.tools_manager import ToolsManager
+                    from tools.xml_format import convert_xml_response_to_openai, is_xml_function_call
+
+                    tools_mgr = ToolsManager()
+                    if tools_mgr.is_feature_enabled('xml_format') and is_xml_function_call(message.content):
+                        logger.info("XML Parser: Detected XML-style function calls in response")
+                        xml_parsed = convert_xml_response_to_openai(message.content)
+                        if xml_parsed and xml_parsed.get('tool_calls'):
+                            # Create mock tool call objects
+                            class MockToolCall:
+                                def __init__(self, call_dict):
+                                    self.id = call_dict['id']
+                                    self.type = call_dict['type']
+                                    self.function = type('obj', (object,), {
+                                        'name': call_dict['function']['name'],
+                                        'arguments': call_dict['function']['arguments']
+                                    })()
+
+                            message.tool_calls = [MockToolCall(tc) for tc in xml_parsed['tool_calls']]
+                            message.content = None  # Clear content when using tools
+
+                # If no tool calls, we're done
+                if not message.tool_calls:
+                    response_text = message.content or ""
+                    logger.debug(f"Generated {len(response_text)} characters (no tool calls)")
+                    return response_text
+
+                # Execute tool calls
+                logger.debug(f"LLM requested {len(message.tool_calls)} tool calls")
+
+                # Add assistant message with tool calls to conversation
+                current_messages.append({
+                    'role': 'assistant',
+                    'content': message.content,
+                    'tool_calls': [
+                        {
+                            'id': tc.id,
+                            'type': tc.type,
+                            'function': {
+                                'name': tc.function.name,
+                                'arguments': tc.function.arguments
+                            }
+                        }
+                        for tc in message.tool_calls
+                    ]
+                })
+
+                # Execute each tool call
+                for idx, tool_call in enumerate(message.tool_calls, 1):
+                    import json
+                    from llf.memory_tools import execute_memory_tool
+
+                    tool_name = tool_call.function.name
+
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse tool arguments: {e}")
+                        arguments = {}
+
+                    logger.debug(f"Executing tool: {tool_name} with args: {arguments}")
+
+                    # Execute the tool
+                    if memory_manager:
+                        tool_result = execute_memory_tool(tool_name, arguments, memory_manager)
+                    else:
+                        logger.error(f"Memory manager not available for tool: {tool_name}")
+                        tool_result = {"success": False, "error": "Memory manager not available"}
+
+                    # Add tool result to conversation
+                    current_messages.append({
+                        'role': 'tool',
+                        'tool_call_id': tool_call.id,
+                        'content': json.dumps(tool_result)
+                    })
+
+                # Continue loop to let LLM process tool results
+                # On next iteration, the LLM will see the tool results and generate final response
+
+            # If we hit max iterations, return what we have
+            logger.warning(f"Reached max tool iterations ({max_tool_iterations})")
+            return "I apologize, but I've reached the maximum number of tool calling iterations. Please try rephrasing your request."
 
         except Exception as e:
             logger.error(f"Chat generation failed: {e}")

@@ -61,6 +61,10 @@ class Config:
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+    # Tool execution modes
+    VALID_TOOL_EXECUTION_MODES = ["single_pass", "dual_pass_write_only", "dual_pass_all"]
+    DEFAULT_TOOL_EXECUTION_MODE = "single_pass"
+
     def __init__(self, config_file: Optional[Path] = None):
         """
         Initialize configuration.
@@ -87,6 +91,7 @@ class Config:
         self.custom_model_dir = None  # Custom model directory (optional)
         self.server_params = {}  # Additional llama-server parameters (optional)
         self._has_local_server_section = False  # Track if local_llm_server was in config file
+        self.tool_execution_mode = self.DEFAULT_TOOL_EXECUTION_MODE  # Tool execution mode
 
         # Determine which config file to use
         config_to_load = None
@@ -167,6 +172,16 @@ class Config:
                 self.api_key = endpoint_config.get('api_key', self.api_key)
                 # Model name/identifier to use for requests
                 self.model_name = endpoint_config.get('model_name', self.model_name)
+                # Tool execution mode - controls streaming behavior with tool calls
+                if 'tool_execution_mode' in endpoint_config:
+                    mode = endpoint_config['tool_execution_mode']
+                    if mode in self.VALID_TOOL_EXECUTION_MODES:
+                        self.tool_execution_mode = mode
+                    else:
+                        raise ValueError(
+                            f"Invalid tool_execution_mode '{mode}'. "
+                            f"Must be one of: {', '.join(self.VALID_TOOL_EXECUTION_MODES)}"
+                        )
             else:
                 # Fallback to flat structure for backward compatibility with older config files
                 self.api_base_url = config_data.get('api_base_url', self.api_base_url)
@@ -311,6 +326,7 @@ class Config:
                 'api_base_url': self.api_base_url,
                 'api_key': self.api_key,
                 'model_name': self.model_name,
+                'tool_execution_mode': self.tool_execution_mode,
             },
             'model_dir': str(self.model_dir),
             'cache_dir': str(self.cache_dir),

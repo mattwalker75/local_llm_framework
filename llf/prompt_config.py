@@ -49,6 +49,9 @@ class PromptConfig:
         # RAG retriever (lazy loaded when needed)
         self._rag_retriever = None
 
+        # Memory manager (lazy loaded when needed)
+        self._memory_manager = None
+
         # Determine which config file to use
         config_to_load = None
         if config_file is not None:
@@ -122,6 +125,22 @@ class PromptConfig:
             logger.warning(f"Failed to initialize RAG retriever: {e}")
             self._rag_retriever = None
 
+    def _init_memory_manager(self):
+        """Lazy initialization of Memory manager."""
+        if self._memory_manager is not None:
+            return
+
+        try:
+            from llf.memory_manager import MemoryManager
+            self._memory_manager = MemoryManager()
+            if self._memory_manager.has_enabled_memories():
+                logger.info("Memory manager initialized successfully")
+            else:
+                logger.debug("Memory manager initialized but no memories enabled")
+        except Exception as e:
+            logger.warning(f"Failed to initialize memory manager: {e}")
+            self._memory_manager = None
+
     def _extract_user_message(self, user_message: Optional[str], conversation_history: Optional[List[Dict[str, str]]]) -> Optional[str]:
         """
         Extract the latest user message for RAG querying.
@@ -142,24 +161,25 @@ class PromptConfig:
                     return msg.get('content', '')
         return None
 
-    def _build_system_prompt_with_rag(self, rag_context: Optional[str]) -> Optional[str]:
+    def _build_system_prompt_with_rag(self, rag_context: Optional[str], memory_instructions: Optional[str]) -> Optional[str]:
         """
-        Construct the final system prompt, optionally including RAG context.
+        Construct the final system prompt, optionally including RAG context and memory instructions.
 
         Args:
             rag_context: Retrieved context from vector stores (None if no stores attached)
+            memory_instructions: Memory system instructions (None if memory disabled)
 
         Returns:
             Final system prompt string, or None if no system prompt needed
         """
         user_system_prompt = self.system_prompt  # From config_prompt.json
 
-        # Case 1: No RAG context - return user's prompt as-is
-        if not rag_context:
-            return user_system_prompt
+        # Build sections
+        sections = []
 
-        # Case 2: RAG context exists - build RAG section
-        rag_section = f"""---
+        # Add RAG section if context available
+        if rag_context:
+            rag_section = f"""---
 
 # Knowledge Base Context
 
@@ -173,16 +193,27 @@ The following information has been retrieved from attached knowledge bases and m
 - Cite specific information from the context when applicable
 - If the context doesn't contain relevant information, rely on your general knowledge
 """
+            sections.append(rag_section)
 
-        # Case 2a: User has system prompt - append RAG
+        # Add memory instructions if memory enabled
+        if memory_instructions:
+            sections.append(memory_instructions)
+
+        # Combine all sections
+        additional_content = "\n\n".join(sections)
+
+        # Case 1: No additional content - return user's prompt as-is
+        if not additional_content:
+            return user_system_prompt
+
+        # Case 2: Additional content exists - combine with user prompt
         if user_system_prompt:
-            return f"{user_system_prompt}\n\n{rag_section}"
-
-        # Case 2b: No user system prompt - create RAG-only prompt
+            return f"{user_system_prompt}\n\n{additional_content}"
         else:
-            return f"""You have access to a knowledge base with relevant information. Use it to answer questions accurately.
+            # No user system prompt - create a basic one with additions
+            return f"""You are a helpful AI assistant.
 
-{rag_section}"""
+{additional_content}"""
 
     def build_messages(self, user_message: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, str]]:
         """
@@ -219,8 +250,21 @@ The following information has been retrieved from attached knowledge bases and m
                     logger.error(f"Error querying RAG stores: {e}")
                     rag_context = None
 
-        # Step 2: Build system prompt (with or without RAG)
-        final_system_prompt = self._build_system_prompt_with_rag(rag_context)
+        # Step 1b: Initialize memory manager and check if memory is enabled
+        self._init_memory_manager()
+        memory_instructions = None
+
+        if self._memory_manager and self._memory_manager.has_enabled_memories():
+            try:
+                from llf.memory_tools import get_memory_system_prompt
+                memory_instructions = get_memory_system_prompt()
+                logger.debug("Memory system instructions added to prompt")
+            except Exception as e:
+                logger.error(f"Error loading memory instructions: {e}")
+                memory_instructions = None
+
+        # Step 2: Build system prompt (with optional RAG and memory)
+        final_system_prompt = self._build_system_prompt_with_rag(rag_context, memory_instructions)
 
         if final_system_prompt:
             messages.append({
@@ -262,6 +306,43 @@ The following information has been retrieved from attached knowledge bases and m
             })
 
         return messages
+
+    def get_memory_manager(self):
+        """
+        Get the memory manager instance.
+
+        Returns:
+            MemoryManager instance if initialized and memory is enabled, None otherwise
+        """
+        self._init_memory_manager()
+
+        if self._memory_manager:
+            has_enabled = self._memory_manager.has_enabled_memories()
+            if has_enabled:
+                return self._memory_manager
+            else:
+                return None
+        else:
+            return None
+
+    def get_memory_tools(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get memory tool definitions for function calling.
+
+        Returns:
+            List of tool definitions if memory is enabled, None otherwise
+        """
+        manager = self.get_memory_manager()
+
+        if manager:
+            try:
+                from llf.memory_tools import MEMORY_TOOLS
+                return MEMORY_TOOLS
+            except Exception as e:
+                logger.error(f"Error loading memory tools: {e}")
+                return None
+        else:
+            return None
 
     def to_dict(self) -> Dict[str, Any]:
         """
