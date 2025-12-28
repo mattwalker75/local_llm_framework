@@ -1,0 +1,11 @@
+{
+  "version": "2.0",
+  "last_updated": "2025-12-20",
+  "memory": {
+    "name": "main_memory",
+    "display_name": "Memory",
+    "description": "Long term memory",
+    "directory": "main_memory",
+    "enabled": true
+  }
+}

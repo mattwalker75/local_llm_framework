@@ -308,5 +308,7 @@ with which prompts I passed to the AI.
     troubleshoot any issues that stands out
 10.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+#### Add Long term memory that the LLM can use
+1.  Create directory structure, configuration, and management commands
 
 
