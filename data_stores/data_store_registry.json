@@ -28,7 +28,7 @@
       "name": "matt_pdf",
       "display_name": "PDF Resume",
       "description": "My resume in PDF format",
-      "attached": true,
+      "attached": false,
       "vector_store_path": "data_stores/vector_stores/matt_pdf",
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
       "embedding_dimension": 768,

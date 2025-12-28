@@ -1,47 +1,37 @@
-# Core dependencies for Local LLM Framework
-
-# OpenAI API client (for llama.cpp and external API compatibility)
-openai>=1.0.0
-
-# Model downloading
-huggingface-hub>=0.20.0
-transformers>=4.57.3
 
 # CLI and UI
-rich>=13.0.0
-gradio>=4.0.0
-
+# Core dependencies for Local LLM Framework
+# Development tools
 # HTTP requests
-requests>=2.31.0
-
+# Model downloading
+# OpenAI API client (for llama.cpp and external API compatibility)
 # Process management
-psutil>=5.9.0
-
-# Text-to-Speech (for modules)
-pyttsx3>=2.90
-pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'  # macOS TTS backend
-
+# RAG data store tools
 # Speech-to-Text (for modules)
-sounddevice
-scipy
-openai-whisper
-
 # Testing
-pytest>=8.0.0
+# Text-to-Speech (for modules)
+beautifulsoup4>=4.12.0  # HTML parsing for web pages (Process_WEB.py)
+black>=24.0.0
+faiss-cpu>=1.7.4  # FAISS vector database for RAG (Create_VectorStore.py, rag_retriever.py)
+flake8>=7.0.0
+gradio>=4.0.0
+huggingface-hub>=0.20.0
+mypy>=1.8.0
+openai-whisper
+openai>=1.0.0
+psutil>=5.9.0
+pymupdf>=1.23.0  # PDF processing (Process_PDF.py)
+pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'  # macOS TTS backend
 pytest-cov>=4.1.0
 pytest-mock>=3.12.0
-
-# Development tools
-black>=24.0.0
-flake8>=7.0.0
-mypy>=1.8.0
-
-# RAG data store tools
-pymupdf>=1.23.0  # PDF processing (Process_PDF.py)
+pytest>=8.0.0
 python-docx>=1.1.0  # Word document processing - .docx files (Process_DOC.py)
+pyttsx3>=2.90
+requests>=2.31.0
+rich>=13.0.0
+scipy
+sentence-transformers>=2.2.0  # Embedding models for RAG (Create_VectorStore.py, rag_retriever.py)
+sounddevice
 striprtf>=0.0.26  # Rich Text Format processing - .rtf files (Process_DOC.py)
-beautifulsoup4>=4.12.0  # HTML parsing for web pages (Process_WEB.py)
-sentence-transformers>=2.2.0  # Embedding models for vector store creation (Create_VectorStore.py)
-faiss-cpu>=1.7.4  # FAISS vector database (Create_VectorStore.py)
 tqdm>=4.65.0  # Progress bars for vector store creation
-
+transformers>=4.57.3

@@ -301,7 +301,12 @@ with which prompts I passed to the AI.
 4.  Used the following prompt to being development of the "llf datastore" code
        -  8_Data_Store.txt
 5.  Do some basic troubleshooting and verifying the changes are working
-6.  Incorporating the RAG Vector Stores with the LLM
+6.  Get the GUI management for the Data Stores working
+7.  Verify and do basic troublshooting and unit testing
+8.  Add the logic to actually use the Data Stores by the LLM's
+9.  Verified it work via the CLI and GUI interface.  Did preliminary testing and
+    troubleshoot any issues that stands out
+10.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 
 

@@ -822,6 +822,163 @@ class LLMFrameworkGUI:
         except Exception as e:
             return f"❌ Error disabling module: {str(e)}", self.get_module_info(selected_module)
 
+    # ===== Data Store Management Methods =====
+
+    def get_available_datastores(self) -> List[str]:
+        """List available data stores for Radio component."""
+        try:
+            datastore_registry_path = Path(__file__).parent.parent / 'data_stores' / 'data_store_registry.json'
+
+            if not datastore_registry_path.exists():
+                return []
+
+            with open(datastore_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            data_stores = registry.get('data_stores', [])
+            return [ds.get('display_name', ds.get('name', 'Unknown')) for ds in data_stores]
+        except Exception as e:
+            logger.error(f"Error listing data stores: {e}")
+            return []
+
+    def get_datastore_info(self, selected_datastore: str) -> str:
+        """Get detailed information about the selected data store."""
+        try:
+            if not selected_datastore:
+                return "Select a data store to view its details"
+
+            datastore_registry_path = Path(__file__).parent.parent / 'data_stores' / 'data_store_registry.json'
+
+            if not datastore_registry_path.exists():
+                return "❌ Data store registry not found"
+
+            with open(datastore_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            data_stores = registry.get('data_stores', [])
+
+            # Find data store by display name or name
+            datastore = None
+            for ds in data_stores:
+                if ds.get('display_name') == selected_datastore or ds.get('name') == selected_datastore:
+                    datastore = ds
+                    break
+
+            if not datastore:
+                return f"❌ Data store '{selected_datastore}' not found"
+
+            # Build info display
+            name = datastore.get('name', 'unknown')
+            display_name = datastore.get('display_name', name)
+            description = datastore.get('description', 'No description')
+            attached = datastore.get('attached', False)
+            vector_store_path_rel = datastore.get('vector_store_path', 'N/A')
+            embedding_model = datastore.get('embedding_model', 'N/A')
+            num_vectors = datastore.get('num_vectors', 0)
+            embedding_dimension = datastore.get('embedding_dimension', 'N/A')
+            index_type = datastore.get('index_type', 'N/A')
+
+            # Calculate full path
+            if vector_store_path_rel != 'N/A':
+                vector_store_path_obj = Path(vector_store_path_rel)
+                if vector_store_path_obj.is_absolute():
+                    vector_store_path = str(vector_store_path_obj.resolve())
+                else:
+                    vector_store_path = str((Path(__file__).parent.parent / vector_store_path_rel).resolve())
+            else:
+                vector_store_path = 'N/A'
+
+            status = "✅ Attached" if attached else "⭕ Detached"
+
+            info = f"""**{display_name}** ({name})
+
+**Status:** {status}
+**Description:** {description}
+**Location:** {vector_store_path}
+**Number of Vectors:** {num_vectors}
+
+**Configuration:**
+  • Embedding Model: {embedding_model}
+  • Embedding Dimension: {embedding_dimension}
+  • Index Type: {index_type}
+"""
+            return info
+
+        except Exception as e:
+            return f"❌ Error getting data store info: {str(e)}"
+
+    def attach_datastore(self, selected_datastore: str) -> Tuple[str, str]:
+        """Attach the selected data store."""
+        try:
+            if not selected_datastore:
+                return "Please select a data store first", self.get_datastore_info(selected_datastore)
+
+            datastore_registry_path = Path(__file__).parent.parent / 'data_stores' / 'data_store_registry.json'
+
+            with open(datastore_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            data_stores = registry.get('data_stores', [])
+
+            # Find and attach data store
+            datastore_found = False
+            for datastore in data_stores:
+                if datastore.get('display_name') == selected_datastore or datastore.get('name') == selected_datastore:
+                    if datastore.get('attached', False):
+                        return f"⚠️ Data store '{selected_datastore}' is already attached", self.get_datastore_info(selected_datastore)
+                    else:
+                        datastore['attached'] = True
+                        datastore_found = True
+                        break
+
+            if not datastore_found:
+                return f"❌ Data store '{selected_datastore}' not found", self.get_datastore_info(selected_datastore)
+
+            # Write back to registry
+            with open(datastore_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Data store '{selected_datastore}' attached successfully", self.get_datastore_info(selected_datastore)
+
+        except Exception as e:
+            return f"❌ Error attaching data store: {str(e)}", self.get_datastore_info(selected_datastore)
+
+    def detach_datastore(self, selected_datastore: str) -> Tuple[str, str]:
+        """Detach the selected data store."""
+        try:
+            if not selected_datastore:
+                return "Please select a data store first", self.get_datastore_info(selected_datastore)
+
+            datastore_registry_path = Path(__file__).parent.parent / 'data_stores' / 'data_store_registry.json'
+
+            with open(datastore_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            data_stores = registry.get('data_stores', [])
+
+            # Find and detach data store
+            datastore_found = False
+            for datastore in data_stores:
+                if datastore.get('display_name') == selected_datastore or datastore.get('name') == selected_datastore:
+                    if not datastore.get('attached', False):
+                        return f"⚠️ Data store '{selected_datastore}' is already detached", self.get_datastore_info(selected_datastore)
+                    else:
+                        datastore['attached'] = False
+                        datastore_found = True
+                        break
+
+            if not datastore_found:
+                return f"❌ Data store '{selected_datastore}' not found", self.get_datastore_info(selected_datastore)
+
+            # Write back to registry
+            with open(datastore_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Data store '{selected_datastore}' detached successfully", self.get_datastore_info(selected_datastore)
+
+        except Exception as e:
+            return f"❌ Error detaching data store: {str(e)}", self.get_datastore_info(selected_datastore)
+
     # ===== Main Interface Builder =====
 
     def create_interface(self) -> gr.Blocks:
@@ -1610,9 +1767,42 @@ class LLMFrameworkGUI:
                             prompt_save_btn.click(self.save_prompt_config, prompt_editor, prompt_status)
 
                     # ===== Data Stores Tab =====
-                    with gr.Tab("📚 Data Stores"):
+                    with gr.Tab("📊 Data Stores"):
                         gr.Markdown("### Data Store Management")
-                        gr.Markdown("For future use...")
+                        gr.Markdown("Attach or detach RAG vector stores")
+
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Available Data Stores")
+                                datastores_radio = gr.Radio(
+                                    label="Select a Data Store",
+                                    choices=self.get_available_datastores(),
+                                    value=self.get_available_datastores()[0] if self.get_available_datastores() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Data Store Information")
+                                datastore_info_output = gr.Textbox(
+                                    label="Data Store Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_datastore_info(self.get_available_datastores()[0] if self.get_available_datastores() else "")
+                                )
+
+                        with gr.Row():
+                            attach_btn = gr.Button("Attach Data Store", variant="primary")
+                            detach_btn = gr.Button("Detach Data Store")
+
+                        datastore_status = gr.Textbox(
+                            label="Status",
+                            lines=2,
+                            interactive=False
+                        )
+
+                        # Data Store interactions
+                        datastores_radio.change(self.get_datastore_info, datastores_radio, datastore_info_output)
+                        attach_btn.click(self.attach_datastore, datastores_radio, [datastore_status, datastore_info_output])
+                        detach_btn.click(self.detach_datastore, datastores_radio, [datastore_status, datastore_info_output])
 
                     # ===== Modules Tab =====
                     with gr.Tab("🔌 Modules"):

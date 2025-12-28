@@ -6,8 +6,11 @@ how prompts are structured and formatted when sent to LLMs.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 
 class PromptConfig:
@@ -42,6 +45,9 @@ class PromptConfig:
         self.prefix_messages: List[Dict[str, str]] = []  # Messages to prepend to every conversation
         self.suffix_messages: List[Dict[str, str]] = []  # Messages to append after user message
         self.custom_format: Optional[Dict[str, Any]] = None  # Custom formatting rules
+
+        # RAG retriever (lazy loaded when needed)
+        self._rag_retriever = None
 
         # Determine which config file to use
         config_to_load = None
@@ -100,12 +106,91 @@ class PromptConfig:
         except Exception as e:
             raise RuntimeError(f"Error loading prompt config from {config_file}: {e}")
 
+    def _init_rag_retriever(self):
+        """Lazy initialization of RAG retriever."""
+        if self._rag_retriever is not None:
+            return
+
+        try:
+            from llf.rag_retriever import RAGRetriever
+            self._rag_retriever = RAGRetriever()
+            logger.info("RAG retriever initialized successfully")
+        except ImportError as e:
+            logger.warning(f"RAG dependencies not available: {e}")
+            self._rag_retriever = None
+        except Exception as e:
+            logger.warning(f"Failed to initialize RAG retriever: {e}")
+            self._rag_retriever = None
+
+    def _extract_user_message(self, user_message: Optional[str], conversation_history: Optional[List[Dict[str, str]]]) -> Optional[str]:
+        """
+        Extract the latest user message for RAG querying.
+
+        Args:
+            user_message: Direct user message parameter
+            conversation_history: Conversation history list
+
+        Returns:
+            User message string, or None if not found
+        """
+        if user_message:
+            return user_message
+        elif conversation_history:
+            # Get the last user message from history
+            for msg in reversed(conversation_history):
+                if msg.get('role') == 'user':
+                    return msg.get('content', '')
+        return None
+
+    def _build_system_prompt_with_rag(self, rag_context: Optional[str]) -> Optional[str]:
+        """
+        Construct the final system prompt, optionally including RAG context.
+
+        Args:
+            rag_context: Retrieved context from vector stores (None if no stores attached)
+
+        Returns:
+            Final system prompt string, or None if no system prompt needed
+        """
+        user_system_prompt = self.system_prompt  # From config_prompt.json
+
+        # Case 1: No RAG context - return user's prompt as-is
+        if not rag_context:
+            return user_system_prompt
+
+        # Case 2: RAG context exists - build RAG section
+        rag_section = f"""---
+
+# Knowledge Base Context
+
+The following information has been retrieved from attached knowledge bases and may be relevant to the user's question:
+
+{rag_context}
+
+# RAG Instructions
+
+- Use the context above when it's relevant to the user's question
+- Cite specific information from the context when applicable
+- If the context doesn't contain relevant information, rely on your general knowledge
+"""
+
+        # Case 2a: User has system prompt - append RAG
+        if user_system_prompt:
+            return f"{user_system_prompt}\n\n{rag_section}"
+
+        # Case 2b: No user system prompt - create RAG-only prompt
+        else:
+            return f"""You have access to a knowledge base with relevant information. Use it to answer questions accurately.
+
+{rag_section}"""
+
     def build_messages(self, user_message: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, str]]:
         """
         Build the complete message list to send to the LLM.
 
         This method constructs the full conversation including system prompts,
-        conversation history, prefix/suffix messages, and the user's message.
+        conversation history, prefix/suffix messages, RAG context (if applicable),
+        and the user's message.
 
         Args:
             user_message: The user's current message
@@ -116,39 +201,59 @@ class PromptConfig:
         """
         messages = []
 
-        # Add system prompt if configured
-        if self.system_prompt:
+        # Step 1: Determine if we need RAG and retrieve context
+        user_message_text = self._extract_user_message(user_message, conversation_history)
+        rag_context = None
+
+        if user_message_text:
+            # Lazy load RAG retriever only if needed
+            self._init_rag_retriever()
+
+            # Check if any stores are attached and query them
+            if self._rag_retriever and self._rag_retriever.has_attached_stores():
+                try:
+                    rag_context = self._rag_retriever.query_all_stores(user_message_text)
+                    if rag_context:
+                        logger.debug(f"Retrieved RAG context: {len(rag_context)} chars")
+                except Exception as e:
+                    logger.error(f"Error querying RAG stores: {e}")
+                    rag_context = None
+
+        # Step 2: Build system prompt (with or without RAG)
+        final_system_prompt = self._build_system_prompt_with_rag(rag_context)
+
+        if final_system_prompt:
             messages.append({
                 "role": "system",
-                "content": self.system_prompt
+                "content": final_system_prompt
             })
 
-        # Add master prompt as system message if configured
+        # Step 3: Add master prompt as system message if configured
         if self.master_prompt:
             messages.append({
                 "role": "system",
                 "content": self.master_prompt
             })
 
-        # Add conversation history if provided
+        # Step 4: Add conversation history if provided
         if conversation_history:
             messages.extend(conversation_history)
 
-        # Add prefix messages (injected before user message)
+        # Step 5: Add prefix messages (injected before user message)
         if self.prefix_messages:
             messages.extend(self.prefix_messages)
 
-        # Add user message
+        # Step 6: Add user message
         messages.append({
             "role": "user",
             "content": user_message
         })
 
-        # Add suffix messages (injected after user message)
+        # Step 7: Add suffix messages (injected after user message)
         if self.suffix_messages:
             messages.extend(self.suffix_messages)
 
-        # Add assistant prompt as assistant message if configured
+        # Step 8: Add assistant prompt as assistant message if configured
         # This primes the assistant to respond in a certain way
         if self.assistant_prompt:
             messages.append({
