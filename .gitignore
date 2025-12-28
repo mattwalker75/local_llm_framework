@@ -53,6 +53,8 @@ htmlcov/
 models/
 .cache/
 *.json.bak
+data_stores/embedding_models/  # Downloaded embedding models for RAG (large files)
 #config.json  # User-specific configuration (use config.json.example as template)
 #config_prompt.json  # User-specific prompt configuration (use examples in config_prompt_examples/)
+
 

@@ -2210,3 +2210,449 @@ class TestPlaceholderCommands:
             # Should report error
             print_calls = [str(call) for call in mock_print.call_args_list]
             assert any('error' in str(call).lower() or 'failed' in str(call).lower() for call in print_calls)
+
+    # ========== Data Store Management Tests ==========
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_list_command(self, mock_setup_logging, mock_print):
+        """Test datastore list command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should print the datastore list
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Test Datastore' in str(call) or 'detached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_list_attached_command(self, mock_setup_logging, mock_print):
+        """Test datastore list --attached command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with no attached datastores
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'list', '--attached']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should print no attached datastores message
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('no attached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_attach_specific_datastore(self, mock_setup_logging, mock_print):
+        """Test datastore attach command for specific datastore."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with detached datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'attach', 'test_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        # Mock file operations
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should attach the datastore and write to file
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('attached successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_attach_already_attached(self, mock_setup_logging, mock_print):
+        """Test datastore attach command when datastore is already attached."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with already attached datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'attach', 'test_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already attached
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already attached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_attach_not_found(self, mock_setup_logging, mock_print):
+        """Test datastore attach command when datastore doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "other_datastore",
+                    "display_name": "Other Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'attach', 'nonexistent_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report datastore not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_attach_all(self, mock_setup_logging, mock_print):
+        """Test datastore attach all command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with multiple detached datastores
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "datastore1",
+                    "display_name": "Datastore 1",
+                    "attached": False
+                },
+                {
+                    "name": "datastore2",
+                    "display_name": "Datastore 2",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'attach', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should attach all datastores
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('attached 2' in str(call).lower() or 'attached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_detach_specific_datastore(self, mock_setup_logging, mock_print):
+        """Test datastore detach command for specific datastore."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with attached datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'detach', 'test_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should detach the datastore
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('detached successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_detach_already_detached(self, mock_setup_logging, mock_print):
+        """Test datastore detach command when datastore is already detached."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with already detached datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'detach', 'test_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should report already detached
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already detached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_detach_not_found(self, mock_setup_logging, mock_print):
+        """Test datastore detach command when datastore doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "other_datastore",
+                    "display_name": "Other Datastore",
+                    "attached": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'detach', 'nonexistent_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report datastore not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_detach_all(self, mock_setup_logging, mock_print):
+        """Test datastore detach all command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data with multiple attached datastores
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "datastore1",
+                    "display_name": "Datastore 1",
+                    "attached": True
+                },
+                {
+                    "name": "datastore2",
+                    "display_name": "Datastore 2",
+                    "attached": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'detach', 'all']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Should detach all datastores
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('detached 2' in str(call).lower() or 'detached' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_info_command(self, mock_setup_logging, mock_print):
+        """Test datastore info command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "test_datastore",
+                    "display_name": "Test Datastore",
+                    "description": "Test description",
+                    "attached": True,
+                    "vector_store_path": "/path/to/store",
+                    "embedding_model": "test-model",
+                    "num_vectors": 100
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'info', 'test_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Should print datastore info
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Test Datastore' in str(call) for call in print_calls)
+            assert any('Test description' in str(call) for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_datastore_info_not_found(self, mock_setup_logging, mock_print):
+        """Test datastore info command when datastore doesn't exist."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data without target datastore
+        registry_data = {
+            "version": "1.0",
+            "data_stores": [
+                {
+                    "name": "other_datastore",
+                    "display_name": "Other Datastore",
+                    "attached": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'datastore', 'info', 'nonexistent_datastore']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Should report datastore not found
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)

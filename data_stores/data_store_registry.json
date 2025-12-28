@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-26",
+  "data_stores": [
+    {
+      "name": "matt_docx",
+      "display_name": "DOCX Resume",
+      "description": "My resume in DOCX format",
+      "attached": false,
+      "vector_store_path": "data_stores/vector_stores/matt_docx",
+      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+      "embedding_dimension": 768,
+      "index_type": "IndexFlatIP",
+      "_comment2": "========== OPTIONAL PARAMETERS ==========",
+      "model_cache_dir": "data_stores/embedding_models",
+      "top_k_results": 5,
+      "similarity_threshold": 0.3,
+      "max_context_length": 4000,
+      "created_date": "2025-12-26",
+      "num_vectors": 50,
+      "metadata": {
+        "source_type": "documentation",
+        "content_description": "General documentation",
+        "search_mode": "semantic"
+      }
+    },
+    {
+      "name": "matt_pdf",
+      "display_name": "PDF Resume",
+      "description": "My resume in PDF format",
+      "attached": false,
+      "vector_store_path": "data_stores/vector_stores/matt_pdf",
+      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+      "embedding_dimension": 768,
+      "index_type": "IndexFlatIP",
+      "_comment2": "========== OPTIONAL PARAMETERS ==========",
+      "model_cache_dir": "data_stores/embedding_models",
+      "top_k_results": 5,
+      "similarity_threshold": 0.3,
+      "max_context_length": 4000,
+      "created_date": "2025-12-26",
+      "num_vectors": 9,
+      "metadata": {
+        "source_type": "documentation",
+        "content_description": "General documentation",
+        "search_mode": "semantic"
+      }
+    }
+  ],
+  "metadata": {
+    "description": "Registry of all available RAG vector stores for the LLM Framework",
+    "note": "This file tracks which vector stores are available and their enabled/disabled status. The LLM will search through all attached stores.",
+    "schema_version": "1.0",
+    "configuration_notes": {
+      "enabled": "Set to true to enable searching this vector store, false to disable",
+      "vector_store_path": "Path to directory containing index.faiss, metadata.jsonl, and config.json",
+      "embedding_model": "MUST match the model used to create the vector store (enforced by config.json)",
+      "embedding_dimension": "Vector dimension (384 for MiniLM, 768 for MPNet/Jina models)",
+      "index_type": "FAISS index type (IndexFlatIP for exact cosine similarity)",
+      "model_cache_dir": "Path to cached embedding models for faster loading",
+      "top_k_results": "Number of most similar documents to retrieve per query",
+      "similarity_threshold": "Minimum similarity score (0.0-1.0) to include results",
+      "max_context_length": "Maximum characters to send to LLM from this store",
+      "created_date": "ISO date when vector store was created (null if not yet created)",
+      "num_vectors": "Total number of vectors in the store (0 if not yet created)",
+      "metadata.source_type": "Type of content (documentation, code, qa_pairs, general, etc.)",
+      "metadata.content_description": "Human-readable description of store contents",
+      "metadata.search_mode": "Search strategy (semantic, hybrid, keyword)"
+    },
+    "usage_instructions": {
+      "enabling_stores": "Set 'enabled: true' for any stores you want the LLM to search",
+      "creating_stores": "Use data_stores/tools/Create_VectorStore.py to build vector stores",
+      "model_consistency": "The embedding_model MUST match between creation and querying",
+      "multiple_stores": "LLM will aggregate results from all enabled stores",
+      "path_resolution": "Paths can be absolute or relative to the project root"
+    },
+    "changes": [
+      "v1.0: Initial schema with required and optional RAG parameters"
+    ]
+  }
+}
