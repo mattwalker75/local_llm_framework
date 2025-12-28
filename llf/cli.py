@@ -976,11 +976,13 @@ Examples:
   llf gui status                   Check if GUI daemon is running
 
   # Data Store management
-  llf datastore list               List all available data stores
-  llf datastore list --attached    List only attached data stores
-  llf datastore attach             Attach data store to query
-  llf datastore detach             Detach data store
-  llf datastore info DATA_STORE_NAME  Show data store information
+  llf datastore list                      List all available data stores
+  llf datastore list --attached           List only attached data stores
+  llf datastore attach DATA_STORE_NAME    Attach data store to query
+  llf datastore attach all                Attach all data stores
+  llf datastore detach DATA_STORE_NAME    Detach data store
+  llf datastore detach all                Detach all data stores
+  llf datastore info DATA_STORE_NAME      Show data store information
 
   # Module management
   llf module list                  List modules
@@ -1366,7 +1368,9 @@ actions:
   list                      List data stores
   list --attached           List only attached data stores
   attach DATA_STORE_NAME    Attach data store to query
+  attach all                Attach all data stores
   detach DATA_STORE_NAME    Detach data store
+  detach all                Detach all data stores
   info DATA_STORE_NAME      Show data store information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1763,16 +1767,242 @@ finally:
                 return 1
 
     elif args.command == 'datastore':
-        # Data Store Management (placeholder for future functionality)
-        console.print("[yellow]Data Store Management[/yellow]")
-        console.print("This command is reserved for future functionality.")
-        console.print("\n[dim]Planned features:[/dim]")
-        console.print("  • List available data stores (RAG data)")
-        console.print("  • Attach data store to active session")
-        console.print("  • Detach data store from session")
-        console.print("  • List currently attached data stores")
-        if args.action:
-            console.print(f"\n[dim]Action '{args.action}' not yet implemented[/dim]")
+        # Data Store Management
+        action = args.action if args.action else 'list'
+
+        # Path to data stores registry
+        datastore_registry_path = Path(__file__).parent.parent / 'data_stores' / 'data_store_registry.json'
+
+        if action == 'list':
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Filter by attached status if requested
+                if args.attached:
+                    data_stores = [ds for ds in data_stores if ds.get('attached', False)]
+
+                if not data_stores:
+                    if args.attached:
+                        console.print("No attached data stores found")
+                    else:
+                        console.print("No data stores available")
+                else:
+                    for datastore in data_stores:
+                        display_name = datastore.get('display_name', datastore.get('name', 'unknown'))
+                        attached = datastore.get('attached', False)
+                        status = "attached" if attached else "detached"
+                        console.print(f"{display_name:<30} {status}")
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read data store registry: {e}")
+                return 1
+
+        elif action == 'attach':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for attach command")
+                console.print("[dim]Usage: llf datastore attach DATA_STORE_NAME[/dim]")
+                console.print("[dim]       llf datastore attach all[/dim]")
+                return 1
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Handle "all" keyword
+                if args.datastore_name.lower() == 'all':
+                    attached_count = 0
+                    already_attached = []
+                    for datastore in data_stores:
+                        if datastore.get('attached', False):
+                            already_attached.append(datastore.get('name'))
+                        else:
+                            datastore['attached'] = True
+                            attached_count += 1
+
+                    # Write back to registry
+                    with open(datastore_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    if attached_count > 0:
+                        console.print(f"[green]Attached {attached_count} data store(s) successfully[/green]")
+                    if already_attached:
+                        console.print(f"[dim]Already attached: {', '.join(already_attached)}[/dim]")
+                    if attached_count == 0 and not already_attached:
+                        console.print("[yellow]No data stores available to attach[/yellow]")
+                else:
+                    # Find the datastore by name or display_name
+                    datastore_found = False
+                    for datastore in data_stores:
+                        if datastore.get('name') == args.datastore_name or datastore.get('display_name') == args.datastore_name:
+                            if datastore.get('attached', False):
+                                console.print(f"[yellow]Data store '{args.datastore_name}' is already attached[/yellow]")
+                            else:
+                                datastore['attached'] = True
+                                # Write back to registry
+                                with open(datastore_registry_path, 'w') as f:
+                                    json.dump(registry, f, indent=2)
+                                console.print(f"[green]Data store '{args.datastore_name}' attached successfully[/green]")
+                            datastore_found = True
+                            break
+
+                    if not datastore_found:
+                        console.print(f"[red]Error:[/red] Data store '{args.datastore_name}' not found")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to attach data store: {e}")
+                return 1
+
+        elif action == 'detach':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for detach command")
+                console.print("[dim]Usage: llf datastore detach DATA_STORE_NAME[/dim]")
+                console.print("[dim]       llf datastore detach all[/dim]")
+                return 1
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Handle "all" keyword
+                if args.datastore_name.lower() == 'all':
+                    detached_count = 0
+                    already_detached = []
+                    for datastore in data_stores:
+                        if not datastore.get('attached', False):
+                            already_detached.append(datastore.get('name'))
+                        else:
+                            datastore['attached'] = False
+                            detached_count += 1
+
+                    # Write back to registry
+                    with open(datastore_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    if detached_count > 0:
+                        console.print(f"[green]Detached {detached_count} data store(s) successfully[/green]")
+                    if already_detached:
+                        console.print(f"[dim]Already detached: {', '.join(already_detached)}[/dim]")
+                    if detached_count == 0 and not already_detached:
+                        console.print("[yellow]No data stores available to detach[/yellow]")
+                else:
+                    # Find the datastore by name or display_name
+                    datastore_found = False
+                    for datastore in data_stores:
+                        if datastore.get('name') == args.datastore_name or datastore.get('display_name') == args.datastore_name:
+                            if not datastore.get('attached', False):
+                                console.print(f"[yellow]Data store '{args.datastore_name}' is already detached[/yellow]")
+                            else:
+                                datastore['attached'] = False
+                                # Write back to registry
+                                with open(datastore_registry_path, 'w') as f:
+                                    json.dump(registry, f, indent=2)
+                                console.print(f"[green]Data store '{args.datastore_name}' detached successfully[/green]")
+                            datastore_found = True
+                            break
+
+                    if not datastore_found:
+                        console.print(f"[red]Error:[/red] Data store '{args.datastore_name}' not found")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to detach data store: {e}")
+                return 1
+
+        elif action == 'info':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for info command")
+                console.print("[dim]Usage: llf datastore info DATA_STORE_NAME[/dim]")
+                return 1
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Find the datastore by name or display_name
+                datastore = None
+                for ds in data_stores:
+                    if ds.get('name') == args.datastore_name or ds.get('display_name') == args.datastore_name:
+                        datastore = ds
+                        break
+
+                if not datastore:
+                    console.print(f"[red]Error:[/red] Data store '{args.datastore_name}' not found")
+                    return 1
+
+                # Display detailed datastore information
+                name = datastore.get('name', 'unknown')
+                display_name = datastore.get('display_name', name)
+                description = datastore.get('description', 'No description available')
+                attached = datastore.get('attached', False)
+                vector_store_path_rel = datastore.get('vector_store_path', 'N/A')
+                embedding_model = datastore.get('embedding_model', 'N/A')
+                num_vectors = datastore.get('num_vectors', 0)
+
+                # Calculate full path relative to project root
+                if vector_store_path_rel != 'N/A':
+                    # If path is already absolute, use it; otherwise construct from project root
+                    vector_store_path_obj = Path(vector_store_path_rel)
+                    if vector_store_path_obj.is_absolute():
+                        vector_store_path = str(vector_store_path_obj.resolve())
+                    else:
+                        vector_store_path = str((Path(__file__).parent.parent / vector_store_path_rel).resolve())
+                else:
+                    vector_store_path = 'N/A'
+
+                console.print(f"\n[bold]{display_name}[/bold] ({name})")
+                console.print(f"Description: {description}")
+                console.print(f"Status: {'[green]attached[/green]' if attached else '[yellow]detached[/yellow]'}")
+                console.print(f"Location: {vector_store_path}")
+                console.print(f"Embedding Model: {embedding_model}")
+                console.print(f"Number of Vectors: {num_vectors}")
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to get data store info: {e}")
+                return 1
+
+        else:
+            console.print(f"[red]Error:[/red] Unknown action '{action}'")
+            console.print("[dim]Available actions: list, attach, detach, info[/dim]")
+            return 1
+
         return 0
 
     elif args.command == 'module':

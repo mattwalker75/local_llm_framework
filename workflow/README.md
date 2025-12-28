@@ -300,6 +300,8 @@ with which prompts I passed to the AI.
     modules_registry.json file in the "modules" directory
 4.  Used the following prompt to being development of the "llf datastore" code
        -  8_Data_Store.txt
+5.  Do some basic troubleshooting and verifying the changes are working
+6.  Incorporating the RAG Vector Stores with the LLM
 
 
 
