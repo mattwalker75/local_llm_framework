@@ -310,5 +310,8 @@ with which prompts I passed to the AI.
 
 #### Add Long term memory that the LLM can use
 1.  Create directory structure, configuration, and management commands
+2.  Setup management tools for the memory module
+       -  9_Memory_Commands.txt
+3.  Verify code works and do basic troubleshooting and testing
 
 

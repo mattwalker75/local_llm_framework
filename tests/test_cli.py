@@ -2656,3 +2656,338 @@ class TestPlaceholderCommands:
             # Should report datastore not found
             print_calls = [str(call) for call in mock_print.call_args_list]
             assert any('not found' in str(call).lower() for call in print_calls)
+
+
+# ============================================================
+# Memory Management Tests
+# ============================================================
+
+class TestMemoryListCommand:
+    """Tests for 'llf memory list' command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_list_command(self, mock_setup_logging, mock_print):
+        """Test memory list command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'list']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Check that memory was listed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Main Memory' in str(call) for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_list_enabled_command(self, mock_setup_logging, mock_print):
+        """Test memory list --enabled command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "memory1",
+                    "display_name": "Memory 1",
+                    "enabled": True
+                },
+                {
+                    "name": "memory2",
+                    "display_name": "Memory 2",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'list', '--enabled']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Check that only enabled memory was listed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Memory 1' in str(call) for call in print_calls)
+            # Memory 2 should not be in the output
+            assert not any('Memory 2' in str(call) for call in print_calls)
+
+
+class TestMemoryEnableCommand:
+    """Tests for 'llf memory enable' command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_enable_success(self, mock_setup_logging, mock_print):
+        """Test enabling a memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open, MagicMock
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'enable', 'main_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Check that success message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('enabled successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_enable_already_enabled(self, mock_setup_logging, mock_print):
+        """Test enabling an already-enabled memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'enable', 'main_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Check that already-enabled message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already enabled' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_enable_not_found(self, mock_setup_logging, mock_print):
+        """Test enabling a non-existent memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": []
+        }
+
+        test_args = ['llf', 'memory', 'enable', 'nonexistent']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Check that not found error was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+
+class TestMemoryDisableCommand:
+    """Tests for 'llf memory disable' command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_disable_success(self, mock_setup_logging, mock_print):
+        """Test disabling a memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "enabled": True
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'disable', 'main_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        mock_file = mock_open(read_data=json.dumps(registry_data))
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_file):
+
+            result = main()
+
+            assert result == 0
+            # Check that success message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('disabled successfully' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_disable_already_disabled(self, mock_setup_logging, mock_print):
+        """Test disabling an already-disabled memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "enabled": False
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'disable', 'main_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Check that already-disabled message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('already disabled' in str(call).lower() for call in print_calls)
+
+
+class TestMemoryInfoCommand:
+    """Tests for 'llf memory info' command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_info_command(self, mock_setup_logging, mock_print):
+        """Test memory info command."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        # Mock registry data
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "description": "Long-term memory storage",
+                    "enabled": True,
+                    "type": "persistent",
+                    "directory": "main_memory",
+                    "metadata": {
+                        "storage_type": "json",
+                        "max_entries": 10000,
+                        "compression": False
+                    }
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'info', 'main_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 0
+            # Check that memory info was displayed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('Main Memory' in str(call) for call in print_calls)
+            assert any('persistent' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_info_not_found(self, mock_setup_logging, mock_print):
+        """Test info command for non-existent memory."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": []
+        }
+
+        test_args = ['llf', 'memory', 'info', 'nonexistent']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Check that not found error was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)

@@ -984,6 +984,13 @@ Examples:
   llf datastore detach all                Detach all data stores
   llf datastore info DATA_STORE_NAME      Show data store information
 
+  # Memory management
+  llf memory list                         List all memory instances
+  llf memory list --enabled               List only enabled memory instances
+  llf memory enable MEMORY_NAME           Enable a memory instance
+  llf memory disable MEMORY_NAME          Disable a memory instance
+  llf memory info MEMORY_NAME             Show memory instance information
+
   # Module management
   llf module list                  List modules
   llf module list --enabled        List only enabled modules
@@ -1422,6 +1429,37 @@ actions:
         '--enabled',
         action='store_true',
         help='List only enabled modules (use with list action)'
+    )
+
+    # Memory command
+    memory_parser = subparsers.add_parser(
+        'memory',
+        help='Memory Management',
+        description='Manage long-term memory for the LLM.\n( Memory allows the LLM to store and retrieve persistent information across conversations. )',
+        epilog='''
+actions:
+  list                      List memory instances
+  list --enabled            List only enabled memory instances
+  enable MEMORY_NAME        Enable a memory instance
+  disable MEMORY_NAME       Disable a memory instance
+  info MEMORY_NAME          Show memory instance information
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    memory_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    memory_parser.add_argument(
+        'memory_name',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    memory_parser.add_argument(
+        '--enabled',
+        action='store_true',
+        help='List only enabled memory instances (use with list action)'
     )
 
     # Tool command
@@ -2001,6 +2039,207 @@ finally:
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
             console.print("[dim]Available actions: list, attach, detach, info[/dim]")
+            return 1
+
+        return 0
+
+    elif args.command == 'memory':
+        # Memory Management
+        action = args.action if args.action else 'list'
+
+        # Path to memory registry
+        memory_registry_path = Path(__file__).parent.parent / 'memory' / 'memory_registry.json'
+
+        if action == 'list':
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Filter by enabled status if requested
+                if args.enabled:
+                    memories = [m for m in memories if m.get('enabled', False)]
+
+                if not memories:
+                    if args.enabled:
+                        console.print("No enabled memory instances found")
+                    else:
+                        console.print("No memory instances available")
+                else:
+                    for memory in memories:
+                        display_name = memory.get('display_name', memory.get('name', 'unknown'))
+                        enabled = memory.get('enabled', False)
+                        status = "enabled" if enabled else "disabled"
+                        console.print(f"{display_name:<30} {status}")
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read memory registry: {e}")
+                return 1
+
+        elif action == 'enable':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for enable command")
+                console.print("[dim]Usage: llf memory enable MEMORY_NAME[/dim]")
+                return 1
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory_found = False
+                for memory in memories:
+                    if memory.get('name') == args.memory_name or memory.get('display_name') == args.memory_name:
+                        if memory.get('enabled', False):
+                            console.print(f"[yellow]Memory '{args.memory_name}' is already enabled[/yellow]")
+                        else:
+                            memory['enabled'] = True
+                            # Write back to registry
+                            with open(memory_registry_path, 'w') as f:
+                                json.dump(registry, f, indent=2)
+                            console.print(f"[green]Memory '{args.memory_name}' enabled successfully[/green]")
+                        memory_found = True
+                        break
+
+                if not memory_found:
+                    console.print(f"[red]Error:[/red] Memory '{args.memory_name}' not found")
+                    return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to enable memory: {e}")
+                return 1
+
+        elif action == 'disable':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for disable command")
+                console.print("[dim]Usage: llf memory disable MEMORY_NAME[/dim]")
+                return 1
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory_found = False
+                for memory in memories:
+                    if memory.get('name') == args.memory_name or memory.get('display_name') == args.memory_name:
+                        if not memory.get('enabled', False):
+                            console.print(f"[yellow]Memory '{args.memory_name}' is already disabled[/yellow]")
+                        else:
+                            memory['enabled'] = False
+                            # Write back to registry
+                            with open(memory_registry_path, 'w') as f:
+                                json.dump(registry, f, indent=2)
+                            console.print(f"[green]Memory '{args.memory_name}' disabled successfully[/green]")
+                        memory_found = True
+                        break
+
+                if not memory_found:
+                    console.print(f"[red]Error:[/red] Memory '{args.memory_name}' not found")
+                    return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to disable memory: {e}")
+                return 1
+
+        elif action == 'info':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for info command")
+                console.print("[dim]Usage: llf memory info MEMORY_NAME[/dim]")
+                return 1
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory = None
+                for m in memories:
+                    if m.get('name') == args.memory_name or m.get('display_name') == args.memory_name:
+                        memory = m
+                        break
+
+                if not memory:
+                    console.print(f"[red]Error:[/red] Memory '{args.memory_name}' not found")
+                    return 1
+
+                # Display detailed memory information
+                name = memory.get('name', 'unknown')
+                display_name = memory.get('display_name', name)
+                description = memory.get('description', 'No description')
+                enabled = memory.get('enabled', False)
+                memory_type = memory.get('type', 'unknown')
+                directory = memory.get('directory', name)
+                created_date = memory.get('created_date', 'Not created')
+                last_modified = memory.get('last_modified', 'Never modified')
+
+                # Calculate memory path relative to project root
+                memory_path = Path(__file__).parent.parent / 'memory' / directory
+
+                # Get metadata
+                metadata = memory.get('metadata', {})
+                storage_type = metadata.get('storage_type', 'unknown')
+                max_entries = metadata.get('max_entries', 'unlimited')
+                compression = metadata.get('compression', False)
+
+                # Status indicator
+                status = "[green]✓ enabled[/green]" if enabled else "[dim]○ disabled[/dim]"
+
+                console.print()
+                console.print(f"[bold]{display_name}[/bold] ({name})")
+                console.print(f"  {status}")
+                console.print(f"  [dim]Type:[/dim] {memory_type}")
+                console.print(f"  [dim]Description:[/dim] {description}")
+                console.print(f"  [dim]Location:[/dim] {memory_path}")
+                console.print(f"  [dim]Storage Type:[/dim] {storage_type}")
+                console.print(f"  [dim]Max Entries:[/dim] {max_entries}")
+                console.print(f"  [dim]Compression:[/dim] {'Yes' if compression else 'No'}")
+                console.print(f"  [dim]Created:[/dim] {created_date}")
+                console.print(f"  [dim]Last Modified:[/dim] {last_modified}")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to retrieve memory info: {e}")
+                return 1
+
+        else:
+            console.print(f"[red]Error:[/red] Unknown action '{action}'")
+            console.print("[dim]Available actions: list, enable, disable, info[/dim]")
             return 1
 
         return 0

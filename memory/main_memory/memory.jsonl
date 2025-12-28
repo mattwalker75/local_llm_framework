@@ -1,0 +1,1 @@
+{"id": "mem_example_001", "timestamp": "2025-12-27T00:00:00Z", "type": "note", "content": "This is an example memory entry. The LLM can add, update, or delete entries in this file.", "tags": ["example", "system"], "importance": 0.5, "source": "system", "last_accessed": "2025-12-27T00:00:00Z", "access_count": 0, "metadata": {"category": "documentation"}}

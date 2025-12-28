@@ -1,0 +1,40 @@
+
+I passed the following prompt to Claude to begin coding of the data store management code:
+
+We are working on creating a long term memory solution that can be used by the LLM to track long term memory information.  The LLM will be able to perform the following actions against the long term memory solution:
+   - Add entries
+   - Update existing entries
+   - Delete entries
+
+Here is the directory structure:
+   - Main directory of memory:  local_llm_framework/memory
+   - Configuration file for the memory:  local_llm_framework/memory/memory_registry.json
+
+The memory_registry.json file will be used to configure the memory of the LLM using the following configuration attributes in the file:
+   - name: Name to call the memory
+   - display_name:  What to display using "llf" commands
+   - description:  Description of memory
+   - directory:  Where the memory is located 
+      - NOTE:  If this ends up being a single file, then we can change it from "directory" to "file".
+   - enabled:  Determines if the memory is enabled or not
+
+Controls to consider:
+   - If "enabled" is set to "true" then the LLM will load the long term memory and will have fully control of the memory file(s)
+   - If "enabled" is set to "false" then the LLM will not have access to the long term memory
+
+Management Commands to setup:
+   - Create a set of memory commands called "llf memory"
+   - List memory information with "llf memory info"
+   - Enable memory with "llf memory enable"
+   - Disable memory with "llf memory disable"
+   - Setup online documenation with "llf memory -h" and "llf -h"
+
+Review the current code base for the "llf" CLI and follow the same basic structure as "llf module" and "llf datastore" when setting up "llf memory"
+
+Out of scope and will be taken care of later:
+- Do not setup the actual long term memory integration with the LLM yet.
+- We will need to determine what technology to use for the long term memory
+
+Review the current code base for understanding.  
+Remember to add unit tests at the end, and run unit tests in the llf_venv virtual environment.
+
