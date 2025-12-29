@@ -134,7 +134,7 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
    ./llf model download --huggingface-model Qwen/Qwen3-Coder-30B-A3B-Instruct
    ```
 
-- Run the following command to very the image downloaded successfully
+- Run the following command to very the image downloaded successfully<br>
   NOTE:  The models are downloaded here:  `local_llm_framework/models`
    ```bash
       ./llf model list
