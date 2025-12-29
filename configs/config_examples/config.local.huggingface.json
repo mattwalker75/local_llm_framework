@@ -2,6 +2,7 @@
   "_comment": "========== LOCAL HUGGINGFACE MODEL CONFIGURATION ==========",
   "_info": "This config downloads GGUF models from HuggingFace and runs them locally with llama-server",
   "_setup_instructions": "1. Use 'llf download <huggingface-repo>' to download models  2. Model directory will be auto-created with sanitized name  3. Start server with 'llf server start'",
+  "_multi_server_note": "To run multiple models, convert to 'local_llm_servers' array format. See config.multi-server.json example.",
 
   "local_llm_server": {
     "_comment": "Local llama-server configuration for HuggingFace GGUF models",

@@ -3,6 +3,7 @@
 
   "_local_llm_server_comment": "========== LOCAL SERVER SETTINGS (server-side) ==========",
   "_local_llm_server_info": "Only used when starting local llama-server via 'llf server start'. Omit this section if using external APIs.",
+  "_multi_server_note": "For multiple servers, use 'local_llm_servers' array instead. See config.multi-server.json example.",
   "local_llm_server": {
     "_llama_server_path_comment": "Path to llama-server binary. Relative paths are from project root.",
     "llama_server_path": "../llama.cpp/build/bin/llama-server",

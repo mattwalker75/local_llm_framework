@@ -1,13 +1,13 @@
 {
   "version": "1.0",
-  "last_updated": "2025-12-27",
+  "last_updated": "2025-12-28",
   "memories": [
     {
       "name": "main_memory",
       "display_name": "Main Memory",
       "description": "Long-term memory for persistent information storage",
       "directory": "main_memory",
-      "enabled": false,
+      "enabled": true,
       "type": "persistent",
       "created_date": null,
       "last_modified": null,

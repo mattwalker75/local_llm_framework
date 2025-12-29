@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-28",
+  "tools": [
+    {
+      "name": "xml_format",
+      "display_name": "XML Format Parser",
+      "description": "Parse XML-style function calls and convert to OpenAI JSON format",
+      "type": "compatibility_layer",
+      "enabled": "auto",
+      "directory": "xml_format",
+      "created_date": null,
+      "last_modified": "2025-12-28",
+      "metadata": {
+        "input_format": "XML",
+        "output_format": "JSON",
+        "use_case": "Model outputs XML instead of JSON tool calls",
+        "example_input": "<function=search_memories><parameter=query>value</parameter></function>",
+        "example_output": "{\"name\": \"search_memories\", \"parameters\": {\"query\": \"value\"}}",
+        "behavior": "compatibility_layer",
+        "activation": "automatic_on_pattern",
+        "supported_states": [
+          "false",
+          "auto"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "description": "Registry of all available tools and compatibility layers for the LLM Framework",
+    "note": "This file tracks which tool features are available and their enabled/disabled status.",
+    "schema_version": "1.0",
+    "configuration_notes": {
+      "enabled": "Tool activation state: false (disabled), 'auto' (load at init, use when needed), true (actively enabled/forced)",
+      "type": "Type of tool: compatibility_layer, function_calling, preprocessor, postprocessor",
+      "directory": "Directory path where tool implementation is stored (relative to tools/)",
+      "metadata.behavior": "How tool integrates: compatibility_layer, llm_invoked, preprocessor, postprocessor",
+      "metadata.activation": "When tool activates: automatic_on_pattern, on_demand, always",
+      "metadata.supported_states": "Array of enabled states this tool supports (e.g., ['false', 'auto'] or ['false', 'auto', 'true'])",
+      "metadata.input_format": "Format the tool expects as input",
+      "metadata.output_format": "Format the tool produces as output",
+      "metadata.use_case": "When this tool should be used"
+    },
+    "usage_instructions": {
+      "enabling_tool": "Set enabled to: false (disabled), 'auto' (recommended - loads at init), or true (force active)",
+      "managing_tools": "Use 'llf tool' commands to list, enable, disable, auto, and view tool info",
+      "creating_tool": "Add new tool definitions to the 'tools' array"
+    },
+    "changes": [
+      "v1.0: Initial schema migrated from tools_config.json"
+    ]
+  }
+}

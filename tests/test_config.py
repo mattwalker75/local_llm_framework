@@ -182,12 +182,22 @@ class TestConfig:
         config = Config()
         config_dict = config.to_dict()
 
-        # Test nested structure - server-side settings
-        assert 'local_llm_server' in config_dict
-        assert config_dict['local_llm_server']['llama_server_path'] == str(config.llama_server_path)
-        assert config_dict['local_llm_server']['server_host'] == config.server_host
-        assert config_dict['local_llm_server']['server_port'] == config.server_port
-        assert config_dict['local_llm_server']['gguf_file'] == config.gguf_file
+        # Test nested structure - server-side settings (multi-server or single-server)
+        if 'local_llm_servers' in config_dict:
+            # Multi-server format
+            assert isinstance(config_dict['local_llm_servers'], list)
+            assert len(config_dict['local_llm_servers']) > 0
+            first_server = config_dict['local_llm_servers'][0]
+            assert 'llama_server_path' in first_server
+            assert 'server_host' in first_server
+            assert 'server_port' in first_server
+        else:
+            # Legacy single-server format
+            assert 'local_llm_server' in config_dict
+            assert config_dict['local_llm_server']['llama_server_path'] == str(config.llama_server_path)
+            assert config_dict['local_llm_server']['server_host'] == config.server_host
+            assert config_dict['local_llm_server']['server_port'] == config.server_port
+            assert config_dict['local_llm_server']['gguf_file'] == config.gguf_file
 
         # Test nested structure - client-side settings
         assert 'llm_endpoint' in config_dict
@@ -216,7 +226,19 @@ class TestConfig:
             loaded_data = json.load(f)
 
         assert loaded_data['llm_endpoint']['model_name'] == "saved/model"
-        assert loaded_data['local_llm_server']['server_port'] == 8888
+
+        # Check for server_port in either multi-server or single-server format
+        if 'local_llm_servers' in loaded_data:
+            # Multi-server format - find the active server
+            found_port = False
+            for server in loaded_data['local_llm_servers']:
+                if server['server_port'] == 8888:
+                    found_port = True
+                    break
+            assert found_port, "Expected server_port 8888 in at least one server"
+        else:
+            # Legacy single-server format
+            assert loaded_data['local_llm_server']['server_port'] == 8888
 
     def test_save_creates_parent_dirs(self, temp_dir):
         """Test that save_to_file creates parent directories."""
@@ -373,7 +395,15 @@ class TestGetConfig:
         config_dict = config.to_dict()
 
         # Empty server_params should not be included
-        assert 'server_params' not in config_dict['local_llm_server']
+        if 'local_llm_servers' in config_dict:
+            # Multi-server format - check all servers
+            for server in config_dict['local_llm_servers']:
+                if 'server_params' in server:
+                    # If server_params exists, it should not be empty
+                    assert server['server_params'], "server_params should not be empty dict if present"
+        else:
+            # Legacy single-server format
+            assert 'server_params' not in config_dict['local_llm_server']
 
     def test_healthcheck_interval_loading(self, temp_dir):
         """Test loading healthcheck_interval from config file."""

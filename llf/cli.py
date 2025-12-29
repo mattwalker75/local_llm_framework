@@ -27,6 +27,13 @@ from .config import Config, get_config
 from .model_manager import ModelManager
 from .llm_runtime import LLMRuntime
 from .prompt_config import PromptConfig, get_prompt_config
+from .server_commands import (
+    list_servers_command,
+    start_server_command,
+    stop_server_command,
+    status_server_command,
+    switch_server_command
+)
 
 logger = get_logger(__name__)
 console = Console()
@@ -313,7 +320,18 @@ If STT fails, the system will automatically fall back to keyboard input.
             )
             return False
 
-        if self.runtime.is_server_running():
+        # Check if the active server is running (multi-server aware)
+        # In multi-server setups, check if the default_local_server is running
+        # In legacy setups, check if the default server is running
+        is_running = False
+        if self.config.default_local_server:
+            # Multi-server mode: Check if the active server is running
+            is_running = self.runtime.is_server_running_by_name(self.config.default_local_server)
+        else:
+            # Legacy mode: Check if default server is running
+            is_running = self.runtime.is_server_running()
+
+        if is_running:
             # Server is already running (started by another process)
             self.started_server = False
             return True
@@ -328,7 +346,7 @@ If STT fails, the system will automatically fall back to keyboard input.
         if not self.auto_start_server:
             console.print("[yellow]Server is not running.[/yellow]")
             response = Prompt.ask(
-                "Would you like to start the server?",
+                "Would you like to start the default server?",
                 choices=["y", "n"],
                 default="y"
             )
@@ -809,92 +827,21 @@ def server_command(args) -> int:
     runtime = LLMRuntime(config, model_manager)
 
     try:
-        if args.action == 'status':
-            # Check if local server is configured
-            if not config.has_local_server_config():
-                console.print("[yellow]Local LLM server is not configured[/yellow]")
-                console.print(f"Using external API: [cyan]{config.api_base_url}[/cyan]")
-                console.print(f"Model: [cyan]{config.model_name}[/cyan]")
-                return 0
+        # New multi-server commands
+        if args.action == 'list':
+            return list_servers_command(config, runtime)
 
-            # Check server status
-            if runtime.is_server_running():
-                console.print(f"[green]✓[/green] Server is running on {config.get_server_url()}")
-                console.print(f"[cyan]Model: {config.model_name}[/cyan]")
-                return 0
-            else:
-                console.print("[yellow]✗[/yellow] Server is not running")
-                return 1
+        elif args.action == 'switch':
+            return switch_server_command(config, args)
+
+        elif args.action == 'status':
+            return status_server_command(config, runtime, args)
 
         elif args.action == 'start':
-            # Start server
-            if runtime.is_server_running():
-                console.print(f"[yellow]Server is already running on {config.get_server_url()}[/yellow]")
-                return 0
-
-            # Ensure model is downloaded (only for HuggingFace models, not custom GGUF)
-            if config.custom_model_dir is None and not model_manager.is_model_downloaded():
-                console.print(f"[yellow]Model {config.model_name} is not downloaded.[/yellow]")
-                console.print("[yellow]Downloading model... This may take a while.[/yellow]")
-                try:
-                    model_manager.download_model()
-                    console.print("[green]Model downloaded successfully![/green]")
-                except Exception as e:
-                    console.print(f"[red]Failed to download model: {e}[/red]")
-                    return 1
-
-            # Display appropriate model info based on configuration
-            if config.custom_model_dir:
-                model_display = f"{config.custom_model_dir.name}/{config.gguf_file}"
-            else:
-                model_display = config.model_name
-
-            # Determine server host based on --share flag
-            server_host = "0.0.0.0" if args.share else None  # None uses config default (127.0.0.1)
-
-            if args.share:
-                console.print(f"[yellow]Starting llama-server with model {model_display} (accessible on local network)...[/yellow]")
-            else:
-                console.print(f"[yellow]Starting llama-server with model {model_display} (localhost only)...[/yellow]")
-            console.print("[dim]This may take a minute or two...[/dim]")
-
-            runtime.start_server(server_host=server_host)
-
-            # Display appropriate access message
-            if args.share:
-                console.print(f"[green]✓ Server started successfully on 0.0.0.0:{config.server_port}[/green]")
-                console.print(f"[cyan]Access from this device: http://127.0.0.1:{config.server_port}/v1[/cyan]")
-                console.print(f"[cyan]Access from network: http://YOUR_IP:{config.server_port}/v1[/cyan]")
-            else:
-                console.print(f"[green]✓ Server started successfully on {config.get_server_url()}[/green]")
-
-            if args.daemon:
-                console.print("[cyan]Server is running in daemon mode.[/cyan]")
-                console.print(f"[cyan]Use 'llf server stop' to stop the server.[/cyan]")
-            else:
-                console.print("[cyan]Server is running. Press Ctrl+C to stop.[/cyan]")
-                try:
-                    # Keep the process alive
-                    import time
-                    while True:
-                        time.sleep(1)
-                except KeyboardInterrupt:
-                    console.print("\n[yellow]Stopping server...[/yellow]")
-                    runtime.stop_server()
-                    console.print("[green]Server stopped.[/green]")
-
-            return 0
+            return start_server_command(config, runtime, model_manager, args)
 
         elif args.action == 'stop':
-            # Stop server
-            if not runtime.is_server_running():
-                console.print("[yellow]Server is not running[/yellow]")
-                return 0
-
-            console.print("[yellow]Stopping server...[/yellow]")
-            runtime.stop_server()
-            console.print("[green]✓ Server stopped successfully[/green]")
-            return 0
+            return stop_server_command(config, runtime, args)
 
         elif args.action == 'restart':
             # Restart server
@@ -995,7 +942,15 @@ Examples:
   llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
-  # Server management
+  # Multi-server commands
+  llf server list                              List all configured servers and status
+  llf server start LOCAL_SERVER_NAME           Start specific server by name
+  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
+  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
+  llf server status LOCAL_SERVER_NAME          Check status of specific server
+  llf server switch LOCAL_SERVER_NAME          Switch default server
+
+  # Single-server commands
   llf server start                 Start llama-server (localhost only, stays in foreground)
   llf server start --share         Start server accessible on local network (0.0.0.0)
   llf server start --daemon        Start server in background (localhost only)
@@ -1277,22 +1232,33 @@ Examples:
         description='''Start, stop, or check status of the locally running OpenAI compatible LLM server ( llama.cpp ).
 
 Positional arguments:
+  list         List all configured servers and their status
   start        Start local LLM server (llama-server)
   stop         Stop local LLM server (llama-server)
   status       Display running status of local LLM server
   restart      Restart the local LLM server
+  switch       Switch the default local server (multi-server setups)
   list_models  List available models hosted from LLM server
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic server operations
+  # Multi-server commands
+  llf server list                              List all configured servers and status
+  llf server start LOCAL_SERVER_NAME           Start specific server by name
+  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
+  llf server start LOCAL_SERVER_NAME -f        Short form of --force
+  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
+  llf server status LOCAL_SERVER_NAME          Check status of specific server
+  llf server switch LOCAL_SERVER_NAME          Switch default server
+
+  # Single-server commands
   llf server start                             Start server with default model
   llf server stop                              Stop the running server
   llf server status                            Check server status
   llf server restart                           Restart the server
 
-  # Server with options
+  # Server options
   llf server start --share --daemon            Start server in background (network accessible)
 
   # Model selection
@@ -1307,8 +1273,15 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     )
     server_parser.add_argument(
         'action',
-        choices=['start', 'stop', 'status', 'restart', 'list_models'],
+        choices=['list', 'start', 'stop', 'status', 'restart', 'switch', 'list_models'],
         help=argparse.SUPPRESS  # Suppress auto-generated help - using custom description instead
+    )
+
+    # Optional server name for multi-server commands
+    server_parser.add_argument(
+        'server_name',
+        nargs='?',  # Optional
+        help='Server name (for multi-server configurations). Use with start, stop, status, or switch commands.'
     )
 
     # Model selection for server
@@ -1342,6 +1315,12 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         '--share',
         action='store_true',
         help='Make server accessible on local network (binds to 0.0.0.0). Default is localhost only (127.0.0.1).'
+    )
+
+    server_parser.add_argument(
+        '-f', '--force',
+        action='store_true',
+        help='Skip memory safety check when starting a server (use with caution)'
     )
 
     # GUI command
@@ -1524,8 +1503,9 @@ actions:
 actions:
   list                      List tools
   list --enabled            List only enabled tools
-  enable TOOL_NAME          Enable a tool
-  disable TOOL_NAME         Disable a tool
+  enable TOOL_NAME          Enable a tool (sets to true)
+  enable TOOL_NAME --auto   Enable a tool with auto mode
+  disable TOOL_NAME         Disable a tool (sets to false)
   info TOOL_NAME            Show tool information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1544,6 +1524,11 @@ actions:
         '--enabled',
         action='store_true',
         help='List only enabled tools (use with list action)'
+    )
+    tool_parser.add_argument(
+        '--auto',
+        action='store_true',
+        help='Enable tool with auto mode (use with enable action)'
     )
 
     # Parse arguments
@@ -2544,47 +2529,96 @@ finally:
 
         if not action or action == 'list':
             # List all features
-            console.print("\n[bold cyan]Tool Features[/bold cyan]\n")
             features = tools_manager.list_features()
 
             if not features:
-                console.print("[yellow]No tool features available[/yellow]")
+                if show_enabled_only:
+                    console.print("No enabled tools found")
+                else:
+                    console.print("No tools available")
                 return 0
+
+            # Track if any tools were printed
+            printed_any = False
 
             for feature_name, feature_info in features.items():
                 enabled = feature_info.get('enabled', False)
 
-                # Skip if show_enabled_only is True and feature is disabled
-                if show_enabled_only and not enabled:
-                    continue
+                # Filter by enabled status if requested (include both 'auto' and true)
+                if show_enabled_only:
+                    if not (enabled == 'auto' or enabled in [True, 'true']):
+                        continue
 
-                status_color = "green" if enabled else "red"
-                status_text = "enabled" if enabled else "disabled"
-                description = feature_info.get('description', 'No description')
+                # Determine status text
+                if enabled == 'auto':
+                    status = "auto"
+                elif enabled in [True, 'true']:
+                    status = "enabled"
+                else:
+                    status = "disabled"
 
-                console.print(f"[bold]{feature_name:<30}[/bold] [{status_color}]{status_text}[/{status_color}]")
-                console.print(f"  [dim]{description}[/dim]\n")
+                console.print(f"{feature_name:<30} {status}")
+                printed_any = True
+
+            # If filtering by enabled and nothing was printed, show message
+            if show_enabled_only and not printed_any:
+                console.print("No enabled tools found")
 
         elif action == 'enable':
             if not tool_name:
                 console.print("[red]Error: Feature name required[/red]")
-                console.print("Usage: llf tool enable <feature_name>")
+                console.print("Usage: llf tool enable <feature_name> [--auto]")
                 return 1
 
-            if tools_manager.enable_feature(tool_name, session_only=True):
-                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' enabled (session override)")
+            # Get tool info to check supported states
+            tool_info = tools_manager.get_tool_info(tool_name)
+            if not tool_info:
+                console.print(f"[red]✗[/red] Tool '[bold]{tool_name}[/bold]' not found")
+                console.print("[yellow]Check that the tool name is correct[/yellow]")
+                console.print("\n[dim]Use 'llf tool list' to see available tools[/dim]")
+                return 1
 
-                # Show helpful info for xml_format
-                if tool_name == 'xml_format':
-                    console.print("\n[dim]This feature will parse XML-style function calls like:[/dim]")
-                    console.print("[dim]  <function=search_memories><parameter=query>value</parameter>[/dim]")
-                    console.print("[dim]and convert them to OpenAI JSON format.[/dim]")
-                    console.print("\n[dim]Note: This is a temporary override for this session.[/dim]")
-                    console.print("[dim]To reset to config file setting, use: llf tool xml_format auto[/dim]")
+            # Check if --auto flag was used
+            use_auto = getattr(args, 'auto', False)
+
+            # Determine desired state
+            desired_state = 'auto' if use_auto else True
+            desired_state_str = 'auto' if use_auto else 'true'
+
+            # Get supported states
+            supported_states = tool_info.get('metadata', {}).get('supported_states', [])
+
+            # Validate against supported states
+            if supported_states:
+                # Normalize supported states for comparison
+                normalized_supported = []
+                for state in supported_states:
+                    if state is False or state == 'false':
+                        normalized_supported.append('false')
+                    elif state is True or state == 'true':
+                        normalized_supported.append('true')
+                    elif state == 'auto':
+                        normalized_supported.append('auto')
+
+                # Check if desired state is supported
+                if desired_state_str not in normalized_supported:
+                    console.print(f"[red]✗[/red] Tool '[bold]{tool_name}[/bold]' does not support enabled state: {desired_state_str}")
+                    console.print(f"\n[yellow]Supported states for this tool:[/yellow] {', '.join(normalized_supported)}")
+                    return 1
+
+            # Enable the feature with appropriate method
+            if use_auto:
+                success = tools_manager.auto_feature(tool_name, session_only=False)
+                mode_text = "auto mode"
+            else:
+                success = tools_manager.enable_feature(tool_name, session_only=False)
+                mode_text = "enabled"
+
+            if success:
+                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' {mode_text}")
                 return 0
             else:
-                console.print(f"[red]✗[/red] Failed to enable feature '[bold]{tool_name}[/bold]'")
-                console.print("[yellow]Check that the feature name is correct[/yellow]")
+                console.print(f"[red]✗[/red] Failed to set feature '[bold]{tool_name}[/bold]' to {mode_text}")
                 return 1
 
         elif action == 'disable':
@@ -2593,33 +2627,40 @@ finally:
                 console.print("Usage: llf tool disable <feature_name>")
                 return 1
 
-            if tools_manager.disable_feature(tool_name, session_only=True):
-                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' disabled (session override)")
-                console.print("\n[dim]Note: This is a temporary override for this session.[/dim]")
-                console.print("[dim]To reset to config file setting, use: llf tool {tool_name} auto[/dim]")
+            # Get tool info to check supported states
+            tool_info = tools_manager.get_tool_info(tool_name)
+            if not tool_info:
+                console.print(f"[red]✗[/red] Tool '[bold]{tool_name}[/bold]' not found")
+                console.print("[yellow]Check that the tool name is correct[/yellow]")
+                console.print("\n[dim]Use 'llf tool list' to see available tools[/dim]")
+                return 1
+
+            # Get supported states
+            supported_states = tool_info.get('metadata', {}).get('supported_states', [])
+
+            # Validate that 'false' is supported
+            if supported_states:
+                # Normalize supported states for comparison
+                normalized_supported = []
+                for state in supported_states:
+                    if state is False or state == 'false':
+                        normalized_supported.append('false')
+                    elif state is True or state == 'true':
+                        normalized_supported.append('true')
+                    elif state == 'auto':
+                        normalized_supported.append('auto')
+
+                # Check if false is supported
+                if 'false' not in normalized_supported:
+                    console.print(f"[red]✗[/red] Tool '[bold]{tool_name}[/bold]' does not support enabled state: false")
+                    console.print(f"\n[yellow]Supported states for this tool:[/yellow] {', '.join(normalized_supported)}")
+                    return 1
+
+            if tools_manager.disable_feature(tool_name, session_only=False):
+                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' disabled")
                 return 0
             else:
                 console.print(f"[red]✗[/red] Failed to disable feature '[bold]{tool_name}[/bold]'")
-                return 1
-
-        elif action == 'auto':
-            if not tool_name:
-                console.print("[red]Error: Feature name required[/red]")
-                console.print("Usage: llf tool auto <feature_name>")
-                return 1
-
-            if tools_manager.reset_to_config(tool_name):
-                # Get the actual config setting
-                config_setting = tools_manager.is_feature_enabled(tool_name)
-                status_text = "enabled" if config_setting else "disabled"
-                status_color = "green" if config_setting else "red"
-
-                console.print(f"[green]✓[/green] Feature '[bold]{tool_name}[/bold]' reset to config file setting")
-                console.print(f"Current status from config: [{status_color}]{status_text}[/{status_color}]")
-                console.print("\n[dim]Config location: configs/config.json -> llm_endpoint.tools.xml_format[/dim]")
-                return 0
-            else:
-                console.print(f"[red]✗[/red] Failed to reset feature '[bold]{tool_name}[/bold]'")
                 return 1
 
         elif action == 'info':
@@ -2635,12 +2676,27 @@ finally:
 
             feature_info = features[tool_name]
             enabled = feature_info.get('enabled', False)
-            status_color = "green" if enabled else "red"
-            status_text = "enabled" if enabled else "disabled"
+
+            # Handle three-state display
+            if enabled == 'auto':
+                status_color = "yellow"
+                status_text = "auto (recommended)"
+            elif enabled in [True, 'true']:
+                status_color = "green"
+                status_text = "enabled (force active)"
+            else:
+                status_color = "red"
+                status_text = "disabled"
 
             console.print(f"\n[bold cyan]Feature: {tool_name}[/bold cyan]")
             console.print(f"Status: [{status_color}]{status_text}[/{status_color}]")
             console.print(f"Description: {feature_info.get('description', 'No description')}")
+
+            # Display supported states
+            supported_states = feature_info.get('supported_states', [])
+            if supported_states:
+                states_str = ", ".join([f"'{s}'" if isinstance(s, str) else str(s) for s in supported_states])
+                console.print(f"Supported states: {states_str}")
 
             if 'note' in feature_info:
                 console.print(f"\n[dim]Note: {feature_info['note']}[/dim]")

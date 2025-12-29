@@ -103,9 +103,9 @@ class TestCLI:
     @patch('llf.cli.console.print')
     def test_start_server_already_running(self, mock_print, cli):
         """Test start_server when already running."""
-        cli.runtime.is_server_running = Mock(return_value=True)
-
-        result = cli.start_server()
+        with patch.object(cli.runtime, 'is_server_running', return_value=True), \
+             patch.object(cli.runtime, 'is_server_running_by_name', return_value=True):
+            result = cli.start_server()
 
         assert result is True
 
@@ -584,10 +584,12 @@ class TestCLICommands:
         mock_config_instance = MagicMock()
         mock_config_instance.model_name = 'test/model'
         mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config_instance.has_local_server_config.return_value = True
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'status'
+        args.server_name = None  # Legacy mode
 
         result = server_command(args)
 
@@ -604,8 +606,13 @@ class TestCLICommands:
         mock_runtime_class.return_value = mock_runtime
         mock_runtime.is_server_running.return_value = False
 
+        mock_config_instance = MagicMock()
+        mock_config_instance.has_local_server_config.return_value = True
+        mock_config.return_value = mock_config_instance
+
         args = MagicMock()
         args.action = 'status'
+        args.server_name = None  # Legacy mode
 
         result = server_command(args)
 
@@ -629,11 +636,15 @@ class TestCLICommands:
         mock_config_instance = MagicMock()
         mock_config_instance.model_name = 'test/model'
         mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config_instance.custom_model_dir = None
+        mock_config_instance.server_port = 8000
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'start'
+        args.server_name = None  # Legacy mode
         args.daemon = True  # Use daemon to avoid sleep loop
+        args.share = False
 
         result = server_command(args)
 
@@ -681,11 +692,15 @@ class TestCLICommands:
         mock_config_instance = MagicMock()
         mock_config_instance.model_name = 'test/model'
         mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config_instance.custom_model_dir = None
+        mock_config_instance.server_port = 8000
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'start'
+        args.server_name = None  # Legacy mode
         args.daemon = True
+        args.share = False
 
         result = server_command(args)
 
@@ -705,6 +720,7 @@ class TestCLICommands:
 
         args = MagicMock()
         args.action = 'stop'
+        args.server_name = None  # Legacy mode
 
         result = server_command(args)
 
@@ -773,14 +789,18 @@ class TestCLICommands:
 
         mock_config_instance = MagicMock()
         mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
+        mock_config_instance.custom_model_dir = None
+        mock_config_instance.server_port = 8000
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'start'
+        args.server_name = None  # Legacy mode
         args.huggingface_model = 'custom/model'
         args.gguf_dir = None
         args.gguf_file = None
         args.daemon = True
+        args.share = False
 
         result = server_command(args)
 
@@ -798,8 +818,13 @@ class TestCLICommands:
         mock_runtime_class.return_value = mock_runtime
         mock_runtime.is_server_running.side_effect = Exception("Server error")
 
+        mock_config_instance = MagicMock()
+        mock_config_instance.has_local_server_config.return_value = True
+        mock_config.return_value = mock_config_instance
+
         args = MagicMock()
         args.action = 'status'
+        args.server_name = None  # Legacy mode
 
         result = server_command(args)
 

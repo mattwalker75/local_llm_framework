@@ -31,6 +31,7 @@ def config(temp_dir):
     config.llama_server_path = temp_dir / "llama-server"
     config.server_wrapper_script = temp_dir / "wrapper.sh"
     config.custom_model_dir = None  # Ensure tests don't use real config's custom_model_dir
+    config.default_local_server = None  # Ensure legacy single-server mode for tests
     return config
 
 
@@ -169,9 +170,7 @@ class TestLLMRuntime:
         assert runtime.server_process is not None
 
     @patch('llf.llm_runtime.subprocess.Popen')
-    @patch('time.sleep')  # Mock sleep to speed up test
-    @patch('time.time')  # Mock time to control timeout
-    def test_start_server_timeout(self, mock_time, mock_sleep, mock_popen, runtime, temp_dir):
+    def test_start_server_timeout(self, mock_popen, runtime, temp_dir):
         """Test server start timeout."""
         # Setup
         runtime.model_manager.is_model_downloaded = Mock(return_value=True)
@@ -191,15 +190,12 @@ class TestLLMRuntime:
         mock_process.wait = Mock()
         mock_popen.return_value = mock_process
 
-        # Mock time to simulate timeout
-        # First call: start_time, second call: timeout exceeded
-        mock_time.side_effect = [0.0, 2.0]  # Immediate timeout
-
         # Server never becomes ready
         runtime.is_server_ready = Mock(return_value=False)
 
+        # Use a very short timeout (0.01 seconds) to trigger timeout quickly
         with pytest.raises(RuntimeError, match="failed to become ready"):
-            runtime.start_server(timeout=1)  # Short timeout for test
+            runtime.start_server(timeout=0.01)  # Very short timeout for test
 
     @patch('llf.llm_runtime.subprocess.Popen')
     def test_start_server_process_terminates(self, mock_popen, runtime, temp_dir):

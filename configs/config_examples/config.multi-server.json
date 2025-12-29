@@ -1,0 +1,105 @@
+{
+  "_comment": "========== MULTI-SERVER CONFIGURATION EXAMPLE ==========",
+  "_info": "This config demonstrates running multiple local LLM servers simultaneously",
+  "_setup_instructions": "1. Download models for each server  2. Configure unique ports for each  3. Use 'llf server list' to see all servers  4. Use 'llf server start <name>' to start specific server",
+
+  "local_llm_servers": [
+    {
+      "_comment": "Primary coding model - Qwen3 Coder",
+      "name": "qwen-coder",
+      "llama_server_path": "../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8000,
+      "healthcheck_interval": 2.0,
+      "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "gguf_file": "qwen3-coder-30b.gguf",
+      "auto_start": false,
+      "server_params": {
+        "ctx-size": "8192",
+        "n-gpu-layers": "40",
+        "threads": "8"
+      }
+    },
+    {
+      "_comment": "Fast general-purpose model - Llama 3.1",
+      "name": "llama-3",
+      "llama_server_path": "../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8001,
+      "healthcheck_interval": 2.0,
+      "model_dir": "Meta--Llama-3.1-8B-Instruct-GGUF",
+      "gguf_file": "llama-3.1-8b-instruct-q5_k_m.gguf",
+      "auto_start": false,
+      "server_params": {
+        "ctx-size": "4096",
+        "n-gpu-layers": "35",
+        "threads": "6"
+      }
+    },
+    {
+      "_comment": "Lightweight model - Qwen 2.5 7B",
+      "name": "qwen-small",
+      "llama_server_path": "../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8002,
+      "healthcheck_interval": 2.0,
+      "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
+      "gguf_file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "auto_start": false,
+      "server_params": {
+        "ctx-size": "4096",
+        "n-gpu-layers": "30"
+      }
+    }
+  ],
+
+  "llm_endpoint": {
+    "_comment": "Client configuration - points to active server",
+    "_default_local_server_comment": "Name of the default server to use (from local_llm_servers array above)",
+    "default_local_server": "qwen-coder",
+
+    "_api_base_url_comment": "Automatically synced with default_local_server's port. Can also point to external APIs.",
+    "api_base_url": "http://127.0.0.1:8000/v1",
+
+    "api_key": "EMPTY",
+    "model_name": "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+
+    "tools": {
+      "xml_format": "enable"
+    },
+
+    "tool_execution_mode": "dual_pass_write_only"
+  },
+
+  "_paths_comment": "Directory structure",
+  "model_dir": "models",
+  "cache_dir": ".cache",
+
+  "_log_level_comment": "Logging verbosity",
+  "log_level": "ERROR",
+
+  "_inference_params_comment": "LLM generation parameters",
+  "inference_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.1
+  },
+
+  "_usage_examples": {
+    "_list_servers": "llf server list",
+    "_start_specific": "llf server start qwen-coder",
+    "_start_with_force": "llf server start llama-3 --force",
+    "_stop_specific": "llf server stop qwen-coder",
+    "_switch_default": "llf server switch llama-3",
+    "_check_status": "llf server status qwen-small"
+  },
+
+  "_memory_safety_note": "WARNING: Running multiple large LLM servers simultaneously can exhaust system memory. The framework will warn you when starting additional servers unless you use --force flag.",
+
+  "_switching_servers": {
+    "_method_1": "Use 'llf server switch <name>' to update config.json automatically",
+    "_method_2": "Manually edit 'default_local_server' and 'api_base_url' in this file"
+  }
+}
