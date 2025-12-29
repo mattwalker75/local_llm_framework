@@ -4,8 +4,8 @@
 
 ## INSTALL AND SETUP llama.cpp.  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
 
-- Downlaod the llama.cpp code repo:
-  'git clone https://github.com/ggml-org/llama.cpp.git`
+- Downlaod the llama.cpp code repo
+  `git clone https://github.com/ggml-org/llama.cpp.git`
 
 Build the llama server:
   cd llama.cpp
