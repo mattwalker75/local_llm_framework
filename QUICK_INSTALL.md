@@ -9,15 +9,19 @@
    git clone https://github.com/ggml-org/llama.cpp.git
    ```
 
-Build the llama server:
-  cd llama.cpp
-  mkdir build
-  cd build
-  cmake ..
-  cmake --build . --config Release
+- Build the llama server
+   ```bash
+   cd llama.cpp
+   mkdir build
+   cd build
+   cmake ..
+   cmake --build . --config Release
+   ```
 
-Verify the newly compiled llama server works:
-  ./bin/llama-server --version
+- Verify the newly compiled llama server works
+   ```bash
+   ./bin/llama-server --version
+   ```
 
 Your newly compiled Llama Server is located in the following location:
   llama.cpp/build/bin/llama-server
