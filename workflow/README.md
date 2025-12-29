@@ -44,6 +44,7 @@ with which prompts I passed to the AI.
 
 ### Below are the workflow that I went through to create a Local LLM framework
 
+
 #### INITIALIZE APPLICATION REPO
 1.  Create a new repo, download the repo, and create a new branch to work in
 2.  Used ChatGPT to create a Product Requirements Document
@@ -54,6 +55,7 @@ with which prompts I passed to the AI.
 4.  Create initial directories with a README.md in them based on
     directory structure in the PRD.pdf document
 5.  --  COMITTED THE CODE AND CALLED IT PRD DEFINITION COMPLETE
+
 
 #### NOTES TO REMEMBER FOR FUTURE DEV CONSIDERATIONS
 1.  Future-Proofing Requirements (Non-Functional)
@@ -72,6 +74,7 @@ with which prompts I passed to the AI.
       c.  Should conversations be stateful or stateless?
       d.  Should streaming responses be supported in CLI?
       e.  Should this eventually be packaged as a pip-installable tool?
+
 
 #### INITIAL DEVELOPMENT
 1.  Setup virtual environment ( python -m venv llf_venv )
@@ -132,6 +135,7 @@ with which prompts I passed to the AI.
     tests.
 9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+
 #### Enable the ability to paste a multi-line document as user input
 1.  Wnat to be able to copy the content of a PDF and paste it into the user
     input window.
@@ -148,6 +152,7 @@ with which prompts I passed to the AI.
 7.  Fix issues with server shutting down in daemon mode after the chat is 
     complete
 8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
 
 #### Cleanup text based interaction and see if we can pip questions to CLI
 1.  Want to enable the ability to pipe data into the LLM and get a response.
@@ -170,6 +175,7 @@ with which prompts I passed to the AI.
 8.  All configurations are stored in a config.json file
 9.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+
 #### Added a bunch of misc functionality
 1.  Enable the app to not require local_llm_server entry in the config.json
     file if you are using an external LLM
@@ -185,6 +191,7 @@ with which prompts I passed to the AI.
     Master, and Assistant prompts.
 6.  A number of misc tweaks
 7.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
 
 #### Create an optional GUI frontend
 1.  Create a GUI frontend that can be enabled and started with the "llf gui enable"
@@ -226,6 +233,7 @@ with which prompts I passed to the AI.
 11. Fix misc bugs and isseus with the GUI
 12.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+
 #### Create a basic framework for extended compontents
 1.  Create a section to work with memory  
        - Create "llf datastore"  ( Call it "Data Store Management" )
@@ -242,6 +250,7 @@ with which prompts I passed to the AI.
          capability, such as enabling internet search access and
          the ability to access files locally on your computer
 12.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
 
 #### Perform major testing and resolve all bugs and update docs
 1.  Ensure all unit tests are in place for code coverage and works
@@ -262,6 +271,7 @@ with which prompts I passed to the AI.
 7.  More testing     
 8.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+
 #### Work on modules ( text to speech AND speech to text )
 1.  Start development of a text to speech module that will be used
     to take text generated from the LLM and play it as audio along with
@@ -277,11 +287,13 @@ with which prompts I passed to the AI.
 6.  Work through small integration issues
 7.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+
 #### Fix all unit tests and improve code coverage
 1.  Work on fixing unit test issues
 2.  Increase code coverage 
 3.  Work through issues     
 4.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
 
 #### Work on custom memory utilizing RAG
 1.  Built out the "data_store" directory structure to be used to store RAG 
@@ -307,6 +319,38 @@ with which prompts I passed to the AI.
 9.  Verified it work via the CLI and GUI interface.  Did preliminary testing and
     troubleshoot any issues that stands out
 10.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+
+#### Add Long term memory that the LLM can use
+1.  Create directory structure, configuration, and management commands
+2.  Setup management tools for the memory module
+       -  9_Memory_Commands.txt
+3.  Verify code works and do basic troubleshooting and testing
+4.  Start integrating long term memory system
+5.  Test the memory and perform any needed troubleshooting and unit testing
+6.  Found an interesting issue where the streaming data is breaking the memory usage
+      - Memory usage operates like a "tool"
+      - Added logic to not stream the LLM response if memory is being used
+      - Noticed the LLM model I was using was using XML instead of JSON
+         - Creating am "llf tool" command to enable/disable XML usage
+             CONVERT TOOL DATA TO XML:  llf tool xml_format enable
+             USE JSON:  llf tool xml_format disable  
+7.  Made minor tweaks and changes that will need to be documented later
+8.  Doing a number of minor code tweaks and testing.
+9.  Since it wasn't a massive code change, added the ability to have multiple
+    server configurations and the ability to manage them
+10.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
+
+
+#### Add proper documentation and perform detailed testing
+1.  Perform another round of detailed testing and create documentation in
+    the process.
+2.  Update README.md and have it reference documentation in the "docs" directory
+
+
+#### Develop different tools that can be enabled and disabled
+
+
 
 
 

@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-28",
+  "memories": [
+    {
+      "name": "main_memory",
+      "display_name": "Main Memory",
+      "description": "Long-term memory for persistent information storage",
+      "directory": "main_memory",
+      "enabled": true,
+      "type": "persistent",
+      "created_date": null,
+      "last_modified": null,
+      "metadata": {
+        "storage_type": "json",
+        "max_entries": 10000,
+        "compression": false
+      }
+    }
+  ],
+  "metadata": {
+    "description": "Registry of all available memory instances for the LLM Framework",
+    "note": "This file tracks which memory instances are available and their enabled/disabled status. The LLM will have full control of enabled memory instances.",
+    "schema_version": "1.0",
+    "configuration_notes": {
+      "enabled": "Set to true to give the LLM access to this memory instance, false to disable",
+      "directory": "Directory path where memory files are stored (relative to memory/)",
+      "type": "Type of memory: persistent, session, temporary",
+      "metadata.storage_type": "Storage format for memory data (json, sqlite, etc.)",
+      "metadata.max_entries": "Maximum number of entries allowed in this memory instance",
+      "metadata.compression": "Whether to compress memory data"
+    },
+    "usage_instructions": {
+      "enabling_memory": "Set 'enabled: true' to allow LLM to access and modify memory",
+      "managing_memory": "Use 'llf memory' commands to list, enable, disable, and view memory info",
+      "creating_memory": "Add new memory instances to the 'memories' array"
+    },
+    "changes": [
+      "v1.0: Initial schema with memory management structure"
+    ]
+  }
+}

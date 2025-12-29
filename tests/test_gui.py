@@ -563,7 +563,9 @@ class TestLLMFrameworkGUI:
             yield "Test "
             yield "response"
 
-        with patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
+        # Mock prompt_config to have no tools for simpler streaming test
+        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
+             patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
             history = []
             results = list(gui.chat_respond("Hello", history))
 
@@ -582,7 +584,9 @@ class TestLLMFrameworkGUI:
             yield "Response "
             yield "2"
 
-        with patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
+        # Mock prompt_config to have no tools for simpler streaming test
+        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
+             patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
             history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there"}]
             results = list(gui.chat_respond("How are you?", history))
 
@@ -609,6 +613,97 @@ class TestLLMFrameworkGUI:
             error_msg = new_history[1]["content"]
             assert "error" in error_msg.lower()
             assert "api error" in error_msg.lower()
+
+    def test_chat_respond_with_tools_dual_pass(self, gui):
+        """Test chat response with tools in dual-pass mode."""
+        # Mock prompt_config to have tools
+        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=[{'name': 'search_memories'}]):
+            # Mock config to use dual_pass_write_only mode
+            gui.config.tool_execution_mode = 'dual_pass_write_only'
+
+            def mock_stream():
+                yield "Searching "
+                yield "memory..."
+
+            # Mock the chat calls
+            call_count = [0]
+            def mock_chat(messages, stream=False, use_prompt_config=True):
+                call_count[0] += 1
+                if stream:
+                    return mock_stream()
+                else:
+                    return "Background execution"
+
+            with patch.object(gui.runtime, 'chat', side_effect=mock_chat), \
+                 patch('llf.operation_detector.detect_operation_type', return_value='read'), \
+                 patch('llf.operation_detector.should_use_dual_pass', return_value=True):
+
+                history = []
+                results = list(gui.chat_respond("What is my name?", history))
+
+                # Get the final result
+                cleared_input, new_history = results[-1]
+
+                assert cleared_input == ""
+                assert len(new_history) == 2
+                assert new_history[0] == {"role": "user", "content": "What is my name?"}
+                assert new_history[1] == {"role": "assistant", "content": "Searching memory..."}
+
+                # Verify that chat was called for streaming (Pass 1)
+                # Pass 2 happens in background thread, so we can't easily verify it here
+                assert call_count[0] >= 1
+
+    def test_chat_respond_with_tools_single_pass(self, gui):
+        """Test chat response with tools in single-pass mode."""
+        # Mock prompt_config to have tools
+        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=[{'name': 'search_memories'}]):
+            # Mock config to use single_pass mode
+            gui.config.tool_execution_mode = 'single_pass'
+
+            # Mock the chat call to return non-streaming response
+            with patch.object(gui.runtime, 'chat', return_value="I found your name in memory.") as mock_chat, \
+                 patch('llf.operation_detector.detect_operation_type', return_value='read'), \
+                 patch('llf.operation_detector.should_use_dual_pass', return_value=False):
+
+                history = []
+                results = list(gui.chat_respond("What is my name?", history))
+
+                # Get the final result
+                cleared_input, new_history = results[-1]
+
+                assert cleared_input == ""
+                assert len(new_history) == 2
+                assert new_history[0] == {"role": "user", "content": "What is my name?"}
+                assert new_history[1] == {"role": "assistant", "content": "I found your name in memory."}
+
+                # Verify that chat was called with stream=False (single-pass)
+                mock_chat.assert_called_once()
+                assert mock_chat.call_args[1]['stream'] is False
+
+    def test_chat_respond_no_tools_streaming(self, gui):
+        """Test chat response when no tools are available (streaming)."""
+        # Mock prompt_config to have no tools
+        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None):
+
+            def mock_stream():
+                yield "Hello "
+                yield "there!"
+
+            with patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
+                history = []
+                results = list(gui.chat_respond("Hi", history))
+
+                # Get the final result
+                cleared_input, new_history = results[-1]
+
+                assert cleared_input == ""
+                assert len(new_history) == 2
+                assert new_history[0] == {"role": "user", "content": "Hi"}
+                assert new_history[1] == {"role": "assistant", "content": "Hello there!"}
+
+                # Verify streaming mode was used
+                mock_chat.assert_called_once()
+                assert mock_chat.call_args[1]['stream'] is True
 
     def test_clear_chat(self, gui):
         """Test clearing chat history."""
@@ -1002,7 +1097,9 @@ class TestShareModeTTS:
             mock_tts.speak.return_value = None
             gui.tts = mock_tts
 
-            with patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
+            # Mock prompt_config to have no tools for simpler streaming test
+            with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
+                 patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
                 results = list(gui.chat_respond("test", []))
 
                 # Should complete without errors
@@ -1047,3 +1144,518 @@ class TestShareModeTTS:
             # Create interface should not raise errors
             interface = gui.create_interface()
             assert interface is not None
+
+
+class TestMultiServerGUI:
+    """Test multi-server GUI functionality."""
+
+    @pytest.fixture
+    def multi_server_config(self, tmp_path):
+        """Create multi-server config for testing."""
+        from llf.config import ServerConfig
+        config = Config()
+
+        # Create server configs
+        server1 = ServerConfig(
+            name='server1',
+            llama_server_path=tmp_path / 'llama-server',
+            server_host='127.0.0.1',
+            server_port=8000,
+            healthcheck_interval=2.0,
+            model_dir=tmp_path / 'models' / 'server1',
+            gguf_file='model1.gguf',
+            server_params={},
+            auto_start=False
+        )
+
+        server2 = ServerConfig(
+            name='server2',
+            llama_server_path=tmp_path / 'llama-server',
+            server_host='127.0.0.1',
+            server_port=8001,
+            healthcheck_interval=2.0,
+            model_dir=tmp_path / 'models' / 'server2',
+            gguf_file='model2.gguf',
+            server_params={},
+            auto_start=False
+        )
+
+        config.servers = {
+            'server1': server1,
+            'server2': server2
+        }
+        config.default_local_server = 'server1'
+        config.model_dir = tmp_path / 'models'
+
+        return config
+
+    @pytest.fixture
+    def gui(self, multi_server_config, tmp_path):
+        """Create GUI instance with multi-server config."""
+        prompt_config_file = tmp_path / "config_prompt.json"
+        prompt_config_data = {
+            "system_prompt": "Test prompt",
+            "conversation_format": "standard"
+        }
+        with open(prompt_config_file, 'w') as f:
+            json.dump(prompt_config_data, f)
+
+        prompt_config = PromptConfig(prompt_config_file)
+
+        with patch.object(LLMFrameworkGUI, '_load_modules'):
+            gui_instance = LLMFrameworkGUI(config=multi_server_config, prompt_config=prompt_config)
+            gui_instance.tts = None
+            gui_instance.stt = None
+            return gui_instance
+
+    def test_get_available_servers(self, gui):
+        """Test getting available servers list."""
+        servers = gui.get_available_servers()
+        assert servers == ['server1', 'server2']
+
+    def test_get_available_servers_empty(self, gui):
+        """Test getting available servers when none configured."""
+        gui.config.servers = {}
+        servers = gui.get_available_servers()
+        assert servers == ["No servers configured"]
+
+    def test_get_available_servers_error(self, gui):
+        """Test get_available_servers error handling."""
+        with patch.object(gui.config, 'list_servers', side_effect=Exception("Error")):
+            servers = gui.get_available_servers()
+            assert servers == ["Error loading servers"]
+
+    def test_get_server_info(self, gui):
+        """Test getting server info."""
+        info = gui.get_server_info('server1')
+
+        assert 'server1' in info
+        assert '127.0.0.1' in info
+        assert '8000' in info
+        assert 'model1.gguf' in info
+        assert '⭐ ACTIVE' in info  # server1 is the active server
+
+    def test_get_server_info_not_active(self, gui):
+        """Test getting info for non-active server."""
+        info = gui.get_server_info('server2')
+
+        assert 'server2' in info
+        assert '8001' in info
+        assert '⭐ ACTIVE' not in info  # server2 is not active
+
+    def test_get_server_info_running(self, gui):
+        """Test server info shows running status."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=True):
+            info = gui.get_server_info('server1')
+            assert '🟢 Running' in info
+
+    def test_get_server_info_stopped(self, gui):
+        """Test server info shows stopped status."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=False):
+            info = gui.get_server_info('server1')
+            assert '⭕ Stopped' in info
+
+    def test_get_server_info_not_found(self, gui):
+        """Test getting info for non-existent server."""
+        info = gui.get_server_info('nonexistent')
+        assert "not found" in info.lower()
+
+    def test_get_server_info_no_selection(self, gui):
+        """Test getting info with no server selected."""
+        info = gui.get_server_info('')
+        assert "no server selected" in info.lower()
+
+    def test_start_server_by_name_success(self, gui):
+        """Test successfully starting a server by name."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', side_effect=[False, True]), \
+             patch.object(gui.runtime, 'start_server_by_name') as mock_start, \
+             patch.object(gui, 'get_server_info', return_value="Server info") as mock_info, \
+             patch('llf.gui.time.sleep'):
+
+            status, info = gui.start_server_by_name('server1')
+
+            mock_start.assert_called_once_with('server1', force=True)
+            assert "started successfully" in status.lower()
+            assert info == "Server info"
+
+    def test_start_server_by_name_already_running(self, gui):
+        """Test starting server that's already running."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=True):
+            status, info = gui.start_server_by_name('server1')
+            assert "already running" in status.lower()
+
+    def test_start_server_by_name_not_found(self, gui):
+        """Test starting non-existent server."""
+        status, info = gui.start_server_by_name('nonexistent')
+        assert "not found" in status.lower()
+
+    def test_start_server_by_name_no_selection(self, gui):
+        """Test starting with no server selected."""
+        status, info = gui.start_server_by_name('')
+        assert "no server selected" in status.lower()
+
+    def test_start_server_by_name_failed(self, gui):
+        """Test server start failure."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', side_effect=[False, False]), \
+             patch.object(gui.runtime, 'start_server_by_name'), \
+             patch.object(gui, 'get_server_info', return_value="Server info"), \
+             patch('llf.gui.time.sleep'):
+
+            status, info = gui.start_server_by_name('server1')
+            assert "failed to start" in status.lower()
+
+    def test_start_server_by_name_error(self, gui):
+        """Test server start error handling."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=False), \
+             patch.object(gui.runtime, 'start_server_by_name', side_effect=Exception("Start error")):
+
+            status, info = gui.start_server_by_name('server1')
+            assert "error" in status.lower()
+            assert "start error" in status.lower()
+
+    def test_stop_server_by_name_success(self, gui):
+        """Test successfully stopping a server by name."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', side_effect=[True, False]), \
+             patch.object(gui.runtime, 'stop_server_by_name') as mock_stop, \
+             patch.object(gui, 'get_server_info', return_value="Server info"), \
+             patch('llf.gui.time.sleep'):
+
+            status, info = gui.stop_server_by_name('server1')
+
+            mock_stop.assert_called_once_with('server1')
+            assert "stopped successfully" in status.lower()
+
+    def test_stop_server_by_name_not_running(self, gui):
+        """Test stopping server that's not running."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=False):
+            status, info = gui.stop_server_by_name('server1')
+            assert "not running" in status.lower()
+
+    def test_stop_server_by_name_not_found(self, gui):
+        """Test stopping non-existent server."""
+        status, info = gui.stop_server_by_name('nonexistent')
+        assert "not found" in status.lower()
+
+    def test_stop_server_by_name_error(self, gui):
+        """Test server stop error handling."""
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=True), \
+             patch.object(gui.runtime, 'stop_server_by_name', side_effect=Exception("Stop error")):
+
+            status, info = gui.stop_server_by_name('server1')
+            assert "error" in status.lower()
+            assert "stop error" in status.lower()
+
+    def test_restart_server_by_name_success(self, gui):
+        """Test successfully restarting a server by name."""
+        with patch.object(gui, 'stop_server_by_name', return_value=("Stopped", "info")), \
+             patch.object(gui, 'start_server_by_name', return_value=("Started", "updated_info")), \
+             patch('llf.gui.time.sleep'):
+
+            status, info = gui.restart_server_by_name('server1')
+
+            assert "restart" in status.lower()
+            assert "stopped" in status.lower()
+            assert "started" in status.lower()
+            assert info == "updated_info"
+
+    def test_restart_server_by_name_error(self, gui):
+        """Test server restart error handling."""
+        with patch.object(gui, 'stop_server_by_name', side_effect=Exception("Restart error")):
+            status, info = gui.restart_server_by_name('server1')
+            assert "error" in status.lower()
+            assert "restart error" in status.lower()
+
+    def test_refresh_server_info(self, gui):
+        """Test refreshing server information."""
+        # First get initial info
+        info1 = gui.get_server_info('server1')
+        assert 'server1' in info1
+
+        # Mock server as running
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=True):
+            info2 = gui.get_server_info('server1')
+            assert '🟢 Running' in info2
+
+        # Mock server as stopped
+        with patch.object(gui.runtime, 'is_server_running_by_name', return_value=False):
+            info3 = gui.get_server_info('server1')
+            assert '⭕ Stopped' in info3
+
+    # ===== Memory Management Tests =====
+
+    def test_get_available_memories(self, gui, temp_dir):
+        """Test getting list of available memory instances."""
+        # Create memory registry
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "last_updated": "2025-12-27",
+            "memories": [
+                {"name": "main_memory", "display_name": "Main Memory", "enabled": False},
+                {"name": "test_memory", "display_name": "Test Memory", "enabled": True}
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        # Patch the registry path
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            memories = gui.get_available_memories()
+
+            assert len(memories) == 2
+            assert "Main Memory" in memories
+            assert "Test Memory" in memories
+
+    def test_get_available_memories_no_registry(self, gui):
+        """Test getting memories when registry doesn't exist."""
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = Path("/nonexistent")
+            memories = gui.get_available_memories()
+            assert memories == []
+
+    def test_get_memory_info(self, gui, temp_dir):
+        """Test getting information about a specific memory."""
+        # Create memory registry
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "description": "Long-term memory for persistent information",
+                    "enabled": True,
+                    "type": "persistent",
+                    "directory": "main_memory",
+                    "created_date": "2025-01-01",
+                    "last_modified": "2025-01-15",
+                    "metadata": {
+                        "storage_type": "json",
+                        "max_entries": 10000
+                    }
+                }
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        # Patch the registry path
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            info = gui.get_memory_info("Main Memory")
+
+            assert "Main Memory" in info
+            assert "🟢 Enabled" in info
+            assert "Long-term memory" in info
+            assert "persistent" in info
+            assert "main_memory" in info
+            assert "storage_type" in info
+            assert "json" in info
+
+    def test_get_memory_info_disabled(self, gui, temp_dir):
+        """Test getting info for disabled memory."""
+        # Create memory registry
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "test_memory",
+                    "display_name": "Test Memory",
+                    "description": "Test memory instance",
+                    "enabled": False,
+                    "type": "temporary",
+                    "directory": "test_memory"
+                }
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            info = gui.get_memory_info("Test Memory")
+
+            assert "Test Memory" in info
+            assert "⭕ Disabled" in info
+
+    def test_get_memory_info_not_found(self, gui, temp_dir):
+        """Test getting info for non-existent memory."""
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {"version": "1.0", "memories": []}
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            info = gui.get_memory_info("Nonexistent Memory")
+
+            assert "not found" in info.lower()
+
+    def test_get_memory_info_no_selection(self, gui):
+        """Test getting info with no memory selected."""
+        info = gui.get_memory_info("")
+        assert info == "No memory selected"
+
+    def test_enable_memory(self, gui, temp_dir):
+        """Test enabling a memory instance."""
+        # Create memory registry
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "last_updated": "2025-12-27",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "description": "Test memory",
+                    "enabled": False,
+                    "type": "persistent"
+                }
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.enable_memory("Main Memory")
+
+            assert "enabled successfully" in status.lower()
+            assert "✅" in status
+
+            # Verify registry was updated
+            with open(registry_path, 'r') as f:
+                updated_registry = json.load(f)
+            assert updated_registry['memories'][0]['enabled'] is True
+
+    def test_enable_memory_already_enabled(self, gui, temp_dir):
+        """Test enabling already enabled memory."""
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "memories": [
+                {"name": "main_memory", "display_name": "Main Memory", "enabled": True}
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.enable_memory("Main Memory")
+
+            assert "already enabled" in status.lower()
+            assert "⚠️" in status
+
+    def test_enable_memory_not_found(self, gui, temp_dir):
+        """Test enabling non-existent memory."""
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {"version": "1.0", "memories": []}
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.enable_memory("Nonexistent Memory")
+
+            assert "not found" in status.lower()
+            assert "❌" in status
+
+    def test_enable_memory_no_selection(self, gui):
+        """Test enabling with no memory selected."""
+        status, info = gui.enable_memory("")
+        assert "no memory selected" in status.lower()
+        assert "⚠️" in status
+
+    def test_disable_memory(self, gui, temp_dir):
+        """Test disabling a memory instance."""
+        # Create memory registry
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "last_updated": "2025-12-27",
+            "memories": [
+                {
+                    "name": "main_memory",
+                    "display_name": "Main Memory",
+                    "description": "Test memory",
+                    "enabled": True,
+                    "type": "persistent"
+                }
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.disable_memory("Main Memory")
+
+            assert "disabled successfully" in status.lower()
+            assert "✅" in status
+
+            # Verify registry was updated
+            with open(registry_path, 'r') as f:
+                updated_registry = json.load(f)
+            assert updated_registry['memories'][0]['enabled'] is False
+
+    def test_disable_memory_already_disabled(self, gui, temp_dir):
+        """Test disabling already disabled memory."""
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {
+            "version": "1.0",
+            "memories": [
+                {"name": "main_memory", "display_name": "Main Memory", "enabled": False}
+            ]
+        }
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.disable_memory("Main Memory")
+
+            assert "already disabled" in status.lower()
+            assert "⚠️" in status
+
+    def test_disable_memory_not_found(self, gui, temp_dir):
+        """Test disabling non-existent memory."""
+        memory_dir = temp_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+        registry = {"version": "1.0", "memories": []}
+        registry_path = memory_dir / "memory_registry.json"
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        with patch('llf.gui.Path') as mock_path:
+            mock_path.return_value.parent.parent = temp_dir
+            status, info = gui.disable_memory("Nonexistent Memory")
+
+            assert "not found" in status.lower()
+            assert "❌" in status
+
+    def test_disable_memory_no_selection(self, gui):
+        """Test disabling with no memory selected."""
+        status, info = gui.disable_memory("")
+        assert "no memory selected" in status.lower()
+        assert "⚠️" in status

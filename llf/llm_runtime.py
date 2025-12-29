@@ -48,8 +48,18 @@ class LLMRuntime:
         self.config = config
         self.model_manager = model_manager
         self.prompt_config = prompt_config
+        # Multi-server support: Dictionary of server processes and clients by server name
+        self.server_processes: Dict[str, subprocess.Popen] = {}
+        self.clients: Dict[str, OpenAI] = {}
+        # Legacy single-server attributes for backward compatibility
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[OpenAI] = None
+
+        # Initialize tools manager and cache enabled states
+        from llf.tools_manager import ToolsManager
+        self.tools_manager = ToolsManager()
+        self.xml_format_enabled = self.tools_manager.is_feature_enabled('xml_format')
+        logger.debug(f"Tools initialized: xml_format={'enabled' if self.xml_format_enabled else 'disabled'}")
 
     def _get_server_command(self, model_file_path: Path, server_host: Optional[str] = None) -> List[str]:
         """
@@ -122,6 +132,25 @@ class LLMRuntime:
             logger.warning("llama-server is already running")
             return
 
+        # MEMORY SAFETY CHECK - Check if OTHER servers are running
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = Console()
+
+        running_servers = self.get_running_servers()
+        if running_servers:
+            console.print(f"\n[yellow]⚠️  WARNING: The following servers are already running:[/yellow]")
+            for rs in running_servers:
+                rs_config = self.config.get_server_by_name(rs)
+                if rs_config:
+                    console.print(f"  [cyan]• {rs}[/cyan] (port {rs_config.server_port})")
+            console.print("\n[yellow]Running multiple LLM servers simultaneously may cause memory issues.[/yellow]")
+
+            response = Prompt.ask(f"\nAre you sure you want to start the default server?", choices=["y", "n"], default="n")
+            if response.lower() != 'y':
+                console.print("[dim]Start cancelled.[/dim]")
+                return
+
         # ===== Model File Path Determination =====
         # Support two model directory structures:
         # 1. Custom directory: User-specified path for GGUF files (e.g., models/custom_models/)
@@ -187,7 +216,11 @@ class LLMRuntime:
                 f"llama-server failed to become ready within {timeout} seconds"
             )
 
+        except RuntimeError:
+            # Re-raise RuntimeErrors as-is (these are our intentional error messages)
+            raise
         except Exception as e:
+            # Wrap other exceptions with context
             self.stop_server()
             raise RuntimeError(f"Failed to start llama-server: {e}") from e
 
@@ -329,8 +362,18 @@ class LLMRuntime:
         """
         # Only check if local llama-server is running when using local LLM
         # Skip this check for external APIs since they don't need local server
-        if not self.config.is_using_external_api() and not self.is_server_running():
-            raise RuntimeError("llama-server is not running")
+        if not self.config.is_using_external_api():
+            # Multi-server aware: Check if the active server is running
+            is_running = False
+            if self.config.default_local_server:
+                # Multi-server mode: Check if the active server is running
+                is_running = self.is_server_running_by_name(self.config.default_local_server)
+            else:
+                # Legacy mode: Check if default server is running
+                is_running = self.is_server_running()
+
+            if not is_running:
+                raise RuntimeError("llama-server is not running")
 
         if self.client is None:
             self._initialize_client()
@@ -439,6 +482,7 @@ class LLMRuntime:
         model: Optional[str] = None,
         stream: bool = False,
         use_prompt_config: bool = True,
+        max_tool_iterations: int = 10,
         **kwargs
     ):
         """
@@ -453,6 +497,7 @@ class LLMRuntime:
             stream: If True, returns an iterator of response chunks. If False, returns complete text.
             use_prompt_config: If True and prompt_config is set, apply prompt formatting to messages.
                               Set to False to send raw messages without prompt config processing.
+            max_tool_iterations: Maximum number of tool calling iterations to prevent infinite loops.
             **kwargs: Additional parameters (same as generate()).
 
         Returns:
@@ -482,30 +527,134 @@ class LLMRuntime:
                 )
             # else: messages are already in full format, use as-is
 
-        openai_params = self._build_api_params(
-            model,
-            {'messages': processed_messages, 'stream': stream},
-            **kwargs
-        )
+        # ===== Tool Calling Setup =====
+        # Get memory tools if enabled
+        tools = None
+        memory_manager = None
+        if use_prompt_config and self.prompt_config:
+            tools = self.prompt_config.get_memory_tools()
+            memory_manager = self.prompt_config.get_memory_manager()
+
+        # Build API parameters
+        api_params = {'messages': processed_messages, 'stream': stream}
+        if tools:
+            api_params['tools'] = tools
+            api_params['tool_choice'] = 'auto'
+
+        openai_params = self._build_api_params(model, api_params, **kwargs)
 
         try:
-            logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream})")
+            logger.debug(f"Generating chat completion with {len(messages)} messages (stream={stream}, tools={'enabled' if tools else 'disabled'})")
 
-            # Use chat completion API
-            response = self.client.chat.completions.create(**openai_params)
+            # ===== Tool Calling Loop =====
+            # Handle multi-turn tool calling (LLM → tool execution → LLM)
+            current_messages = processed_messages.copy()
+            iteration = 0
 
-            if stream:
-                # Return iterator for streaming
-                def stream_generator():
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
-                return stream_generator()
-            else:
-                # Extract response text
-                response_text = response.choices[0].message.content
-                logger.debug(f"Generated {len(response_text)} characters")
-                return response_text
+            while iteration < max_tool_iterations:
+                iteration += 1
+
+                # Update messages in params
+                openai_params['messages'] = current_messages
+
+                # Call LLM
+                response = self.client.chat.completions.create(**openai_params)
+
+                # Handle streaming separately (no tool calling in streaming mode)
+                if stream:
+                    if iteration > 1:
+                        logger.warning("Tool calling not supported in streaming mode, returning after first iteration")
+                    def stream_generator():
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                yield chunk.choices[0].delta.content
+                    return stream_generator()
+
+                # Non-streaming: check for tool calls
+                message = response.choices[0].message
+
+                # Check for XML-style function calls if feature is enabled and no native tool calls
+                if not message.tool_calls and message.content and self.xml_format_enabled:
+                    from tools.xml_format import convert_xml_response_to_openai, is_xml_function_call
+
+                    if is_xml_function_call(message.content):
+                        logger.info("XML Parser: Detected XML-style function calls in response")
+                        xml_parsed = convert_xml_response_to_openai(message.content)
+                        if xml_parsed and xml_parsed.get('tool_calls'):
+                            # Create mock tool call objects
+                            class MockToolCall:
+                                def __init__(self, call_dict):
+                                    self.id = call_dict['id']
+                                    self.type = call_dict['type']
+                                    self.function = type('obj', (object,), {
+                                        'name': call_dict['function']['name'],
+                                        'arguments': call_dict['function']['arguments']
+                                    })()
+
+                            message.tool_calls = [MockToolCall(tc) for tc in xml_parsed['tool_calls']]
+                            message.content = None  # Clear content when using tools
+
+                # If no tool calls, we're done
+                if not message.tool_calls:
+                    response_text = message.content or ""
+                    logger.debug(f"Generated {len(response_text)} characters (no tool calls)")
+                    return response_text
+
+                # Execute tool calls
+                logger.debug(f"LLM requested {len(message.tool_calls)} tool calls")
+
+                # Add assistant message with tool calls to conversation
+                current_messages.append({
+                    'role': 'assistant',
+                    'content': message.content,
+                    'tool_calls': [
+                        {
+                            'id': tc.id,
+                            'type': tc.type,
+                            'function': {
+                                'name': tc.function.name,
+                                'arguments': tc.function.arguments
+                            }
+                        }
+                        for tc in message.tool_calls
+                    ]
+                })
+
+                # Execute each tool call
+                for idx, tool_call in enumerate(message.tool_calls, 1):
+                    import json
+                    from llf.memory_tools import execute_memory_tool
+
+                    tool_name = tool_call.function.name
+
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse tool arguments: {e}")
+                        arguments = {}
+
+                    logger.debug(f"Executing tool: {tool_name} with args: {arguments}")
+
+                    # Execute the tool
+                    if memory_manager:
+                        tool_result = execute_memory_tool(tool_name, arguments, memory_manager)
+                    else:
+                        logger.error(f"Memory manager not available for tool: {tool_name}")
+                        tool_result = {"success": False, "error": "Memory manager not available"}
+
+                    # Add tool result to conversation
+                    current_messages.append({
+                        'role': 'tool',
+                        'tool_call_id': tool_call.id,
+                        'content': json.dumps(tool_result)
+                    })
+
+                # Continue loop to let LLM process tool results
+                # On next iteration, the LLM will see the tool results and generate final response
+
+            # If we hit max iterations, return what we have
+            logger.warning(f"Reached max tool iterations ({max_tool_iterations})")
+            return "I apologize, but I've reached the maximum number of tool calling iterations. Please try rephrasing your request."
 
         except Exception as e:
             logger.error(f"Chat generation failed: {e}")
@@ -552,6 +701,259 @@ class LLMRuntime:
         except Exception as e:
             logger.error(f"Failed to list models: {e}")
             raise RuntimeError(f"Failed to list models from {self.config.api_base_url}: {e}") from e
+
+    # ===== Multi-Server Management Methods =====
+
+    def get_running_servers(self) -> List[str]:
+        """
+        Get list of currently running server names.
+
+        Returns:
+            List of server names that are currently running.
+        """
+        running = []
+        for server_name in self.config.list_servers():
+            if self.is_server_running_by_name(server_name):
+                running.append(server_name)
+        return running
+
+    def is_server_running_by_name(self, server_name: str) -> bool:
+        """
+        Check if a specific server is running.
+
+        Args:
+            server_name: Name of the server to check.
+
+        Returns:
+            True if server is running, False otherwise.
+        """
+        # Check if we have a process reference
+        if server_name in self.server_processes:
+            proc = self.server_processes[server_name]
+            if proc.poll() is None:  # Process is still running
+                return True
+
+        # Check if server is accessible via HTTP
+        server_config = self.config.get_server_by_name(server_name)
+        if server_config:
+            return self._is_server_ready_at_port(server_config.server_port, server_config.server_host)
+
+        return False
+
+    def _is_server_ready_at_port(self, port: int, host: str = "127.0.0.1") -> bool:
+        """
+        Check if server at specific port is ready.
+
+        Args:
+            port: Port number to check.
+            host: Host address (default: 127.0.0.1).
+
+        Returns:
+            True if server is ready, False otherwise.
+        """
+        try:
+            health_url = f"http://{host}:{port}/health"
+            response = requests.get(health_url, timeout=5)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def start_server_by_name(self, server_name: str, force: bool = False, timeout: int = 120) -> None:
+        """
+        Start a specific server by name with memory safety check.
+
+        Args:
+            server_name: Name of server to start.
+            force: If True, skip memory safety check for running servers.
+            timeout: Maximum seconds to wait for server to become ready.
+
+        Raises:
+            ValueError: If server not found or already running.
+            RuntimeError: If server fails to start.
+        """
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = Console()
+
+        # Get server configuration
+        server_config = self.config.get_server_by_name(server_name)
+        if not server_config:
+            raise ValueError(f"Server '{server_name}' not found in configuration")
+
+        # Check if this server is already running
+        if self.is_server_running_by_name(server_name):
+            logger.warning(f"Server '{server_name}' is already running")
+            return
+
+        # MEMORY SAFETY CHECK (unless forced)
+        if not force:
+            running_servers = self.get_running_servers()
+            if running_servers:
+                console.print(f"\n[yellow]⚠️  WARNING: The following servers are already running:[/yellow]")
+                for rs in running_servers:
+                    rs_config = self.config.get_server_by_name(rs)
+                    if rs_config:
+                        console.print(f"  [cyan]• {rs}[/cyan] (port {rs_config.server_port})")
+                console.print("\n[yellow]Running multiple LLM servers simultaneously may cause memory issues.[/yellow]")
+
+                response = Prompt.ask(f"\nAre you sure you want to start [cyan]'{server_name}'[/cyan]?", choices=["y", "n"], default="n")
+                if response.lower() != 'y':
+                    console.print("[dim]Start cancelled.[/dim]")
+                    return
+
+        # Check if llama-server binary exists
+        if not server_config.llama_server_path.exists():
+            raise ValueError(
+                f"llama-server binary not found at: {server_config.llama_server_path}\n"
+                "Please compile llama.cpp first or configure the correct path."
+            )
+
+        # Determine model file path
+        model_dir = server_config.model_dir if server_config.model_dir else self.model_manager.model_dir
+        if not server_config.gguf_file:
+            raise ValueError(f"Server '{server_name}' missing 'gguf_file' configuration")
+
+        model_file_path = model_dir / server_config.gguf_file
+
+        # Verify model file exists
+        if not model_file_path.exists():
+            available_files = list(model_dir.glob('*.gguf')) if model_dir.exists() else []
+            raise ValueError(
+                f"GGUF model file not found: {model_file_path}\n"
+                f"Model directory: {model_dir}\n"
+                f"Available files: {[f.name for f in available_files]}"
+            )
+
+        # Build server command
+        cmd = [
+            str(self.config.server_wrapper_script),
+            "--server-path", str(server_config.llama_server_path),
+            "--model-file", str(model_file_path),
+            "--host", server_config.server_host,
+            "--port", str(server_config.server_port),
+        ]
+
+        # Add server parameters
+        if server_config.server_params:
+            for key, value in server_config.server_params.items():
+                cmd.extend(["--server-arg", key, str(value)])
+
+        logger.info(f"Starting server '{server_name}' on {server_config.server_host}:{server_config.server_port}")
+        logger.debug(f"Command: {' '.join(cmd)}")
+
+        try:
+            # Start server process
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+
+            self.server_processes[server_name] = proc
+            logger.info(f"Server '{server_name}' process started, waiting for readiness...")
+
+            # Health check loop
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if self._is_server_ready_at_port(server_config.server_port, server_config.server_host):
+                    logger.info(f"Server '{server_name}' is ready!")
+                    # Update legacy attributes if this is the first/active server
+                    if not self.server_process:
+                        self.server_process = proc
+                        self._initialize_client()
+                    return
+
+                # Check if process terminated unexpectedly
+                if proc.poll() is not None:
+                    stderr = proc.stderr.read() if proc.stderr else "No error output"
+                    raise RuntimeError(f"Server '{server_name}' process terminated unexpectedly:\n{stderr}")
+
+                time.sleep(server_config.healthcheck_interval)
+
+            # Timeout
+            self.stop_server_by_name(server_name)
+            raise RuntimeError(f"Server '{server_name}' failed to become ready within {timeout} seconds")
+
+        except Exception as e:
+            self.stop_server_by_name(server_name)
+            raise RuntimeError(f"Failed to start server '{server_name}': {e}") from e
+
+    def stop_server_by_name(self, server_name: str) -> None:
+        """
+        Stop a specific server by name.
+
+        Args:
+            server_name: Name of server to stop.
+        """
+        # Check if we have a process reference
+        if server_name in self.server_processes:
+            proc = self.server_processes[server_name]
+            logger.info(f"Stopping server '{server_name}' (local process)...")
+            try:
+                proc.send_signal(signal.SIGTERM)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Graceful shutdown of '{server_name}' timed out, force killing...")
+                    proc.kill()
+                    proc.wait()
+
+                logger.info(f"Server '{server_name}' stopped")
+
+            except Exception as e:
+                logger.error(f"Error stopping server '{server_name}': {e}")
+
+            finally:
+                del self.server_processes[server_name]
+                if server_name in self.clients:
+                    del self.clients[server_name]
+            return
+
+        # Try to find and kill process by port
+        server_config = self.config.get_server_by_name(server_name)
+        if server_config:
+            logger.info(f"Searching for server '{server_name}' process on port {server_config.server_port}...")
+            proc = self._find_llama_server_process_by_port(server_config.server_port)
+            if proc:
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except psutil.TimeoutExpired:
+                        logger.warning(f"Graceful shutdown timed out, force killing...")
+                        proc.kill()
+                        proc.wait()
+                    logger.info(f"Server '{server_name}' stopped")
+                except Exception as e:
+                    logger.error(f"Error stopping server '{server_name}': {e}")
+            else:
+                logger.debug(f"No process found for server '{server_name}'")
+
+    def _find_llama_server_process_by_port(self, port: int) -> Optional[psutil.Process]:
+        """
+        Find llama-server process by port number.
+
+        Args:
+            port: Port number to search for.
+
+        Returns:
+            psutil.Process if found, None otherwise.
+        """
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info['cmdline']
+                    if cmdline and any('llama-server' in str(arg) for arg in cmdline):
+                        if any(str(port) in str(arg) for arg in cmdline):
+                            logger.debug(f"Found llama-server process on port {port}: PID={proc.pid}")
+                            return proc
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+        except Exception as e:
+            logger.debug(f"Error searching for llama-server process: {e}")
+        return None
 
     def __enter__(self):
         """Context manager entry."""

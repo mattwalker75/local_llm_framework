@@ -9,8 +9,23 @@ additional configuration options without breaking existing functionality.
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, field
 import json
+
+
+@dataclass
+class ServerConfig:
+    """Configuration for a single local LLM server."""
+    name: str
+    llama_server_path: Path
+    server_host: str
+    server_port: int
+    healthcheck_interval: float
+    model_dir: Optional[Path] = None
+    gguf_file: Optional[str] = None
+    server_params: Dict[str, Any] = field(default_factory=dict)
+    auto_start: bool = False
 
 
 class Config:
@@ -61,6 +76,10 @@ class Config:
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+    # Tool execution modes
+    VALID_TOOL_EXECUTION_MODES = ["single_pass", "dual_pass_write_only", "dual_pass_all"]
+    DEFAULT_TOOL_EXECUTION_MODE = "single_pass"
+
     def __init__(self, config_file: Optional[Path] = None):
         """
         Initialize configuration.
@@ -87,6 +106,11 @@ class Config:
         self.custom_model_dir = None  # Custom model directory (optional)
         self.server_params = {}  # Additional llama-server parameters (optional)
         self._has_local_server_section = False  # Track if local_llm_server was in config file
+        self.tool_execution_mode = self.DEFAULT_TOOL_EXECUTION_MODE  # Tool execution mode
+
+        # Multi-server support
+        self.servers: Dict[str, ServerConfig] = {}  # Dictionary of server configurations by name
+        self.default_local_server: Optional[str] = None  # Name of the default local server
 
         # Determine which config file to use
         config_to_load = None
@@ -118,36 +142,105 @@ class Config:
                 config_data = json.load(f)
 
             # ===== Server Configuration (for local llama-server) =====
-            # These settings control the local llama-server process when started by LLF
-            # Supports both nested 'local_llm_server' structure and flat structure for backward compatibility
-            if 'local_llm_server' in config_data:
-                self._has_local_server_section = True  # Mark that local server is configured
+            # Supports both:
+            # 1. NEW: 'local_llm_servers' array for multiple servers
+            # 2. OLD: Single 'local_llm_server' for backward compatibility
+            if 'local_llm_servers' in config_data:
+                # New multi-server configuration
+                self._has_local_server_section = True
+                servers_data = config_data['local_llm_servers']
+                if not isinstance(servers_data, list):
+                    raise ValueError("'local_llm_servers' must be an array of server configurations")
+
+                for server_data in servers_data:
+                    if 'name' not in server_data:
+                        raise ValueError("Each server in 'local_llm_servers' must have a 'name' field")
+
+                    server_name = server_data['name']
+
+                    # Parse llama_server_path
+                    if 'llama_server_path' not in server_data:
+                        raise ValueError(f"Server '{server_name}' missing 'llama_server_path'")
+                    path = Path(server_data['llama_server_path'])
+                    llama_server_path = path if path.is_absolute() else self.PROJECT_ROOT / path
+
+                    # Parse optional model_dir (subdirectory within models/)
+                    model_dir = None
+                    if 'model_dir' in server_data:
+                        model_dir = self.model_dir / server_data['model_dir']
+
+                    # Parse server_params (filter out underscore-prefixed comment keys)
+                    raw_params = server_data.get('server_params', {})
+                    server_params = {k: v for k, v in raw_params.items() if not k.startswith('_')}
+
+                    # Create ServerConfig instance
+                    self.servers[server_name] = ServerConfig(
+                        name=server_name,
+                        llama_server_path=llama_server_path,
+                        server_host=server_data.get('server_host', self.SERVER_HOST),
+                        server_port=server_data.get('server_port', self.SERVER_PORT),
+                        healthcheck_interval=server_data.get('healthcheck_interval', self.HEALTHCHECK_INTERVAL),
+                        model_dir=model_dir,
+                        gguf_file=server_data.get('gguf_file'),
+                        server_params=server_params,
+                        auto_start=server_data.get('auto_start', False)
+                    )
+
+                # Set default single-server attributes to first server for backward compatibility
+                if self.servers:
+                    first_server = list(self.servers.values())[0]
+                    self.llama_server_path = first_server.llama_server_path
+                    self.server_host = first_server.server_host
+                    self.server_port = first_server.server_port
+                    self.healthcheck_interval = first_server.healthcheck_interval
+                    self.custom_model_dir = first_server.model_dir
+                    if first_server.gguf_file:
+                        self.gguf_file = first_server.gguf_file
+                    self.server_params = first_server.server_params
+
+            elif 'local_llm_server' in config_data:
+                # Legacy single server configuration - maintain backward compatibility
+                self._has_local_server_section = True
                 server_config = config_data['local_llm_server']
+
                 # Path to llama-server binary
                 if 'llama_server_path' in server_config:
                     path = Path(server_config['llama_server_path'])
-                    # Convert relative paths to absolute (relative to project root)
                     self.llama_server_path = path if path.is_absolute() else self.PROJECT_ROOT / path
-                # Server bind address (127.0.0.1 for localhost only, 0.0.0.0 for network access)
+
+                # Server bind address
                 self.server_host = server_config.get('server_host', self.server_host)
                 # Server port number
                 self.server_port = server_config.get('server_port', self.server_port)
-                # Health check interval in seconds (time between health checks during startup)
+                # Health check interval
                 self.healthcheck_interval = server_config.get('healthcheck_interval', self.healthcheck_interval)
-                # Custom model directory (optional) - subdirectory within models/ directory
+
+                # Custom model directory (optional)
                 if 'model_dir' in server_config:
-                    # model_dir is relative to models/ directory
                     self.custom_model_dir = self.model_dir / server_config['model_dir']
-                # GGUF model file to load (quantized model format for llama.cpp)
+
+                # GGUF model file
                 self.gguf_file = server_config.get('gguf_file', self.gguf_file)
-                # Additional llama-server parameters (optional)
-                # These are passed directly to llama-server CLI
-                # Use 'llama-server -h' to see all available options
-                # Filter out underscore-prefixed keys (used for comments/examples in config files)
+
+                # Additional llama-server parameters
                 raw_params = server_config.get('server_params', {})
                 self.server_params = {k: v for k, v in raw_params.items() if not k.startswith('_')}
+
+                # Create a default server entry in servers dict for consistency
+                self.servers['default'] = ServerConfig(
+                    name='default',
+                    llama_server_path=self.llama_server_path,
+                    server_host=self.server_host,
+                    server_port=self.server_port,
+                    healthcheck_interval=self.healthcheck_interval,
+                    model_dir=self.custom_model_dir,
+                    gguf_file=self.gguf_file,
+                    server_params=self.server_params,
+                    auto_start=False
+                )
+
             else:
-                # Fallback to flat structure for backward compatibility with older config files
+                # Fallback to flat structure for backward compatibility
                 if 'llama_server_path' in config_data:
                     path = Path(config_data['llama_server_path'])
                     self.llama_server_path = path if path.is_absolute() else self.PROJECT_ROOT / path
@@ -167,6 +260,18 @@ class Config:
                 self.api_key = endpoint_config.get('api_key', self.api_key)
                 # Model name/identifier to use for requests
                 self.model_name = endpoint_config.get('model_name', self.model_name)
+                # Default local server name (for multi-server setups)
+                self.default_local_server = endpoint_config.get('default_local_server')
+                # Tool execution mode - controls streaming behavior with tool calls
+                if 'tool_execution_mode' in endpoint_config:
+                    mode = endpoint_config['tool_execution_mode']
+                    if mode in self.VALID_TOOL_EXECUTION_MODES:
+                        self.tool_execution_mode = mode
+                    else:
+                        raise ValueError(
+                            f"Invalid tool_execution_mode '{mode}'. "
+                            f"Must be one of: {', '.join(self.VALID_TOOL_EXECUTION_MODES)}"
+                        )
             else:
                 # Fallback to flat structure for backward compatibility with older config files
                 self.api_base_url = config_data.get('api_base_url', self.api_base_url)
@@ -258,6 +363,10 @@ class Config:
         Returns:
             True if using external API, False if using local server.
         """
+        # If api_base_url is None or empty, we're using local server
+        if not self.api_base_url:
+            return False
+
         # Simple heuristic: check if api_base_url contains localhost or 127.0.0.1
         # Any URL without these is assumed to be an external service
         api_url_lower = self.api_base_url.lower()
@@ -293,6 +402,107 @@ class Config:
         # Check if llama_server_path exists and is accessible
         return self.llama_server_path.exists()
 
+    def get_server_by_name(self, name: str) -> Optional[ServerConfig]:
+        """
+        Get server configuration by name.
+
+        Args:
+            name: Server name.
+
+        Returns:
+            ServerConfig if found, None otherwise.
+        """
+        return self.servers.get(name)
+
+    def get_server_by_port(self, port: int) -> Optional[ServerConfig]:
+        """
+        Get server configuration by port number.
+
+        Args:
+            port: Server port number.
+
+        Returns:
+            ServerConfig if found, None otherwise.
+        """
+        for server in self.servers.values():
+            if server.server_port == port:
+                return server
+        return None
+
+    def get_active_server(self) -> Optional[ServerConfig]:
+        """
+        Get the active server configuration based on current settings.
+
+        Selection logic:
+        1. If default_local_server is set, return that server
+        2. Else if api_base_url port matches a server, return that server
+        3. Else return None (using external API)
+
+        Returns:
+            ServerConfig for active server, or None if using external API.
+        """
+        # Check if default_local_server is explicitly set
+        if self.default_local_server:
+            server = self.get_server_by_name(self.default_local_server)
+            if server:
+                return server
+
+        # Try to match by port from api_base_url
+        if self.api_base_url and not self.is_using_external_api():
+            # Extract port from URL (e.g., "http://127.0.0.1:8000/v1" -> 8000)
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(self.api_base_url)
+                if parsed.port:
+                    server = self.get_server_by_port(parsed.port)
+                    if server:
+                        return server
+            except Exception:
+                pass
+
+        # If single server in legacy config, return it
+        if len(self.servers) == 1:
+            return list(self.servers.values())[0]
+
+        return None
+
+    def list_servers(self) -> List[str]:
+        """
+        Get list of all configured server names.
+
+        Returns:
+            List of server names.
+        """
+        return list(self.servers.keys())
+
+    def update_default_server(self, server_name: str) -> None:
+        """
+        Update the default local server and sync api_base_url.
+
+        Args:
+            server_name: Name of server to set as default.
+
+        Raises:
+            ValueError: If server name doesn't exist.
+        """
+        server = self.get_server_by_name(server_name)
+        if not server:
+            raise ValueError(f"Server '{server_name}' not found in configuration")
+
+        self.default_local_server = server_name
+        # Update api_base_url to match server's port
+        self.api_base_url = f"http://{server.server_host}:{server.server_port}/v1"
+
+        # Update legacy single-server attributes for backward compatibility
+        self.server_host = server.server_host
+        self.server_port = server.server_port
+        self.llama_server_path = server.llama_server_path
+        self.healthcheck_interval = server.healthcheck_interval
+        self.custom_model_dir = server.model_dir
+        if server.gguf_file:
+            self.gguf_file = server.gguf_file
+        self.server_params = server.server_params
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert configuration to dictionary.
@@ -300,27 +510,76 @@ class Config:
         Returns:
             Dictionary representation of configuration with nested structure.
         """
-        config_dict = {
-            'local_llm_server': {
+        config_dict = {}
+
+        # Sync legacy attributes back to active server before serialization
+        # This ensures that direct modifications to legacy attributes (like config.server_port = 8888)
+        # are preserved when saving
+        active_server = self.get_active_server()
+        if active_server:
+            active_server.llama_server_path = self.llama_server_path
+            active_server.server_host = self.server_host
+            active_server.server_port = self.server_port
+            active_server.healthcheck_interval = self.healthcheck_interval
+            if self.custom_model_dir:
+                active_server.model_dir = self.custom_model_dir
+            if hasattr(self, 'gguf_file') and self.gguf_file:
+                active_server.gguf_file = self.gguf_file
+            active_server.server_params = self.server_params
+
+        # Add multi-server configuration if present
+        if len(self.servers) > 1 or (len(self.servers) == 1 and list(self.servers.keys())[0] != 'default'):
+            # Multi-server format
+            servers_list = []
+            for server in self.servers.values():
+                server_dict = {
+                    'name': server.name,
+                    'llama_server_path': str(server.llama_server_path),
+                    'server_host': server.server_host,
+                    'server_port': server.server_port,
+                    'healthcheck_interval': server.healthcheck_interval,
+                    'auto_start': server.auto_start,
+                }
+                if server.model_dir:
+                    # Store relative to models/ directory
+                    try:
+                        rel_path = server.model_dir.relative_to(self.model_dir)
+                        server_dict['model_dir'] = str(rel_path)
+                    except ValueError:
+                        server_dict['model_dir'] = str(server.model_dir)
+                if server.gguf_file:
+                    server_dict['gguf_file'] = server.gguf_file
+                if server.server_params:
+                    server_dict['server_params'] = server.server_params
+                servers_list.append(server_dict)
+            config_dict['local_llm_servers'] = servers_list
+        elif len(self.servers) == 1 and list(self.servers.keys())[0] == 'default':
+            # Single legacy server format
+            config_dict['local_llm_server'] = {
                 'llama_server_path': str(self.llama_server_path),
                 'server_host': self.server_host,
                 'server_port': self.server_port,
                 'gguf_file': self.gguf_file,
-            },
-            'llm_endpoint': {
-                'api_base_url': self.api_base_url,
-                'api_key': self.api_key,
-                'model_name': self.model_name,
-            },
-            'model_dir': str(self.model_dir),
-            'cache_dir': str(self.cache_dir),
-            'inference_params': self.inference_params,
-            'log_level': self.log_level,
-        }
+            }
+            if self.server_params:
+                config_dict['local_llm_server']['server_params'] = self.server_params
 
-        # Only include server_params if not empty (keep config clean)
-        if self.server_params:
-            config_dict['local_llm_server']['server_params'] = self.server_params
+        # LLM endpoint configuration
+        endpoint_dict = {
+            'api_base_url': self.api_base_url,
+            'api_key': self.api_key,
+            'model_name': self.model_name,
+            'tool_execution_mode': self.tool_execution_mode,
+        }
+        if self.default_local_server:
+            endpoint_dict['default_local_server'] = self.default_local_server
+        config_dict['llm_endpoint'] = endpoint_dict
+
+        # Other configuration
+        config_dict['model_dir'] = str(self.model_dir)
+        config_dict['cache_dir'] = str(self.cache_dir)
+        config_dict['inference_params'] = self.inference_params
+        config_dict['log_level'] = self.log_level
 
         return config_dict
 

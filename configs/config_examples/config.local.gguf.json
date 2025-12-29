@@ -1,20 +1,52 @@
 {
+  "_comment": "========== LOCAL GGUF MODEL CONFIGURATION ==========",
+  "_info": "This config is for running a local GGUF model with llama-server",
+  "_multi_server_note": "To run multiple models, convert to 'local_llm_servers' array format. See config.multi-server.json example.",
+
   "local_llm_server": {
+    "_comment": "Local llama-server configuration",
     "llama_server_path": "../llama.cpp/build/bin/llama-server",
     "server_host": "127.0.0.1",
     "server_port": 8000,
     "healthcheck_interval": 2.0,
+
+    "_model_dir_comment": "Subdirectory within models/ containing your GGUF file",
     "model_dir": "custom_models",
-    "gguf_file": "my-model.gguf"
+
+    "_gguf_file_comment": "Name of the GGUF model file to load",
+    "gguf_file": "my-model.gguf",
+
+    "_server_params_comment": "Optional: Add llama-server parameters here",
+    "_server_params_example": {
+      "_ctx-size": "4096",
+      "_n-gpu-layers": "35",
+      "_threads": "8"
+    }
   },
+
   "llm_endpoint": {
+    "_comment": "Client-side API configuration (points to local server)",
     "api_base_url": "http://127.0.0.1:8000/v1",
     "api_key": "EMPTY",
-    "model_name": "custom-model"
+    "model_name": "custom-model",
+
+    "_tools_comment": "Optional: Enable/disable tools",
+    "tools": {
+      "xml_format": "enable"
+    },
+
+    "_tool_execution_mode_comment": "Optional: Control streaming behavior with memory. Options: 'single_pass', 'dual_pass_write_only', 'dual_pass_all'",
+    "tool_execution_mode": "single_pass"
   },
+
+  "_paths_comment": "Directory paths (relative to project root)",
   "model_dir": "models",
   "cache_dir": ".cache",
+
+  "_log_level_comment": "Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
   "log_level": "ERROR",
+
+  "_inference_params_comment": "LLM generation parameters",
   "inference_params": {
     "temperature": 0.7,
     "max_tokens": 2048,

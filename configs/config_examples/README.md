@@ -302,6 +302,260 @@ Different APIs support different parameters:
 
 ---
 
+## Advanced Features
+
+### Tools Configuration
+
+The `tools` section in `llm_endpoint` enables optional features:
+
+```json
+{
+  "llm_endpoint": {
+    "tools": {
+      "xml_format": "enable"
+    }
+  }
+}
+```
+
+**Available Tools:**
+
+#### xml_format
+**Purpose**: Parse XML-style function calls and convert to OpenAI JSON format
+
+**When to enable**:
+- ✅ Using models like Qwen3-Coder that output XML format function calls
+- ✅ Working with Chinese language models
+- ✅ Custom fine-tuned models trained on XML function calling
+
+**When to disable**:
+- ❌ Using OpenAI API (uses native JSON)
+- ❌ Using Anthropic API (uses native JSON)
+- ❌ Models that natively support OpenAI JSON format
+
+**Example XML → JSON conversion**:
+```xml
+<!-- Model outputs -->
+<function=search_memories>
+<parameter=query>user preferences</parameter>
+</function>
+```
+```json
+// Converted to
+{
+  "tool_calls": [{
+    "id": "call_abc123",
+    "type": "function",
+    "function": {
+      "name": "search_memories",
+      "arguments": "{\"query\": \"user preferences\"}"
+    }
+  }]
+}
+```
+
+**Configuration**:
+```json
+{
+  "llm_endpoint": {
+    "tools": {
+      "xml_format": "enable"  // or "disable"
+    }
+  }
+}
+```
+
+**CLI management**:
+```bash
+# Enable (session override)
+llf tool xml_format enable
+
+# Disable (session override)
+llf tool xml_format disable
+
+# Reset to config file setting
+llf tool xml_format auto
+
+# Check status
+llf tool list
+```
+
+**See also**: [tools/xml_format/README.md](../../tools/xml_format/README.md)
+
+---
+
+### Tool Execution Modes
+
+The `tool_execution_mode` setting controls how the framework balances streaming UX with tool calling accuracy.
+
+```json
+{
+  "llm_endpoint": {
+    "tool_execution_mode": "dual_pass_write_only"
+  }
+}
+```
+
+**The Problem**: Streaming responses (chunks appear as they're generated) and tool calling (requires complete JSON) are fundamentally incompatible. When memory tools are enabled, the LLM can't stream because function calls need the full response.
+
+**Available Modes:**
+
+#### 1. `single_pass` (Default)
+- **How it works**: Single LLM call, no streaming when tools available
+- **Pros**: Always accurate, simple, predictable
+- **Cons**: No streaming when memory enabled (poor UX)
+- **Best for**: When accuracy matters more than streaming UX
+
+```json
+"tool_execution_mode": "single_pass"
+```
+
+**Example interaction**:
+```
+User: "What's my name?"
+[Pause while LLM thinks]
+Assistant: "Your name is Matt." [appears all at once]
+```
+
+#### 2. `dual_pass_write_only` (Recommended)
+- **How it works**: Automatically detects operation type
+  - WRITE operations ("Remember X"): Dual-pass (stream + background tools)
+  - READ operations ("What's my name?"): Single-pass with tools (accurate)
+  - GENERAL chat: Stream only
+- **Pros**: Streaming for writes, accurate reads, best balance
+- **Cons**: 2x LLM calls for write operations (higher cost)
+- **Best for**: Most use cases, interactive chat applications
+
+```json
+"tool_execution_mode": "dual_pass_write_only"
+```
+
+**Example interaction**:
+```
+User: "Remember that I like pizza"
+Assistant: "I'll remember that you like pizza." [streams in real-time]
+[Background: Actually stores to memory]
+
+User: "What do I like?"
+[Pause while LLM retrieves from memory]
+Assistant: "You like pizza." [accurate, from memory]
+
+User: "Tell me a joke"
+Assistant: "Why did the... [streams naturally]
+```
+
+#### 3. `dual_pass_all` (Advanced - Use with Caution)
+- **How it works**: Always makes two LLM calls when tools available
+- **Pros**: Always streams (best UX)
+- **Cons**:
+  - 2x LLM calls for all operations (highest cost)
+  - **Dangerous for reads**: User sees Pass 1 response (may be wrong), but Pass 2 retrieves actual data
+- **Best for**: Write-heavy applications that don't use memory reads
+
+```json
+"tool_execution_mode": "dual_pass_all"
+```
+
+**⚠️ Warning**:
+```
+User: "What's my name?"
+Assistant: "I don't have that information." [streams, but wrong!]
+[Background: Pass 2 retrieves "Matt" from memory, but user never sees it]
+```
+
+**NOT recommended** for applications that read from memory.
+
+---
+
+### Operation Type Detection
+
+For `dual_pass_write_only` mode, the framework automatically classifies user messages:
+
+**READ Operations** (single-pass with tools):
+- `"What's my name?"`
+- `"Do you remember...?"`
+- `"Can you recall...?"`
+- `"Tell me about my preferences"`
+
+**WRITE Operations** (dual-pass streaming):
+- `"Remember that..."`
+- `"My name is..."`
+- `"I like..."`
+- `"Store this..."`
+
+**GENERAL Operations** (streaming only):
+- `"Tell me a joke"`
+- `"How's the weather?"`
+- `"Explain quantum physics"`
+
+---
+
+### Cost Comparison
+
+| Mode | READ Operations | WRITE Operations | GENERAL Chat |
+|------|----------------|------------------|--------------|
+| `single_pass` | 1 LLM call | 1 LLM call | 1 LLM call |
+| `dual_pass_write_only` | 1 LLM call | **2 LLM calls** | 1 LLM call |
+| `dual_pass_all` | **2 LLM calls** | **2 LLM calls** | 1 LLM call |
+
+**Recommendation**: Use `dual_pass_write_only` for best balance of cost and UX.
+
+---
+
+### Configuration Examples by Use Case
+
+**Personal Assistant** (recommended):
+```json
+{
+  "llm_endpoint": {
+    "tools": {
+      "xml_format": "enable"
+    },
+    "tool_execution_mode": "dual_pass_write_only"
+  }
+}
+```
+
+**Data Entry System** (write-heavy):
+```json
+{
+  "llm_endpoint": {
+    "tool_execution_mode": "dual_pass_write_only"
+  }
+}
+```
+
+**Q&A System** (read-heavy, accuracy critical):
+```json
+{
+  "llm_endpoint": {
+    "tool_execution_mode": "single_pass"
+  }
+}
+```
+
+**External APIs** (OpenAI, Anthropic):
+```json
+{
+  "llm_endpoint": {
+    "tools": {
+      "xml_format": "disable"
+    },
+    "tool_execution_mode": "dual_pass_write_only"
+  }
+}
+```
+
+---
+
+### Full Documentation
+
+For complete details on tool execution modes, see:
+- **[docs/TOOL_EXECUTION_MODES.md](../../docs/TOOL_EXECUTION_MODES.md)** - Comprehensive guide
+- **[tools/xml_format/README.md](../../tools/xml_format/README.md)** - XML parser documentation
+
+---
+
 ## Security Notes
 
 **Never commit your actual `config.json` with API keys to git!**

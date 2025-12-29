@@ -5,6 +5,7 @@ Tests for prompt configuration management.
 import json
 import pytest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 from llf.prompt_config import PromptConfig, get_prompt_config
 
@@ -28,8 +29,13 @@ class TestPromptConfig:
         assert config.prefix_messages == []
         assert config.suffix_messages == []
 
-    def test_build_messages_simple(self):
+    @patch('llf.memory_manager.MemoryManager')
+    def test_build_messages_simple(self, mock_memory_manager):
         """Test building messages with simple user message."""
+        # Mock memory manager to return None (no memory enabled)
+        mock_memory_manager.return_value.get_memory_system_prompt.return_value = None
+        mock_memory_manager.return_value.has_enabled_memories.return_value = False
+
         config = PromptConfig()
         messages = config.build_messages("Hello, how are you?")
 
@@ -37,8 +43,13 @@ class TestPromptConfig:
         assert messages[0]["role"] == "user"
         assert messages[0]["content"] == "Hello, how are you?"
 
-    def test_build_messages_with_system_prompt(self):
+    @patch('llf.memory_manager.MemoryManager')
+    def test_build_messages_with_system_prompt(self, mock_memory_manager):
         """Test building messages with system prompt."""
+        # Mock memory manager to return None (no memory enabled)
+        mock_memory_manager.return_value.get_memory_system_prompt.return_value = None
+        mock_memory_manager.return_value.has_enabled_memories.return_value = False
+
         config = PromptConfig()
         config.system_prompt = "You are a helpful assistant."
 
@@ -50,8 +61,13 @@ class TestPromptConfig:
         assert messages[1]["role"] == "user"
         assert messages[1]["content"] == "Hello!"
 
-    def test_build_messages_with_all_prompts(self):
+    @patch('llf.memory_manager.MemoryManager')
+    def test_build_messages_with_all_prompts(self, mock_memory_manager):
         """Test building messages with all prompt types."""
+        # Mock memory manager to return None (no memory enabled)
+        mock_memory_manager.return_value.get_memory_system_prompt.return_value = None
+        mock_memory_manager.return_value.has_enabled_memories.return_value = False
+
         config = PromptConfig()
         config.system_prompt = "You are a helpful assistant."
         config.master_prompt = "Always be concise."
@@ -90,8 +106,13 @@ class TestPromptConfig:
         assert messages[3]["role"] == "user"
         assert messages[3]["content"] == "How are you?"
 
-    def test_build_messages_with_prefix_and_suffix(self):
+    @patch('llf.memory_manager.MemoryManager')
+    def test_build_messages_with_prefix_and_suffix(self, mock_memory_manager):
         """Test building messages with prefix and suffix messages."""
+        # Mock memory manager to return None (no memory enabled)
+        mock_memory_manager.return_value.get_memory_system_prompt.return_value = None
+        mock_memory_manager.return_value.has_enabled_memories.return_value = False
+
         config = PromptConfig()
         config.prefix_messages = [{"role": "system", "content": "Prefix instruction"}]
         config.suffix_messages = [{"role": "system", "content": "Suffix instruction"}]

@@ -200,14 +200,22 @@ class LLMFrameworkGUI:
             logger.warning("Local LLM server not configured")
             return False, "⚠️ Local LLM server not configured. Using external API or configure local server."
 
-        # Check if server is already running
-        if self.runtime.is_server_running():
+        # Check if the active server is running (multi-server aware)
+        is_running = False
+        if self.config.default_local_server:
+            # Multi-server mode: Check if the active server is running
+            is_running = self.runtime.is_server_running_by_name(self.config.default_local_server)
+        else:
+            # Legacy mode: Check if default server is running
+            is_running = self.runtime.is_server_running()
+
+        if is_running:
             logger.info("Server is already running")
             return False, "✅ Server is running"
 
         # Server is not running - needs user action
         logger.info("Server is not running")
-        return True, "❌ Server is not running. Would you like to start it?"
+        return True, "❌ Default server is not running. Would you like to start it?"
 
     def start_server_from_gui(self) -> str:
         """
@@ -252,13 +260,62 @@ class LLMFrameworkGUI:
             messages.append({"role": "user", "content": message})
             history = history + [{"role": "user", "content": message}]
 
-            # Stream response from LLM
+            # Check if tools are available
+            tools_available = False
+            if self.prompt_config:
+                tools = self.prompt_config.get_memory_tools()
+                tools_available = tools is not None and len(tools) > 0
+
+            # Determine execution strategy based on configuration
+            from llf.operation_detector import detect_operation_type, should_use_dual_pass
+
+            operation_type = detect_operation_type(message)
+            use_dual_pass = should_use_dual_pass(
+                operation_type,
+                self.config.tool_execution_mode,
+                tools_available
+            )
+
             response_text = ""
-            for chunk in self.runtime.chat(messages, stream=True):
-                response_text += chunk
-                # Update history with partial response
+
+            if use_dual_pass:
+                # Dual-pass mode: Stream first for UX, then execute with tools in background
+                import threading
+
+                # Pass 1: Streaming response for user (no tools)
+                for chunk in self.runtime.chat(messages, stream=True, use_prompt_config=False):
+                    response_text += chunk
+                    # Update history with partial response
+                    current_history = history + [{"role": "assistant", "content": response_text}]
+                    yield "", current_history
+
+                # Pass 2: Execute with tools in background (non-streaming)
+                # This runs after streaming completes to ensure tool execution happens
+                def execute_with_tools():
+                    try:
+                        # Run the same request with tools enabled
+                        self.runtime.chat(messages, stream=False)
+                    except Exception as e:
+                        logger.warning(f"Background tool execution failed: {e}")
+
+                # Execute in background thread
+                tool_thread = threading.Thread(target=execute_with_tools, daemon=True)
+                tool_thread.start()
+
+            elif tools_available:
+                # Single-pass mode with tools (no streaming, accurate)
+                response_text = self.runtime.chat(messages, stream=False)
+                # Update history with complete response
                 current_history = history + [{"role": "assistant", "content": response_text}]
                 yield "", current_history
+
+            else:
+                # Streaming mode (no tools available)
+                for chunk in self.runtime.chat(messages, stream=True):
+                    response_text += chunk
+                    # Update history with partial response
+                    current_history = history + [{"role": "assistant", "content": response_text}]
+                    yield "", current_history
 
             # If TTS is enabled AND user has it toggled on, handle based on mode
             if self.tts and self.tts_enabled_state and response_text:
@@ -401,6 +458,188 @@ class LLMFrameworkGUI:
             return f"Restart sequence:\n\n{stop_msg}\n\n{start_msg}"
         except Exception as e:
             return f"❌ Error restarting server: {str(e)}"
+
+    # ===== Multi-Server Management Functions =====
+
+    def get_available_servers(self) -> List[str]:
+        """
+        Get list of available server names for radio selection.
+
+        Returns:
+            List of server names.
+        """
+        try:
+            servers = self.config.list_servers()
+            if not servers:
+                return ["No servers configured"]
+            return servers
+        except Exception as e:
+            logger.error(f"Error getting available servers: {e}")
+            return ["Error loading servers"]
+
+    def get_server_info(self, server_name: str) -> str:
+        """
+        Get detailed information about a specific server.
+
+        Args:
+            server_name: Name of the server.
+
+        Returns:
+            Server information as formatted string.
+        """
+        try:
+            if not server_name or server_name in ["No servers configured", "Error loading servers"]:
+                return "No server selected"
+
+            server_config = self.config.get_server_by_name(server_name)
+            if not server_config:
+                return f"❌ Server '{server_name}' not found in configuration"
+
+            # Check if this is the active server
+            is_active = self.config.default_local_server == server_name
+            active_marker = " ⭐ ACTIVE" if is_active else ""
+
+            # Check if server is running
+            is_running = self.runtime.is_server_running_by_name(server_name)
+            status = "🟢 Running" if is_running else "⭕ Stopped"
+
+            # Build info string
+            info = f"Server: {server_name}{active_marker}\n"
+            info += f"Status: {status}\n"
+            info += f"Host: {server_config.server_host}\n"
+            info += f"Port: {server_config.server_port}\n"
+            info += f"URL: http://{server_config.server_host}:{server_config.server_port}/v1\n"
+
+            if server_config.model_dir:
+                try:
+                    rel_path = server_config.model_dir.relative_to(self.config.model_dir)
+                    info += f"Model Dir: {rel_path}\n"
+                except ValueError:
+                    info += f"Model Dir: {server_config.model_dir}\n"
+
+            if server_config.gguf_file:
+                info += f"GGUF File: {server_config.gguf_file}\n"
+
+            info += f"Auto-start: {'Yes' if server_config.auto_start else 'No'}\n"
+
+            if server_config.server_params:
+                info += f"\nServer Parameters:\n"
+                for key, value in server_config.server_params.items():
+                    info += f"  {key}: {value}\n"
+
+            return info
+
+        except Exception as e:
+            return f"❌ Error getting server info: {str(e)}"
+
+    def start_server_by_name(self, server_name: str) -> Tuple[str, str]:
+        """
+        Start a specific server by name.
+
+        Args:
+            server_name: Name of the server to start.
+
+        Returns:
+            Tuple of (status message, updated server info).
+        """
+        try:
+            if not server_name or server_name in ["No servers configured", "Error loading servers"]:
+                return "❌ No server selected", self.get_server_info(server_name)
+
+            server_config = self.config.get_server_by_name(server_name)
+            if not server_config:
+                return f"❌ Server '{server_name}' not found in configuration", self.get_server_info(server_name)
+
+            # Check if already running
+            if self.runtime.is_server_running_by_name(server_name):
+                return f"ℹ️ Server '{server_name}' is already running", self.get_server_info(server_name)
+
+            # Start server (with force=True to skip memory warning in GUI)
+            self.runtime.start_server_by_name(server_name, force=True)
+
+            # Wait a bit for server to start
+            time.sleep(2)
+
+            # Get updated server info
+            updated_info = self.get_server_info(server_name)
+
+            # Verify started
+            if self.runtime.is_server_running_by_name(server_name):
+                status = f"✅ Server '{server_name}' started successfully\n\n" + \
+                       f"URL: http://{server_config.server_host}:{server_config.server_port}/v1"
+            else:
+                status = f"❌ Server '{server_name}' failed to start (check logs for details)"
+
+            return status, updated_info
+
+        except Exception as e:
+            return f"❌ Error starting server: {str(e)}", self.get_server_info(server_name)
+
+    def stop_server_by_name(self, server_name: str) -> Tuple[str, str]:
+        """
+        Stop a specific server by name.
+
+        Args:
+            server_name: Name of the server to stop.
+
+        Returns:
+            Tuple of (status message, updated server info).
+        """
+        try:
+            if not server_name or server_name in ["No servers configured", "Error loading servers"]:
+                return "❌ No server selected", self.get_server_info(server_name)
+
+            server_config = self.config.get_server_by_name(server_name)
+            if not server_config:
+                return f"❌ Server '{server_name}' not found in configuration", self.get_server_info(server_name)
+
+            # Check if running
+            if not self.runtime.is_server_running_by_name(server_name):
+                return f"ℹ️ Server '{server_name}' is not running", self.get_server_info(server_name)
+
+            # Stop server
+            self.runtime.stop_server_by_name(server_name)
+
+            # Wait a bit for server to stop
+            time.sleep(1)
+
+            # Get updated server info
+            updated_info = self.get_server_info(server_name)
+
+            # Verify stopped
+            if not self.runtime.is_server_running_by_name(server_name):
+                status = f"✅ Server '{server_name}' stopped successfully"
+            else:
+                status = f"⚠️ Server '{server_name}' may still be running (check status)"
+
+            return status, updated_info
+
+        except Exception as e:
+            return f"❌ Error stopping server: {str(e)}", self.get_server_info(server_name)
+
+    def restart_server_by_name(self, server_name: str) -> Tuple[str, str]:
+        """
+        Restart a specific server by name.
+
+        Args:
+            server_name: Name of the server to restart.
+
+        Returns:
+            Tuple of (status message, updated server info).
+        """
+        try:
+            if not server_name or server_name in ["No servers configured", "Error loading servers"]:
+                return "❌ No server selected", self.get_server_info(server_name)
+
+            stop_msg, _ = self.stop_server_by_name(server_name)
+            time.sleep(2)
+            start_msg, updated_info = self.start_server_by_name(server_name)
+
+            status = f"Restart sequence:\n\n{stop_msg}\n\n{start_msg}"
+            return status, updated_info
+
+        except Exception as e:
+            return f"❌ Error restarting server: {str(e)}", self.get_server_info(server_name)
 
     # ===== Models Tab Functions =====
 
@@ -979,6 +1218,588 @@ class LLMFrameworkGUI:
         except Exception as e:
             return f"❌ Error detaching data store: {str(e)}", self.get_datastore_info(selected_datastore)
 
+    # ===== Memory Management Methods =====
+
+    def get_available_memories(self) -> list:
+        """
+        Get list of available memory instances.
+
+        Returns:
+            List of memory display names
+        """
+        try:
+            memory_registry_path = Path(__file__).parent.parent / 'memory' / 'memory_registry.json'
+
+            if not memory_registry_path.exists():
+                return []
+
+            with open(memory_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            memories = registry.get('memories', [])
+            return [mem.get('display_name', mem.get('name', 'Unknown')) for mem in memories]
+
+        except Exception as e:
+            logger.error(f"Error getting available memories: {e}")
+            return []
+
+    def get_memory_info(self, selected_memory: str) -> str:
+        """
+        Get information about a specific memory instance.
+
+        Args:
+            selected_memory: Display name of the memory
+
+        Returns:
+            Formatted string with memory information
+        """
+        if not selected_memory:
+            return "No memory selected"
+
+        try:
+            memory_registry_path = Path(__file__).parent.parent / 'memory' / 'memory_registry.json'
+
+            if not memory_registry_path.exists():
+                return "❌ Memory registry not found"
+
+            with open(memory_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find the memory by display_name or name
+            memory = None
+            for mem in registry.get('memories', []):
+                if mem.get('display_name') == selected_memory or mem.get('name') == selected_memory:
+                    memory = mem
+                    break
+
+            if not memory:
+                return f"❌ Memory '{selected_memory}' not found"
+
+            # Build info string
+            name = memory.get('name', 'Unknown')
+            display_name = memory.get('display_name', name)
+            description = memory.get('description', 'No description available')
+            enabled = memory.get('enabled', False)
+            status = "🟢 Enabled" if enabled else "⭕ Disabled"
+            mem_type = memory.get('type', 'Unknown')
+            directory = memory.get('directory', 'Not specified')
+            created_date = memory.get('created_date', 'N/A')
+            last_modified = memory.get('last_modified', 'N/A')
+
+            info = f"""**Memory: {display_name}**
+
+**Status:** {status}
+
+**Description:** {description}
+
+**Details:**
+- Name: {name}
+- Type: {mem_type}
+- Directory: {directory}
+- Created: {created_date}
+- Last Modified: {last_modified}
+"""
+
+            # Add metadata if available
+            metadata = memory.get('metadata', {})
+            if metadata:
+                info += "\n**Metadata:**\n"
+                for key, value in metadata.items():
+                    info += f"- {key}: {value}\n"
+
+            return info
+
+        except Exception as e:
+            logger.error(f"Error getting memory info: {e}")
+            return f"❌ Error getting memory info: {str(e)}"
+
+    def enable_memory(self, selected_memory: str) -> tuple:
+        """
+        Enable a memory instance.
+
+        Args:
+            selected_memory: Display name of the memory to enable
+
+        Returns:
+            Tuple of (status_message, updated_info)
+        """
+        if not selected_memory:
+            return "⚠️ No memory selected", ""
+
+        try:
+            memory_registry_path = Path(__file__).parent.parent / 'memory' / 'memory_registry.json'
+
+            if not memory_registry_path.exists():
+                return "❌ Memory registry not found", self.get_memory_info(selected_memory)
+
+            with open(memory_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find and enable the memory
+            memory_found = False
+            for mem in registry.get('memories', []):
+                if mem.get('display_name') == selected_memory or mem.get('name') == selected_memory:
+                    if mem.get('enabled', False):
+                        return f"⚠️ Memory '{selected_memory}' is already enabled", self.get_memory_info(selected_memory)
+                    mem['enabled'] = True
+                    memory_found = True
+                    break
+
+            if not memory_found:
+                return f"❌ Memory '{selected_memory}' not found", self.get_memory_info(selected_memory)
+
+            # Update last_updated timestamp
+            from datetime import datetime
+            registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+            # Write back to registry
+            with open(memory_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Memory '{selected_memory}' enabled successfully", self.get_memory_info(selected_memory)
+
+        except Exception as e:
+            return f"❌ Error enabling memory: {str(e)}", self.get_memory_info(selected_memory)
+
+    def disable_memory(self, selected_memory: str) -> tuple:
+        """
+        Disable a memory instance.
+
+        Args:
+            selected_memory: Display name of the memory to disable
+
+        Returns:
+            Tuple of (status_message, updated_info)
+        """
+        if not selected_memory:
+            return "⚠️ No memory selected", ""
+
+        try:
+            memory_registry_path = Path(__file__).parent.parent / 'memory' / 'memory_registry.json'
+
+            if not memory_registry_path.exists():
+                return "❌ Memory registry not found", self.get_memory_info(selected_memory)
+
+            with open(memory_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find and disable the memory
+            memory_found = False
+            for mem in registry.get('memories', []):
+                if mem.get('display_name') == selected_memory or mem.get('name') == selected_memory:
+                    if not mem.get('enabled', False):
+                        return f"⚠️ Memory '{selected_memory}' is already disabled", self.get_memory_info(selected_memory)
+                    mem['enabled'] = False
+                    memory_found = True
+                    break
+
+            if not memory_found:
+                return f"❌ Memory '{selected_memory}' not found", self.get_memory_info(selected_memory)
+
+            # Update last_updated timestamp
+            from datetime import datetime
+            registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+            # Write back to registry
+            with open(memory_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Memory '{selected_memory}' disabled successfully", self.get_memory_info(selected_memory)
+
+        except Exception as e:
+            return f"❌ Error disabling memory: {str(e)}", self.get_memory_info(selected_memory)
+
+    # ===== Tool Management Methods =====
+
+    def get_available_tools(self) -> List[str]:
+        """
+        Get list of available tools from registry.
+
+        Returns:
+            List of tool display names
+        """
+        try:
+            tools_registry_path = Path(__file__).parent.parent / 'tools' / 'tools_registry.json'
+
+            if not tools_registry_path.exists():
+                return []
+
+            with open(tools_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            tools = registry.get('tools', [])
+            return [tool.get('display_name', tool.get('name', 'Unknown')) for tool in tools]
+
+        except Exception as e:
+            logger.error(f"Error getting available tools: {e}")
+            return []
+
+    def get_tool_info(self, selected_tool: str) -> str:
+        """
+        Get information about a specific tool.
+
+        Args:
+            selected_tool: Display name of the tool
+
+        Returns:
+            Formatted string with tool information
+        """
+        if not selected_tool:
+            return "No tool selected"
+
+        try:
+            tools_registry_path = Path(__file__).parent.parent / 'tools' / 'tools_registry.json'
+
+            if not tools_registry_path.exists():
+                return "❌ Tools registry not found"
+
+            with open(tools_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find the tool by display_name or name
+            tool = None
+            for t in registry.get('tools', []):
+                if t.get('display_name') == selected_tool or t.get('name') == selected_tool:
+                    tool = t
+                    break
+
+            if not tool:
+                return f"❌ Tool '{selected_tool}' not found"
+
+            # Build info string
+            name = tool.get('name', 'Unknown')
+            display_name = tool.get('display_name', name)
+            description = tool.get('description', 'No description available')
+            enabled = tool.get('enabled', False)
+
+            # Handle three-state status
+            if enabled == 'auto':
+                status = "🟡 Auto"
+            elif enabled in [True, 'true']:
+                status = "🟢 Enabled"
+            else:
+                status = "⭕ Disabled"
+
+            tool_type = tool.get('type', 'Unknown')
+            directory = tool.get('directory', 'Not specified')
+            created_date = tool.get('created_date', 'N/A')
+            last_modified = tool.get('last_modified', 'N/A')
+
+            info = f"""**Tool: {display_name}**
+
+**Status:** {status}
+
+**Description:** {description}
+
+**Details:**
+- Name: {name}
+- Type: {tool_type}
+- Directory: {directory}
+- Created: {created_date}
+- Last Modified: {last_modified}
+"""
+
+            # Add metadata if available
+            metadata = tool.get('metadata', {})
+            if metadata:
+                info += "\n**Metadata:**\n"
+                for key, value in metadata.items():
+                    info += f"- {key}: {value}\n"
+
+            return info
+
+        except Exception as e:
+            logger.error(f"Error getting tool info: {e}")
+            return f"❌ Error getting tool info: {str(e)}"
+
+    def enable_tool(self, selected_tool: str) -> tuple:
+        """
+        Enable a tool.
+
+        Args:
+            selected_tool: Display name of the tool to enable
+
+        Returns:
+            Tuple of (status_message, updated_info)
+        """
+        if not selected_tool:
+            return "⚠️ No tool selected", ""
+
+        try:
+            tools_registry_path = Path(__file__).parent.parent / 'tools' / 'tools_registry.json'
+
+            if not tools_registry_path.exists():
+                return "❌ Tools registry not found", self.get_tool_info(selected_tool)
+
+            with open(tools_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find and enable the tool
+            tool_found = False
+            for tool in registry.get('tools', []):
+                if tool.get('display_name') == selected_tool or tool.get('name') == selected_tool:
+                    # Check supported states
+                    supported_states = tool.get('metadata', {}).get('supported_states', [])
+                    if supported_states:
+                        # Normalize supported states for comparison
+                        normalized_supported = []
+                        for state in supported_states:
+                            if state is False or state == 'false':
+                                normalized_supported.append('false')
+                            elif state is True or state == 'true':
+                                normalized_supported.append('true')
+                            elif state == 'auto':
+                                normalized_supported.append('auto')
+
+                        # Check if 'true' is supported
+                        if 'true' not in normalized_supported:
+                            states_str = ', '.join(normalized_supported)
+                            return f"❌ Tool '{selected_tool}' does not support enabled state: true\n\nSupported states: {states_str}", self.get_tool_info(selected_tool)
+
+                    if tool.get('enabled', False) is True:
+                        return f"⚠️ Tool '{selected_tool}' is already enabled", self.get_tool_info(selected_tool)
+                    tool['enabled'] = True
+                    from datetime import datetime
+                    tool['last_modified'] = datetime.now().strftime('%Y-%m-%d')
+                    tool_found = True
+                    break
+
+            if not tool_found:
+                return f"❌ Tool '{selected_tool}' not found", self.get_tool_info(selected_tool)
+
+            # Update last_updated timestamp
+            from datetime import datetime
+            registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+            # Write back to registry
+            with open(tools_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Tool '{selected_tool}' enabled successfully", self.get_tool_info(selected_tool)
+
+        except Exception as e:
+            return f"❌ Error enabling tool: {str(e)}", self.get_tool_info(selected_tool)
+
+    def auto_tool(self, selected_tool: str) -> tuple:
+        """
+        Set a tool to 'auto' mode (load at init, use when needed).
+
+        Args:
+            selected_tool: Display name of the tool to set to auto
+
+        Returns:
+            Tuple of (status_message, updated_info)
+        """
+        if not selected_tool:
+            return "⚠️ No tool selected", ""
+
+        try:
+            tools_registry_path = Path(__file__).parent.parent / 'tools' / 'tools_registry.json'
+
+            if not tools_registry_path.exists():
+                return "❌ Tools registry not found", self.get_tool_info(selected_tool)
+
+            with open(tools_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find and set tool to auto
+            tool_found = False
+            for tool in registry.get('tools', []):
+                if tool.get('display_name') == selected_tool or tool.get('name') == selected_tool:
+                    # Check supported states
+                    supported_states = tool.get('metadata', {}).get('supported_states', [])
+                    if supported_states:
+                        # Normalize supported states for comparison
+                        normalized_supported = []
+                        for state in supported_states:
+                            if state is False or state == 'false':
+                                normalized_supported.append('false')
+                            elif state is True or state == 'true':
+                                normalized_supported.append('true')
+                            elif state == 'auto':
+                                normalized_supported.append('auto')
+
+                        # Check if 'auto' is supported
+                        if 'auto' not in normalized_supported:
+                            states_str = ', '.join(normalized_supported)
+                            return f"❌ Tool '{selected_tool}' does not support enabled state: auto\n\nSupported states: {states_str}", self.get_tool_info(selected_tool)
+
+                    if tool.get('enabled') == 'auto':
+                        return f"⚠️ Tool '{selected_tool}' is already set to auto", self.get_tool_info(selected_tool)
+                    tool['enabled'] = 'auto'
+                    from datetime import datetime
+                    tool['last_modified'] = datetime.now().strftime('%Y-%m-%d')
+                    tool_found = True
+                    break
+
+            if not tool_found:
+                return f"❌ Tool '{selected_tool}' not found", self.get_tool_info(selected_tool)
+
+            # Update last_updated timestamp
+            from datetime import datetime
+            registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+            # Write back to registry
+            with open(tools_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Tool '{selected_tool}' set to auto mode", self.get_tool_info(selected_tool)
+
+        except Exception as e:
+            return f"❌ Error setting tool to auto: {str(e)}", self.get_tool_info(selected_tool)
+
+    def disable_tool(self, selected_tool: str) -> tuple:
+        """
+        Disable a tool.
+
+        Args:
+            selected_tool: Display name of the tool to disable
+
+        Returns:
+            Tuple of (status_message, updated_info)
+        """
+        if not selected_tool:
+            return "⚠️ No tool selected", ""
+
+        try:
+            tools_registry_path = Path(__file__).parent.parent / 'tools' / 'tools_registry.json'
+
+            if not tools_registry_path.exists():
+                return "❌ Tools registry not found", self.get_tool_info(selected_tool)
+
+            with open(tools_registry_path, 'r') as f:
+                registry = json.load(f)
+
+            # Find and disable the tool
+            tool_found = False
+            for tool in registry.get('tools', []):
+                if tool.get('display_name') == selected_tool or tool.get('name') == selected_tool:
+                    # Check supported states
+                    supported_states = tool.get('metadata', {}).get('supported_states', [])
+                    if supported_states:
+                        # Normalize supported states for comparison
+                        normalized_supported = []
+                        for state in supported_states:
+                            if state is False or state == 'false':
+                                normalized_supported.append('false')
+                            elif state is True or state == 'true':
+                                normalized_supported.append('true')
+                            elif state == 'auto':
+                                normalized_supported.append('auto')
+
+                        # Check if 'false' is supported
+                        if 'false' not in normalized_supported:
+                            states_str = ', '.join(normalized_supported)
+                            return f"❌ Tool '{selected_tool}' does not support enabled state: false\n\nSupported states: {states_str}", self.get_tool_info(selected_tool)
+
+                    if not tool.get('enabled', False):
+                        return f"⚠️ Tool '{selected_tool}' is already disabled", self.get_tool_info(selected_tool)
+                    tool['enabled'] = False
+                    from datetime import datetime
+                    tool['last_modified'] = datetime.now().strftime('%Y-%m-%d')
+                    tool_found = True
+                    break
+
+            if not tool_found:
+                return f"❌ Tool '{selected_tool}' not found", self.get_tool_info(selected_tool)
+
+            # Update last_updated timestamp
+            from datetime import datetime
+            registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+            # Write back to registry
+            with open(tools_registry_path, 'w') as f:
+                json.dump(registry, f, indent=2)
+
+            return f"✅ Tool '{selected_tool}' disabled successfully", self.get_tool_info(selected_tool)
+
+        except Exception as e:
+            return f"❌ Error disabling tool: {str(e)}", self.get_tool_info(selected_tool)
+
+    def enable_tool_with_restart_check(self, selected_tool: str) -> tuple:
+        """
+        Enable tool and show restart dialog if using local LLM.
+
+        Returns:
+            Tuple of (status_message, updated_info, dialog_visibility_update, pending_change)
+        """
+        # Call the regular enable method
+        status, info = self.enable_tool(selected_tool)
+
+        # Check if we need to show restart dialog (local LLM and successful change)
+        if not self.config.is_using_external_api() and "✅" in status:
+            # Show the restart dialog
+            return status, info, gr.update(visible=True), {"action": "enable", "tool": selected_tool}
+        else:
+            # Don't show dialog (external API or error occurred)
+            return status, info, gr.update(visible=False), None
+
+    def auto_tool_with_restart_check(self, selected_tool: str) -> tuple:
+        """
+        Set tool to auto and show restart dialog if using local LLM.
+
+        Returns:
+            Tuple of (status_message, updated_info, dialog_visibility_update, pending_change)
+        """
+        # Call the regular auto method
+        status, info = self.auto_tool(selected_tool)
+
+        # Check if we need to show restart dialog (local LLM and successful change)
+        if not self.config.is_using_external_api() and "✅" in status:
+            # Show the restart dialog
+            return status, info, gr.update(visible=True), {"action": "auto", "tool": selected_tool}
+        else:
+            # Don't show dialog (external API or error occurred)
+            return status, info, gr.update(visible=False), None
+
+    def disable_tool_with_restart_check(self, selected_tool: str) -> tuple:
+        """
+        Disable tool and show restart dialog if using local LLM.
+
+        Returns:
+            Tuple of (status_message, updated_info, dialog_visibility_update, pending_change)
+        """
+        # Call the regular disable method
+        status, info = self.disable_tool(selected_tool)
+
+        # Check if we need to show restart dialog (local LLM and successful change)
+        if not self.config.is_using_external_api() and "✅" in status:
+            # Show the restart dialog
+            return status, info, gr.update(visible=True), {"action": "disable", "tool": selected_tool}
+        else:
+            # Don't show dialog (external API or error occurred)
+            return status, info, gr.update(visible=False), None
+
+    def handle_tool_restart_yes(self) -> tuple:
+        """
+        Handle 'Yes' button click on restart dialog - restart the server.
+
+        Returns:
+            Tuple of (dialog_visibility_update, status_message)
+        """
+        try:
+            # Get the active server name
+            server_name = self.config.default_local_server if self.config.default_local_server else None
+
+            if not server_name:
+                # Legacy single-server mode - just restart default server
+                stop_msg, _ = self.stop_server()
+                time.sleep(2)
+                start_msg, _ = self.start_server()
+                status = f"Server restarted:\n{stop_msg}\n{start_msg}"
+            else:
+                # Multi-server mode - restart the active server
+                stop_msg, _ = self.stop_server_by_name(server_name)
+                time.sleep(2)
+                start_msg, _ = self.start_server_by_name(server_name)
+                status = f"Server '{server_name}' restarted:\n{stop_msg}\n{start_msg}"
+
+            # Hide the dialog and show restart status
+            return gr.update(visible=False), status
+
+        except Exception as e:
+            return gr.update(visible=False), f"❌ Error restarting server: {str(e)}"
+
     # ===== Main Interface Builder =====
 
     def create_interface(self) -> gr.Blocks:
@@ -1037,7 +1858,7 @@ class LLMFrameworkGUI:
                     with gr.Column():
                         gr.Markdown(f"### {startup_msg}")
                         with gr.Row():
-                            start_server_btn = gr.Button("Start Server", variant="primary")
+                            start_server_btn = gr.Button("Start Default Server", variant="primary")
                             skip_server_btn = gr.Button("Skip (use external API)", variant="secondary")
                         server_start_status = gr.Textbox(label="Status", lines=2, interactive=False)
 
@@ -1615,26 +2436,44 @@ class LLMFrameworkGUI:
                     # ===== Server Tab =====
                     with gr.Tab("🖥️ Server"):
                         gr.Markdown("### Server Management")
-                        gr.Markdown("Control your local LLM server")
+                        gr.Markdown("Start, stop, and monitor your local LLM servers")
 
-                        status_output = gr.Textbox(
-                            label="Server Status",
-                            lines=5,
-                            interactive=False,
-                            value='Click on "Check Status"'
-                        )
-    
                         with gr.Row():
-                            status_btn = gr.Button("Check Status", variant="secondary")
-                            start_btn = gr.Button("Start Server", variant="primary")
-                            stop_btn = gr.Button("Stop Server", variant="stop")
-                            restart_btn = gr.Button("Restart Server")
-    
+                            with gr.Column():
+                                gr.Markdown("#### Available Servers")
+                                servers_radio = gr.Radio(
+                                    label="Select a Server",
+                                    choices=self.get_available_servers(),
+                                    value=self.get_available_servers()[0] if self.get_available_servers() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Server Information")
+                                server_info_output = gr.Textbox(
+                                    label="Server Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_server_info(self.get_available_servers()[0] if self.get_available_servers() else "")
+                                )
+
+                        with gr.Row():
+                            start_server_btn = gr.Button("Start Server", variant="primary")
+                            stop_server_btn = gr.Button("Stop Server", variant="stop")
+                            restart_server_btn = gr.Button("Restart Server")
+                            refresh_server_btn = gr.Button("🔄 Refresh", variant="secondary")
+
+                        server_status = gr.Textbox(
+                            label="Status",
+                            lines=3,
+                            interactive=False
+                        )
+
                         # Server interactions
-                        status_btn.click(self.get_server_status, None, status_output)
-                        start_btn.click(self.start_server, None, status_output)
-                        stop_btn.click(self.stop_server, None, status_output)
-                        restart_btn.click(self.restart_server, None, status_output)
+                        servers_radio.change(self.get_server_info, servers_radio, server_info_output)
+                        start_server_btn.click(self.start_server_by_name, servers_radio, [server_status, server_info_output])
+                        stop_server_btn.click(self.stop_server_by_name, servers_radio, [server_status, server_info_output])
+                        restart_server_btn.click(self.restart_server_by_name, servers_radio, [server_status, server_info_output])
+                        refresh_server_btn.click(self.get_server_info, servers_radio, server_info_output)
     
                     # ===== Models Tab =====
                     with gr.Tab("📦 Models"):
@@ -1793,6 +2632,9 @@ class LLMFrameworkGUI:
                             attach_btn = gr.Button("Attach Data Store", variant="primary")
                             detach_btn = gr.Button("Detach Data Store")
 
+                        with gr.Row():
+                            refresh_datastores_btn = gr.Button("Refresh")
+
                         datastore_status = gr.Textbox(
                             label="Status",
                             lines=2,
@@ -1803,6 +2645,59 @@ class LLMFrameworkGUI:
                         datastores_radio.change(self.get_datastore_info, datastores_radio, datastore_info_output)
                         attach_btn.click(self.attach_datastore, datastores_radio, [datastore_status, datastore_info_output])
                         detach_btn.click(self.detach_datastore, datastores_radio, [datastore_status, datastore_info_output])
+                        refresh_datastores_btn.click(
+                            lambda: (gr.update(choices=self.get_available_datastores(), value=self.get_available_datastores()[0] if self.get_available_datastores() else None),
+                                   self.get_datastore_info(self.get_available_datastores()[0] if self.get_available_datastores() else "")),
+                            None,
+                            [datastores_radio, datastore_info_output]
+                        )
+
+                    # ===== Memory Tab =====
+                    with gr.Tab("🧠 Memory"):
+                        gr.Markdown("### Memory Management")
+                        gr.Markdown("Enable or disable memory instances for persistent information storage")
+
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Available Memory Instances")
+                                memories_radio = gr.Radio(
+                                    label="Select a Memory Instance",
+                                    choices=self.get_available_memories(),
+                                    value=self.get_available_memories()[0] if self.get_available_memories() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Memory Information")
+                                memory_info_output = gr.Textbox(
+                                    label="Memory Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_memory_info(self.get_available_memories()[0] if self.get_available_memories() else "")
+                                )
+
+                        with gr.Row():
+                            enable_memory_btn = gr.Button("Enable Memory", variant="primary")
+                            disable_memory_btn = gr.Button("Disable Memory")
+
+                        with gr.Row():
+                            refresh_memories_btn = gr.Button("Refresh")
+
+                        memory_status = gr.Textbox(
+                            label="Status",
+                            lines=2,
+                            interactive=False
+                        )
+
+                        # Memory interactions
+                        memories_radio.change(self.get_memory_info, memories_radio, memory_info_output)
+                        enable_memory_btn.click(self.enable_memory, memories_radio, [memory_status, memory_info_output])
+                        disable_memory_btn.click(self.disable_memory, memories_radio, [memory_status, memory_info_output])
+                        refresh_memories_btn.click(
+                            lambda: (gr.update(choices=self.get_available_memories(), value=self.get_available_memories()[0] if self.get_available_memories() else None),
+                                   self.get_memory_info(self.get_available_memories()[0] if self.get_available_memories() else "")),
+                            None,
+                            [memories_radio, memory_info_output]
+                        )
 
                     # ===== Modules Tab =====
                     with gr.Tab("🔌 Modules"):
@@ -1831,6 +2726,9 @@ class LLMFrameworkGUI:
                             enable_btn = gr.Button("Enable Module", variant="primary")
                             disable_btn = gr.Button("Disable Module")
 
+                        with gr.Row():
+                            refresh_modules_btn = gr.Button("Refresh")
+
                         module_status = gr.Textbox(
                             label="Status",
                             lines=2,
@@ -1841,11 +2739,104 @@ class LLMFrameworkGUI:
                         modules_radio.change(self.get_module_info, modules_radio, module_info_output)
                         enable_btn.click(self.enable_module, modules_radio, [module_status, module_info_output])
                         disable_btn.click(self.disable_module, modules_radio, [module_status, module_info_output])
+                        refresh_modules_btn.click(
+                            lambda: (gr.update(choices=self.get_available_modules(), value=self.get_available_modules()[0] if self.get_available_modules() else None),
+                                   self.get_module_info(self.get_available_modules()[0] if self.get_available_modules() else "")),
+                            None,
+                            [modules_radio, module_info_output]
+                        )
 
                     # ===== Tools Tab =====
                     with gr.Tab("🛠️ Tools"):
                         gr.Markdown("### Tool Management")
-                        gr.Markdown("For future use...")
+                        gr.Markdown("Enable or disable tool features and compatibility layers")
+
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("#### Available Tools")
+                                tools_radio = gr.Radio(
+                                    label="Select a Tool",
+                                    choices=self.get_available_tools(),
+                                    value=self.get_available_tools()[0] if self.get_available_tools() else None
+                                )
+
+                            with gr.Column():
+                                gr.Markdown("#### Tool Information")
+                                tool_info_output = gr.Textbox(
+                                    label="Tool Details",
+                                    lines=12,
+                                    interactive=False,
+                                    value=self.get_tool_info(self.get_available_tools()[0] if self.get_available_tools() else "")
+                                )
+
+                        with gr.Row():
+                            enable_tool_btn = gr.Button("Enable", variant="primary")
+                            auto_tool_btn = gr.Button("Auto", variant="secondary")
+                            disable_tool_btn = gr.Button("Disable")
+
+                        with gr.Row():
+                            refresh_tools_btn = gr.Button("Refresh")
+
+                        tool_status = gr.Textbox(
+                            label="Status",
+                            lines=2,
+                            interactive=False
+                        )
+
+                        # Restart confirmation dialog components (initially hidden)
+                        restart_dialog_visible = gr.State(False)
+                        pending_tool_change = gr.State(None)  # Stores the tool change info
+
+                        with gr.Group(visible=False) as restart_dialog:
+                            gr.Markdown("### 🔄 Server Restart Required")
+                            gr.Markdown("Tool settings have been changed. Would you like to restart the local server now for changes to take effect?")
+                            with gr.Row():
+                                restart_yes_btn = gr.Button("Yes, Restart Server", variant="primary")
+                                restart_no_btn = gr.Button("No, I'll Restart Later")
+
+                        # Tool interactions
+                        tools_radio.change(self.get_tool_info, tools_radio, tool_info_output)
+
+                        # Enable tool with restart prompt
+                        enable_tool_btn.click(
+                            self.enable_tool_with_restart_check,
+                            tools_radio,
+                            [tool_status, tool_info_output, restart_dialog, pending_tool_change]
+                        )
+
+                        # Auto tool with restart prompt
+                        auto_tool_btn.click(
+                            self.auto_tool_with_restart_check,
+                            tools_radio,
+                            [tool_status, tool_info_output, restart_dialog, pending_tool_change]
+                        )
+
+                        # Disable tool with restart prompt
+                        disable_tool_btn.click(
+                            self.disable_tool_with_restart_check,
+                            tools_radio,
+                            [tool_status, tool_info_output, restart_dialog, pending_tool_change]
+                        )
+
+                        # Handle restart confirmation
+                        restart_yes_btn.click(
+                            self.handle_tool_restart_yes,
+                            None,
+                            [restart_dialog, tool_status]
+                        )
+
+                        restart_no_btn.click(
+                            lambda: gr.update(visible=False),
+                            None,
+                            restart_dialog
+                        )
+
+                        refresh_tools_btn.click(
+                            lambda: (gr.update(choices=self.get_available_tools(), value=self.get_available_tools()[0] if self.get_available_tools() else None),
+                                   self.get_tool_info(self.get_available_tools()[0] if self.get_available_tools() else "")),
+                            None,
+                            [tools_radio, tool_info_output]
+                        )
 
             # Authentication handler
             def handle_login(entered_key, current_auth):
