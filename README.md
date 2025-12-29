@@ -57,6 +57,9 @@ The following are the main key features of the Local LLM Framework (LLM):
 
 ## Index 
 
+The following is the index of data sources and how-to's to get your up and running
+
+- [Setup and installation](QUICK_INSTALL.md)
 
 
 ## System Requirements
