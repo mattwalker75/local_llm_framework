@@ -124,37 +124,50 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
    - We will go through the process to download and convert the following Model
       - https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct
 
-Change to the main bin directory:
+- Change to the main bin directory
+   ```bash
    cd local_llm_framework/bin
+   ```
 
-Run the following command to download the above mentioned LLM Model:
+- Run the following command to download the above mentioned LLM Model
+   ```bash
    ./llf model download --huggingface-model Qwen/Qwen3-Coder-30B-A3B-Instruct
+   ```
 
-Run the following command to very the image downloaded successfully:
-   NOTE:  The models are downloaded here:  local_llm_framework/models
+- Run the following command to very the image downloaded successfully
+  NOTE:  The models are downloaded here:  `local_llm_framework/models`
+   ```bash
       ./llf model list
       ./llf model info --model Qwen/Qwen3-Coder-30B-A3B-Instruct
+   ```
 
-Get the directory name of the newly downloaded LLM model
-   cd local_llm_framework/models
-   ls
-   < MAKE NOTE OF THE DIRECTORY:  Qwen--Qwen3-Coder-30B-A3B-Instruct >
+- Get the directory name of the newly downloaded LLM model
+   ```bash
+    cd local_llm_framework/models
+    ls
+    < MAKE NOTE OF THE DIRECTORY:  Qwen--Qwen3-Coder-30B-A3B-Instruct >
+   ```
 
-Run the following commands to convert  the downloaded image to a GGUF format:
+- Run the following commands to convert the downloaded image to a GGUF format
+   ```bash
    cd local_llm_framework/bin/tools
    ./convert_huggingface_llm_2_gguf.sh -s Qwen--Qwen3-Coder-30B-A3B-Instruct -d Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF
-      NOTE:  If you want to replace an existing Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF, then
-             you can use the -f parameter
+   ```
+   NOTE:  If you want to replace an existing Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF, then you can use the -f parameter
 
-Collect converted LLM Model information:
+- Collect converted LLM Model information
+   ```bash
    cd local_llm_framework/bin
    ./llf model list
-      NOTE:  You should see your new model named Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF
+   ```
+      - NOTE:  You should see your new model named Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF
+   ```bash
    ./llf model info --model Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF
-      NOTE:  Look at the "Path" and make note of the directory name in the "models" directory.
-             EXAMPLE NAME: Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF
-      NOTE:  Look at the "Path" and look at the content of that directory.  Make note of the .guff file name.
-             EXAMPLE NAME:  Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf
+   ```
+      - NOTE:  Look at the "Path" and make note of the directory name in the "models" directory.
+         - EXAMPLE NAME: `Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF`
+      - NOTE:  Look at the "Path" and look at the content of that directory.  Make note of the .guff file name.
+         - EXAMPLE NAME:  `Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf`
 
 Update the config.json file with the collected LLM Model information
    Modify the following file:  local_llm_framework/configs/config.json
