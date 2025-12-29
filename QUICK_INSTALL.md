@@ -91,7 +91,7 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
 - Modify the following file:  `local_llm_framework/configs/config.json`<br>
   Ensure `llama_server_path` is pointing to the llama-server binary.<br>
-  EXAMPLE:<br>
+  EXAMPLE:
       ```json
       {
         "local_llm_server": {
