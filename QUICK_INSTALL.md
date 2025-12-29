@@ -2,7 +2,9 @@
 # Install and Setup
 
 
-## INSTALL AND SETUP llama.cpp.  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
+## INSTALL AND SETUP llama.cpp  
+
+NOTE:  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
 
 - Downlaod the llama.cpp code repo
    ```bash
@@ -23,74 +25,98 @@
    ./bin/llama-server --version
    ```
 
-Your newly compiled Llama Server is located in the following location:
-  llama.cpp/build/bin/llama-server
+- Your newly compiled Llama Server is located in the following location
+   ```bash
+   llama.cpp/build/bin/llama-server
+   ```
 
-You will want to verify that the following tools exist because they will be needed 
-to convert downloaded LLM models to GGUF format so they can run on the Llama Server:
-  llama.cpp/convert_hf_to_gguf.py
-  llama.cpp/build/bin/llama-quantize
+- You will want to verify that the following tools exist because they will be needed to convert downloaded LLM models to GGUF format so they can run on the Llama Server
+   ```bash
+   llama.cpp/convert_hf_to_gguf.py
+   llama.cpp/build/bin/llama-quantize
+   ```
 
---------------------------------------------------
 
-DOWNLOAD AND SETUP THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT:
+## DOWNLOAD AND SETUP THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT
 
-Download the Local LLM Framework (llf) code repo:
-  git clone https://github.com/mattwalker75/local_llm_framework.git
+- Download the Local LLM Framework (llf) code repo
+   ```bash
+   git clone https://github.com/mattwalker75/local_llm_framework.git
+   ```
 
-Change to directory:
-  cd local_llm_framework
+- Change to directory
+   ```bash
+   cd local_llm_framework
+   ```
 
-Create Python virtual environment:
-  python -m venv llf_venv
+- Create Python virtual environment
+   ```bash
+   python -m venv llf_venv
+   ```
 
-Change over to the virtual environment:
-  source llf_venv/bin/activate
+- Change over to the virtual environment
+   ```bash
+   source llf_venv/bin/activate
+   ```
    NOTE:  Remember to always be in the virtual environment
 
-Verify you are in the virtual environment:
-  echo $VIRTUAL_ENV
+- Verify you are in the virtual environment
+   ```bash
+   echo $VIRTUAL_ENV
+   ```
 
-Install all the required Python packages:
-  pip install -e .
+- Install all the required Python packages
+   ```bash
+   pip install -e .
+   ```
 
-Test the CLI environment:
-  cd bin
-  ./llf --version
-  ./llf -h
+- Test the CLI environment
+   ```bash
+   cd bin
+   ./llf --version
+   ./llf -h
+   ```
  
-Test the GUI environment:
-  cd bin
-  ./llf gui
+- Test the GUI environment
+   ```bash
+   cd bin
+   ./llf gui
+   ```
     - Click on "Shutdown GUI"   
 
---------------------------------------------------
 
-CONNECT THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT TO THE LLAMA.CPP 
+## CONNECT THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT TO THE LLAMA.CPP 
+
 NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
-Modify the following file:  local_llm_framework/configs/config.json
-   Ensure "llama_server_path" is pointing to the llama-server binary.
+- Modify the following file:  `local_llm_framework/configs/config.json`
+   Ensure `llama_server_path` is pointing to the llama-server binary.
    EXAMPLE:
+      ```bash
       {
         "local_llm_server": {
           "llama_server_path": "../llama.cpp/build/bin/llama-server",
           "server_host": "127.0.0.1",
           "server_port": 8000,
+      ```
 
-Modify the following file:  local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh
+- Modify the following file:  `local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh`
    Modify the following parameters:
-      Update the below parameter to point to llama.cpp/convert_hf_to_gguf.py:
+      Update the below parameter to point to `llama.cpp/convert_hf_to_gguf.py`:
+      ```bash
          #  Convert HuggingFace LLM to GGUF format for Llama
          CONVERT_TOOL="../../../llama.cpp/convert_hf_to_gguf.py"
+      ```
 
-      Update the below parameter to point to llama.cpp/build/bin/llama-quantize:
+      Update the below parameter to point to `llama.cpp/build/bin/llama-quantize`:
+      ```bash
+         #  Convert HuggingFace LLM to GGUF format for Llama
          #  Quantizing the GGUF converted LLM
          QUANTIZER="../../../llama.cpp/build/bin/llama-quantize"
+      ```
 
---------------------------------------------------
 
-DOWNLOAD YOUR FIRST LLM MODEL AND CONVERT TO GGUF FORMAT FOR THE LLAMA SERVER
+## DOWNLOAD YOUR FIRST LLM MODEL AND CONVERT TO GGUF FORMAT FOR THE LLAMA SERVER
 NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
 LLM Model download information:
