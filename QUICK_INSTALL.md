@@ -92,13 +92,13 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 - Modify the following file:  `local_llm_framework/configs/config.json`<br>
   Ensure `llama_server_path` is pointing to the llama-server binary.<br>
   EXAMPLE:
-      ```json
+   ```json
       {
         "local_llm_server": {
           "llama_server_path": "../llama.cpp/build/bin/llama-server",
           "server_host": "127.0.0.1",
           "server_port": 8000,
-      ```
+   ```
 
 - Modify the following file:  `local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh`
   Modify the following parameters:<br>
