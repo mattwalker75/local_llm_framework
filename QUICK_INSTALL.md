@@ -1,7 +1,7 @@
 
 # Install and Setup
 
-
+<br>
 ## INSTALL AND SETUP llama.cpp  
 
 NOTE:  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
@@ -35,8 +35,7 @@ NOTE:  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
    llama.cpp/convert_hf_to_gguf.py
    llama.cpp/build/bin/llama-quantize
    ```
-
-
+<br>
 ## DOWNLOAD AND SETUP THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT
 
 - Download the Local LLM Framework (llf) code repo
@@ -84,14 +83,14 @@ NOTE:  THIS IS NEEDED IF YOU ARE GOING TO RUN LLM MODELS LOCALLY
    ```
     - Click on "Shutdown GUI"   
 
-
+<br>
 ## CONNECT THE LOCAL LLM FRAMEWORK (llf) ENVIRONMENT TO THE LLAMA.CPP 
 
 NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
-- Modify the following file:  `local_llm_framework/configs/config.json`
-   Ensure `llama_server_path` is pointing to the llama-server binary.
-   EXAMPLE:
+- Modify the following file:  `local_llm_framework/configs/config.json`<br>
+  Ensure `llama_server_path` is pointing to the llama-server binary.
+  EXAMPLE:
       ```bash
       {
         "local_llm_server": {
@@ -101,21 +100,21 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
       ```
 
 - Modify the following file:  `local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh`
-   Modify the following parameters:
-      Update the below parameter to point to `llama.cpp/convert_hf_to_gguf.py`:
+  Modify the following parameters:
+   - Update the below parameter to point to `llama.cpp/convert_hf_to_gguf.py`:
       ```bash
          #  Convert HuggingFace LLM to GGUF format for Llama
          CONVERT_TOOL="../../../llama.cpp/convert_hf_to_gguf.py"
       ```
 
-      Update the below parameter to point to `llama.cpp/build/bin/llama-quantize`:
+   - Update the below parameter to point to `llama.cpp/build/bin/llama-quantize`:
       ```bash
          #  Convert HuggingFace LLM to GGUF format for Llama
          #  Quantizing the GGUF converted LLM
          QUANTIZER="../../../llama.cpp/build/bin/llama-quantize"
       ```
 
-
+<br>
 ## DOWNLOAD YOUR FIRST LLM MODEL AND CONVERT TO GGUF FORMAT FOR THE LLAMA SERVER
 NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
