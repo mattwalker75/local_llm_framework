@@ -60,17 +60,17 @@ The following are the main key features of the Local LLM Framework (LLM):
 The following is the index of data sources and how-to's to get your up and running
 
 - [Setup and installation](QUICK_INSTALL.md)
-- [ALWAYS USE THIS VIRTUAL ENVIROMENT!!!](Docs/virtual_environment.md)
-- [Major components of LLF](Docs/Major_Components.md)
-- [Directory Structure](Docs/Directory_Structure.md)
-- [Helpful Commands](Docs/Helpful_Commands.md)
+- [ALWAYS USE THIS VIRTUAL ENVIROMENT!!!](docs/virtual_environment.md)
+- [Major components of LLF](docs/Major_Components.md)
+- [Directory Structure](docs/Directory_Structure.md)
+- [Helpful Commands](docs/Helpful_Commands.md)
 - Differnet configuration files
-   - [main configuration config.json](Docs/config_json.md)
-   - [LLM prompt configuration config_prompt.json](Docs/config_prompt_json.md)
-   - [Data Store registry data_store_registry.json](Docs/data_store_registry_json.md)
-   - [Memory registry memory_registry.json](Docs/memory_registry_json.md)
-   - [Module registry modules_registry.json](Docs/modules_registry_json.md)
-   - [Tool registry tools_registry.json](Docs/tools_registryi_json.md)
+   - [main configuration config.json](docs/config_json.md)
+   - [LLM prompt configuration config_prompt.json](docs/config_prompt_json.md)
+   - [Data Store registry data_store_registry.json](docs/data_store_registry_json.md)
+   - [Memory registry memory_registry.json](docs/memory_registry_json.md)
+   - [Module registry modules_registry.json](docs/modules_registry_json.md)
+   - [Tool registry tools_registry.json](docs/tools_registryi_json.md)
 
 ## System Requirements
 We will review what computer hardware was used for the developement of the LLM framework..
