@@ -100,13 +100,13 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
 - Modify the following file:  `local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh`
   Modify the following parameters:<br>
-   - Update the below parameter to point to `llama.cpp/convert_hf_to_gguf.py`:
+   - Update the below parameter to point to `llama.cpp/convert_hf_to_gguf.py`
       ```bash
          #  Convert HuggingFace LLM to GGUF format for Llama
          CONVERT_TOOL="../../../llama.cpp/convert_hf_to_gguf.py"
       ```
 
-   - Update the below parameter to point to `llama.cpp/build/bin/llama-quantize`:
+   - Update the below parameter to point to `llama.cpp/build/bin/llama-quantize`
       ```bash
          #  Convert HuggingFace LLM to GGUF format for Llama
          #  Quantizing the GGUF converted LLM
@@ -117,12 +117,12 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 ## DOWNLOAD YOUR FIRST LLM MODEL AND CONVERT TO GGUF FORMAT FOR THE LLAMA SERVER
 NOTE:  This is only needed if you are using llama.cpp to run local LLM models
 
-LLM Model download information:
-   We will be downloading LLM Models from the following website:
-      https://huggingface.co
+- LLM Model download information
+   - We will be downloading LLM Models from the following website
+      - https://huggingface.co
 
-   We will go through the process to download and convert the following Model:
-      https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct
+   - We will go through the process to download and convert the following Model
+      - https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct
 
 Change to the main bin directory:
    cd local_llm_framework/bin
