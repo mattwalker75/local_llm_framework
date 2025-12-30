@@ -1,3 +1,0 @@
-
-Tools registry info...
-
