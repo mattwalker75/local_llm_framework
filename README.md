@@ -65,12 +65,12 @@ The following is the index of data sources and how-to's to get your up and runni
 - [Directory Structure](docs/Directory_Structure.md)
 - [Helpful Commands](docs/Helpful_Commands.md)
 - Differnet configuration files
-   - [main configuration config.json](docs/config_json.md)
-   - [LLM prompt configuration config_prompt.json](docs/config_prompt_json.md)
-   - [Data Store registry data_store_registry.json](docs/data_store_registry_json.md)
-   - [Memory registry memory_registry.json](docs/memory_registry_json.md)
-   - [Module registry modules_registry.json](docs/modules_registry_json.md)
-   - [Tool registry tools_registry.json](docs/tools_registry_json.md)
+   - [main configuration config.json](docs/Config_Files/config_json.md)
+   - [LLM prompt configuration config_prompt.json](docs/Config_Files/config_prompt_json.md)
+   - [Data Store registry data_store_registry.json](docs/Config_Files/data_store_registry_json.md)
+   - [Memory registry memory_registry.json](docs/Config_Files/memory_registry_json.md)
+   - [Module registry modules_registry.json](docs/Config_Files/modules_registry_json.md)
+   - [Tool registry tools_registry.json](docs/Config_Files/tools_registry_json.md)
 - How to documents
    - [Use LLM as your personal document reference tool](docs/HOW_TOs/Setup_Datastore_RAG.md)
 
