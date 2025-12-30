@@ -7,6 +7,8 @@ A quick reference guide for using the LLF (Local LLM Framework) command-line int
 > source llf_venv/bin/activate
 > ```
 
+This covers how to use the `llf` command, which is located in the `local_llm_framwork/bin` directory.
+
 ---
 
 ## General Commands
