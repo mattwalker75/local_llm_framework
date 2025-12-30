@@ -11,229 +11,56 @@ This document provides a comprehensive outline of the directory structure for th
 ```
 local_llm_framework/
 ├── bin
-│   ├── manual_tests
-│   │   ├── test_cli_mode.sh
-│   │   └── test_server.sh
-│   ├── tools
-│   │   └── convert_huggingface_llm_2_gguf.sh
-│   ├── README.md
-│   ├── demo_cli.sh
-│   ├── llf
-│   └── start_llama_server.sh
-├── configs
-│   ├── backups
-│   │   ├── REAME.md
-│   │   ├── config_20251219_214450.json
-│   │   ├── config_20251220_190537.json
-│   │   └── config_prompt_20251219_214624.json
-│   ├── config_examples
-│   │   ├── README.md
-│   │   ├── config.anthropic.example
-│   │   ├── config.anthropic.json
-│   │   ├── config.json.example
-│   │   ├── config.local.example
-│   │   ├── config.local.gguf.example
-│   │   ├── config.local.gguf.json
-│   │   ├── config.local.huggingface.example
-│   │   ├── config.local.huggingface.json
-│   │   ├── config.multi-server.json
-│   │   ├── config.openai.example
-│   │   └── config.openai.json
-│   ├── config_prompt_examples
-│   │   ├── config_prompt.coding_assistant.json
-│   │   ├── config_prompt.creative_writer.json
-│   │   ├── config_prompt.helpful_assistant.json
-│   │   ├── config_prompt.minimal.json
-│   │   ├── config_prompt.socratic_tutor.json
-│   │   └── config_prompt.structured_conversation.json
-│   ├── README.md
-│   ├── config.json
-│   ├── config.json.ORG
-│   ├── config_multi_server.json
-│   ├── config_prompt.json
-│   └── config_single_server.json
+│   ├── manual_tests      -> Scripts to help troubleshoot issues
+│   ├── tools             -> Stand alone tools for specific tasks
+│   │   └── data_store    -> Used to create Data Store files
+│   ├── llf                    -> MAIN PROGRAM TO USE
+│   └── start_llama_server.sh  -> Internally used
+├── configs               -> Main config files 
+│   ├── backups           -> Backs of config.json and config_prompt.json files
+│   ├── config_examples   -> Example config.json files
+│   ├── config_prompt_examples  -> Example config_prompt.json files
+│   ├── config.json             -> Main configuration file
+│   └── config_prompt.json      -> Prompt configuration
 ├── data_stores
-│   ├── embedding_models
-│   │   └── README.md
-│   ├── tools
-│   │   ├── CREATE_VECTOR_STORE.sh
-│   │   ├── Create_VectorStore.py
-│   │   ├── Process_DOC.py
-│   │   ├── Process_MD.py
-│   │   ├── Process_PDF.py
-│   │   ├── Process_TXT.py
-│   │   ├── Process_WEB.py
-│   │   └── Validate_JSONL.py
-│   ├── vector_stores
-│   │   └── README.md
-│   ├── README_FOR_RAG.txt
-│   ├── data_store_registry.json
-│   ├── data_store_registry_EXAMPLE.json
-│   └── download_embedding_models.py
-├── docs
-│   ├── archive
-│   │   ├── CHANGELOG_TOOL_EXECUTION_MODES.md
-│   │   ├── CLI_MODE_IMPLEMENTATION.md
-│   │   ├── CODEBASE_REVIEW.md
-│   │   ├── CONFIG_README.md
-│   │   ├── COVERAGE_FIX_SUMMARY.md
-│   │   ├── COVERAGE_IMPROVEMENT.md
-│   │   ├── EMBEDDING_MODELS.md
-│   │   ├── FINAL_TEST_STATUS.md
-│   │   ├── GUI_CONTINUOUS_LISTENING.md
-│   │   ├── GUI_MODULE_RELOAD.md
-│   │   ├── GUI_STT_TTS_IMPROVEMENTS.md
-│   │   ├── GUI_VOICE_FEATURES_COMPLETE.md
-│   │   ├── HOUSEKEEPING_2025-12-17.md
-│   │   ├── LOG_FILE_FEATURE.md
-│   │   ├── MEMORY_DEBUG_GUIDE.md
-│   │   ├── MEMORY_SOLUTION.md
-│   │   ├── MEMORY_SYSTEM.md
-│   │   ├── MODULE_ENABLE_DISABLE_ALL.md
-│   │   ├── MODULE_ENHANCEMENTS_SUMMARY.md
-│   │   ├── MULTI_SERVER_IMPLEMENTATION.md
-│   │   ├── NEW_TEST_COVERAGE.md
-│   │   ├── PERFORMANCE_REVIEW.md
-│   │   ├── QUICK_REFERENCE.md
-│   │   ├── QUICK_REFERENCE_2.md
-│   │   ├── README.md
-│   │   ├── README_2.md
-│   │   ├── README_3.md
-│   │   ├── README_RAG.md
-│   │   ├── SIMPLEMOCK_SOLUTION.md
-│   │   ├── TESTING_QUICK_REFERENCE.md
-│   │   ├── TESTING_README.md
-│   │   ├── TESTING_STATUS.md
-│   │   ├── TEST_FIXES_SUMMARY.md
-│   │   ├── TEST_HANG_FIX.md
-│   │   ├── TOOL_EXECUTION_MODES.md
-│   │   ├── USAGE.md
-│   │   ├── VOICE_FEATURES_QUICK_START.md
-│   │   ├── XML_FORMAT_GUIDE.md
-│   │   ├── cli_improvements.md
-│   │   ├── implementation_summary.md
-│   │   └── workflow_README.md
-│   ├── Directory_Structure.md
-│   ├── Helpful_Commands.md
-│   ├── Major_Components.md
-│   ├── config_json.md
-│   ├── config_prompt_json.md
-│   ├── data_store_registry_json.md
-│   ├── memory_registry_json.md
-│   ├── modules_registry_json.md
-│   ├── tools_registryi_json.md
-│   └── virtual_environment.md
-├── llf
-│   ├── README.md
-│   ├── __init__.py
-│   ├── cli.py
-│   ├── config.py
-│   ├── gui.py
-│   ├── llm_runtime.py
-│   ├── logging_config.py
-│   ├── memory_manager.py
-│   ├── memory_tools.py
-│   ├── model_manager.py
-│   ├── operation_detector.py
-│   ├── prompt_config.py
-│   ├── rag_retriever.py
-│   ├── server_commands.py
-│   ├── tools_manager.py
-│   └── tts_stt_utils.py
-├── logs
-│   ├── README.md
-│   └── gui.log
-├── memory
-│   ├── main_memory
-│   │   ├── README.md
-│   │   ├── index.json
-│   │   ├── memory.jsonl
-│   │   └── metadata.json
-│   ├── README.md
-│   └── memory_registry.json
-├── models
-│   ├── Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF
-│   │   └── Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf
-│   ├── mradermacher--CodeLlama-70b-Instruct-hf-i1-GGUF
-│   │   └── CodeLlama-70b-Instruct-hf.i1-Q5_K_M.gguf
-│   └── README.md
-├── modules
-│   ├── speech2text
-│   │   ├── README.md
-│   │   ├── __init__.py
-│   │   ├── manual_test_sst.py
-│   │   ├── module_info.json
-│   │   ├── module_info.json.backup
-│   │   ├── stt_engine.py
-│   │   └── stt_engine.py.backup
-│   ├── text2speech
-│   │   ├── .coverage
-│   │   ├── README.md
-│   │   ├── __init__.py
-│   │   ├── list_voices.py
-│   │   ├── module_info.json
-│   │   ├── module_info.json.backup
-│   │   ├── test_tts.py
-│   │   ├── tts_base.py
-│   │   ├── tts_macos.py
-│   │   └── tts_pyttsx3.py
-│   └── modules_registry.json
-├── tests
-│   ├── README.md
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── manual_test_missing_config.py
-│   ├── pytest_hooks.py
-│   ├── test_cli.py
-│   ├── test_config.py
-│   ├── test_config_tool_execution_mode.py
-│   ├── test_gui.py
-│   ├── test_llm_runtime.py
-│   ├── test_llm_runtime_multiserver.py
-│   ├── test_llm_runtime_multiserver.py.bak
-│   ├── test_logging_config.py
-│   ├── test_memory_integration.py
-│   ├── test_memory_tool_calling.py
-│   ├── test_model_manager.py
-│   ├── test_multiserver_config.py
-│   ├── test_operation_detector.py
-│   ├── test_prompt_config.py
-│   ├── test_rag_retriever.py
-│   ├── test_server_commands.py
-│   ├── test_stt_engine.py
-│   ├── test_text2speech_module.py.deprecated
-│   ├── test_tools_manager.py
-│   ├── test_tts_pyttsx3.py
-│   ├── test_tts_stt_utils.py
-│   └── test_xml_tool_parser.py
-├── tools
-│   ├── xml_format
-│   │   ├── __init__.py
-│   │   └── parser.py
-│   ├── README.md
-│   └── tools_registry.json
-├── workflow
-│   ├── 1_Create_PRD.txt
-│   ├── 2_Multi_Line_Input_CLI.txt
-│   ├── 3_Input_as_Parm.txt
-│   ├── 4_Create_Mockup.txt
-│   ├── 5_GUI.txt
-│   ├── 6_Testing_Outline.txt
-│   ├── 7_Text_to_Speech.txt
-│   ├── 8_Data_Store.txt
-│   ├── 9_Memory_Commands.txt
-│   ├── ChatGPT_image.png
-│   └── PRD.pdf
-├── .coverage
-├── .coveragerc
-├── QUICK_INSTALL.md
+│   ├── embedding_models  -> Local embedding models used for Data Stores 
+│   ├── vector_stores     -> Location of data store files used by LLM
+│   ├── data_store_registry.json   -> Registery file to track data store files
+├── docs                  -> Documentation
+├── llf                   -> Main program files
+│   ├── cli.py            -> Command line interface commands
+│   ├── config.py         -> Work with .json config files
+│   ├── gui.py            -> Graphical user interface
+│   ├── llm_runtime.py    -> Manage and commuicate with backend LLM llama.ccp server
+│   ├── logging_config.py      -> Manages logging
+│   ├── memory_manager.py      -> Manages files in "memory" directory
+│   ├── memory_tools.py        -> Enables LLM models to work with "memory" data
+│   ├── model_manager.py       -> Manage local LLM models
+│   ├── operation_detector.py  -> Logic to determine if LLM needs "memory" access
+│   ├── prompt_config.py       -> Manages prompt data when talking with LLM
+│   ├── rag_retriever.py       -> Retrieve data from "data_stores" directory
+│   ├── server_commands.py     -> Manage local multi-LLM server
+│   ├── tools_manager.py       -> Manage tools in the "tools" directory
+│   └── tts_stt_utils.py       -> Manage modules in the "modules" directory
+├── logs                 -> Logs
+├── memory               -> Where long term LLM memory is stored
+│   ├── main_memory      -> Default long term memory
+│   └── memory_registry.json   -> Registry file to track memory files 
+├── models               -> Locally downloaded LLM's
+├── modules              -> Modules that enhance end user engagement
+│   ├── speech2text      -> Enable end user to talk to LLM (speech to text)
+│   ├── text2speech      -> Enable LLM to talk to end user (text to speech)
+│   └── modules_registry.json  -> Registry file to track module files
+├── tests                -> Unit Tests for developer use
+├── tools                -> Tools to extend LLM functionality
+│   └── tools_registry.json    -> Registry file to track tool files
+├── workflow             -> Author's notes 
+├── QUICK_INSTALL.md     -> Install and setup document
 ├── README.md
-├── RUN_UNIT_TESTS.sh
-├── pytest.ini
-├── requirements.txt
-├── setup.py
-├── test_memory_debug.py
-└── test_results.txt
+├── RUN_UNIT_TESTS.sh    -> Runs Unit Tests (used for development)
+├── pytest.ini           -> Used for Unit Testing (used for development)
+├── setup.py             -> Needed for install
+└── requirements.txt     -> Needed for install
 ```
 
 ---
@@ -263,16 +90,10 @@ RAG (Retrieval-Augmented Generation) data storage and management.
 
 - **`embedding_models/`**: Directory for storing downloaded embedding models
 - **`vector_stores/`**: Directory for vector database storage
-- **`tools/`**: Scripts for processing various document formats (PDF, DOC, MD, TXT, Web) and creating vector stores
 - **`data_store_registry.json`**: Registry of available data stores
 
 ### `/docs`
-Project documentation and archived implementation notes.
-
-- **Configuration documentation**: Detailed guides for config files
-- **`archive/`**: Historical implementation summaries and feature documentation
-- **`Major_Components.md`**: Overview of system architecture
-- **`Helpful_Commands.md`**: Quick reference for common operations
+Project documentation and notes.
 
 ### `/llf`
 Core Python package containing the main framework logic.
@@ -295,8 +116,6 @@ Key modules:
 
 ### `/logs`
 Application log files.
-
-- **`gui.log`**: GUI application logs
 
 ### `/memory`
 Persistent memory storage for conversations.
@@ -327,13 +146,6 @@ Tool system and compatibility layers.
 - **`xml_format/`**: XML-to-JSON function call parser for models without native JSON tool calling
 - **`tools_registry.json`**: Registry of available tools and their states
 
-### `/workflow`
-Development workflow documentation and planning materials.
-
-Contains PRD (Product Requirements Document) and implementation planning files.
-
----
-
 ## Key Files
 
 - **`README.md`**: Main project documentation and setup instructions
@@ -343,11 +155,3 @@ Contains PRD (Product Requirements Document) and implementation planning files.
 - **`pytest.ini`**: Pytest configuration
 - **`.coveragerc`**: Code coverage configuration
 - **`RUN_UNIT_TESTS.sh`**: Script to run the full test suite
-
----
-
-## Notes
-
-- The `llf_venv/` directory (not shown) contains the Python virtual environment
-- The `.cache/` directory (not shown) contains Hugging Face model cache
-- `__pycache__/` directories (not shown) contain Python bytecode
