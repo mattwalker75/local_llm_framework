@@ -153,5 +153,4 @@ Tool system and compatibility layers.
 - **`requirements.txt`**: Python package dependencies
 - **`setup.py`**: Package installation configuration
 - **`pytest.ini`**: Pytest configuration
-- **`.coveragerc`**: Code coverage configuration
 - **`RUN_UNIT_TESTS.sh`**: Script to run the full test suite
