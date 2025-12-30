@@ -1,13 +1,4 @@
 #!/usr/bin/env python
-"""
-Standalone test script for the Speech-to-Text module.
-
-Usage:
-    python test_tts.py "Your text here"
-    python test_tts.py --text "Your text here"
-    python test_tts.py --list-voices
-    python test_tts.py --text "Hello" --voice "voice_id" --rate 150 --volume 0.8
-"""
 
 import sys
 import argparse
