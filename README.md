@@ -72,13 +72,13 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Module registry modules_registry.json](docs/Config_Files/modules_registry_json.md)
    - [Tool registry tools_registry.json](docs/Config_Files/tools_registry_json.md)
 - How To documents
+   - [Cool stuff to do with chat](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want](docs/HOW_TOs/Setup_Memory.md)
-   - [Talk to the LLM and have it talk back](docs/HOW_TOs/Setup_Chat.md)
+   - [How to talk to the LLLM and have it talk back](docs/HOW_TOs/Setup_Talking.md)
    - [Use all these tools with ChatGTP](docs/HOW_TOs/Setup_External_LLM.md)
    - [Access the backend local LLM from another computer](docs/HOW_TOs/Setup_Network_Access_LLM.md)
    - [Access the GUI from another computer](docs/HOW_TOs/Setup_Network_Access_GUI.md)
-   - [How to talk to the LLLM and have it talk back](docs/HOW_TOs/Setup_TTS_STT.md)
    - [How to download and use other LLM's](docs/HOW_TOs/Setup_LLMs.md)
    - [Troubleshooting Notes](docs/HOW_TOs/Troubleshooting.md)
  
