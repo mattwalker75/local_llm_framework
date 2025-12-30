@@ -349,6 +349,8 @@ with which prompts I passed to the AI.
 3.  Moved all the tool scripts to a single location under bin
 4.  Had Claude create a tool for me and used the following prompt
        -  10_Tool_script.txt
+5.  Had Claude create/modify some tool testing scripts with the following prompt:
+       - 11_More_Tools.txt
  
 
 #### Develop different tools that can be enabled and disabled
