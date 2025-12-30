@@ -71,6 +71,8 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Memory registry memory_registry.json](docs/memory_registry_json.md)
    - [Module registry modules_registry.json](docs/modules_registry_json.md)
    - [Tool registry tools_registry.json](docs/tools_registry_json.md)
+- How to documents
+   - [Use LLM as your personal document reference tool](docs/HOW_TOs/Setup_Datastore_RAG.md)
 
 ## System Requirements
 We will review what computer hardware was used for the developement of the LLM framework..
