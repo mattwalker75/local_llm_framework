@@ -1,56 +1,178 @@
-SOME HELPFUL COMMANDS YOU CAN RUN ( cd local_llm_framework/bin )
+# Helpful Commands
 
-ALWAYS Ensure you are in the virtual environment:
-  source ../llf_venv/bin/activate
-   NOTE:  Remember to always be in the virtual environment
+A quick reference guide for using the LLF (Local LLM Framework) command-line interface.
 
-General online help:
-   ./llf -h
+> **Note:** Make sure you've activated the virtual environment first:
+> ```bash
+> source llf_venv/bin/activate
+> ```
 
-Online help about the server command:
-   ./llf server -h
+---
 
-Start local LLM server:
-   ./llf server start --daemon
+## General Commands
 
-Stop local LLM server:
-   ./llf server stop
+### Check LLF Version
+```bash
+llf --version
+```
 
-Send non-interactive chat request to LLM:
-   ./llf chat --cli "what is the origin of Christmas?"
+### Display General Help
+```bash
+llf -h
+```
 
-Start interactive chat in the terminal:
-   ./llf chat
+### Display Help for Specific Commands
+```bash
+llf download -h
+llf chat -h
+llf server -h
+llf model -h
+```
 
-   Helpful commands in the interactive chat:
+---
 
-      View help menu:  help
-      Exit interactive chat:  exit
-      View the model you are using:  info
+## Model Management
 
-List the downloaded models:
-   ./llf model list
+### List Downloaded Models
+```bash
+llf list
+```
 
-Download a specific model from https://huggingface.co:
-   ./llf model download --huggingface-model <MODEL NAME>
-   EXAMPLE:  ./llf model download --huggingface-model deepseek-ai/DeepSeek-V3.2
+### Show Model Information
+```bash
+llf info
+```
 
-   NOTE:  You will need to run the conversion process earlier in this document.
-          to convert the downloaded LLM to a GGUF format so it will be
-          compatible with the local Llama server.  If the conversion process
-          does NOT work, then you can not use the model
+### Download a Model
+```bash
+llf download
+```
 
-Convert a newly downloaded Model to GGUF format to run locally:
-   cd tools
-   ./convert_huggingface_llm_2_gguf.sh -s <MODEL_NAME> -d <MODEL_NAME>-GGUF
-      NOTE:  If you want to replace an existing <MODEL_NAME>-GGUF, then
-             you can use the -f parameter
+### Download with Custom Directory
+```bash
+llf -d /custom/path download
+```
 
-   NOTE:  If the conversion process is not successful, then the model can not
-          be used by the local Llama LLM Server.
+---
 
-Remove old Models:
-   cd ../models
-   ls -l
-   rm -Rf <DIRECTORY NAME WITH MODEL IN IT TO DELETE>
+## Chat & Interaction
 
+### Start Interactive Chat
+```bash
+llf
+```
+
+### Chat with Custom Model Directory
+```bash
+llf -d /custom/path chat
+```
+
+---
+
+## Server Management
+
+### Start the Server
+```bash
+llf server start
+```
+
+### Stop the Server
+```bash
+llf server stop
+```
+
+### Check Server Status
+```bash
+llf server status
+```
+
+### List All Configured Servers
+```bash
+llf server list
+```
+
+---
+
+## Logging Options
+
+You can adjust the verbosity of log output using the `--log-level` flag:
+
+### Debug Mode (Detailed Information)
+```bash
+llf --log-level DEBUG chat
+```
+
+### Info Mode (Normal Operations - Default)
+```bash
+llf --log-level INFO chat
+```
+
+### Warning Mode (Warnings and Errors Only)
+```bash
+llf --log-level WARNING chat
+```
+
+### Error Mode (Errors Only)
+```bash
+llf --log-level ERROR chat
+```
+
+---
+
+## Advanced Usage
+
+### Custom Configuration File
+```bash
+llf -c /path/to/config.json chat
+```
+
+### Combine Options
+```bash
+llf -d /custom/models --log-level DEBUG download
+```
+
+---
+
+## Additional Resources
+
+For more detailed information, see:
+- **README.md** - Overview and setup instructions
+- **USAGE.md** - Detailed usage guide
+- **QUICK_REFERENCE.md** - Quick command reference
+
+---
+
+## Common Workflows
+
+### First-Time Setup
+```bash
+# 1. Activate virtual environment
+source llf_venv/bin/activate
+
+# 2. Download a model
+llf download
+
+# 3. Start chatting
+llf
+```
+
+### Using with Custom Models
+```bash
+# 1. Place your GGUF model in a custom directory
+mkdir -p models/my_custom_model
+
+# 2. Use it with LLF
+llf -d models/my_custom_model chat
+```
+
+### Server Mode
+```bash
+# 1. Start the server
+llf server start
+
+# 2. In another terminal, interact with it
+# (Server runs on http://127.0.0.1:8000/v1 by default)
+
+# 3. Stop the server when done
+llf server stop
+```
