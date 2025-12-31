@@ -65,7 +65,7 @@ The following is the index of data sources and how-to's to get your up and runni
 - [Directory Structure](docs/Directory_Structure.md)
 - [Basic User Guide](docs/Basic_User_Guide.md)
 - [Helpful Commands](docs/Helpful_Commands.md)
-- [Tools Directory](docs/Tools.md)
+- [/bin/tools Directory](docs/Tools.md)
 - Differnet configuration files
    - [main configuration config.json](docs/Config_Files/config_json.md)
    - [LLM prompt configuration config_prompt.json](docs/Config_Files/config_prompt_json.md)
