@@ -17,14 +17,14 @@
       "server_port": 8001,
       "healthcheck_interval": 2.0,
       "auto_start": false,
-      "model_dir": "mradermacher--CodeLlama-70b-Instruct-hf-i1-GGUF",
-      "gguf_file": "CodeLlama-70b-Instruct-hf.i1-Q5_K_M.gguf"
+      "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "gguf_file": "Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf"
     }
   ],
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
     "api_key": "EMPTY",
-    "model_name": "mradermacher/CodeLlama-70b-Instruct-hf-i1-GGUF",
+    "model_name": "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF",
     "tool_execution_mode": "dual_pass_write_only",
     "default_local_server": "qwen3-coder"
   },
