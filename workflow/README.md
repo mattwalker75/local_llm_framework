@@ -351,7 +351,11 @@ with which prompts I passed to the AI.
        -  10_Tool_script.txt
 5.  Had Claude create/modify some tool testing scripts with the following prompt:
        - 11_More_Tools.txt
- 
+6.  Here is one of the prompts I gave to Claude to create documentation that
+    I then went in and modified.  I used AI the create the initial draft that I 
+    then cleaned up.
+       - 12_Documentation.txt
+        
 
 #### Develop different tools that can be enabled and disabled
 
