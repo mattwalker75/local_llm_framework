@@ -27,6 +27,28 @@ This document will review the other commands and programs that you can use and h
    - A new memory module is now created in the `memory` directory and the `memory/memory_registry.json` registry file is fully updated.
    - You can run the `llf memory` commands to test out the new memory module
 
+- test_speech2text.py
+   - Test if your computer supports the Speech-To-Text `module`, which is located in `modules/speech2text`.
+   - Run the following command to perform the test
+   ```bash
+   ./test_speech2text.py
+   ```
+   - View the optional advance parameters you can use
+   ```bash
+   ./test_speech2text.py -h
+   ```
+
+- test_text2speech.py
+   - Test if your computer supports the Text-To-Speech `module`, which is located in `modules/text2speech`.
+   - Run the following command to perform the test
+   ```bash
+   ./test_text2speech.py "this is a test"
+   ```
+   - View the optional advance parameters you can use
+   ```bash
+   ./test_text2speech.py -h
+   ```
+
 ---
 
 ### Tools in the `tools/data_store` directory

@@ -1,22 +1,29 @@
 #!/usr/bin/env python
 """
-Standalone test script for the Text-to-Speech module.
+Test script for Text-to-Speech module.
+
+This script allows you to test your computer's speakers and verify that
+text-to-speech functionality works correctly.
 
 Usage:
-    python test_tts.py "Your text here"
-    python test_tts.py --text "Your text here"
-    python test_tts.py --list-voices
-    python test_tts.py --text "Hello" --voice "voice_id" --rate 150 --volume 0.8
+    ./test_text2speech.py "Your text here"
+    ./test_text2speech.py --text "Your text here"
+    ./test_text2speech.py --list-voices
+    ./test_text2speech.py --text "Hello" --voice "voice_id" --rate 150 --volume 0.8
+
+Author: Local LLM Framework
+License: MIT
 """
 
 import sys
 import argparse
 from pathlib import Path
 
-# Add the modules directory to the path so we can import text2speech
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add the project root to path (script is in bin/tools/, so go up 2 levels)
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from text2speech import TextToSpeech
+from modules.text2speech import TextToSpeech
 
 
 def list_voices():

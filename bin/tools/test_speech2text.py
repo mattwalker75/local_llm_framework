@@ -1,13 +1,28 @@
 #!/usr/bin/env python
+"""
+Test script for Speech-to-Text module.
+
+This script allows you to test your computer's microphone and verify that
+speech-to-text functionality works correctly.
+
+Usage:
+    ./test_speech2text.py
+    ./test_speech2text.py --max_time 30 --s_timeout 1.0
+    ./test_speech2text.py --s_threshold 300 --sample 44100
+
+Author: Local LLM Framework
+License: MIT
+"""
 
 import sys
 import argparse
 from pathlib import Path
 
-# Add the modules directory to the path so we can import text2speech
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add the project root to path (script is in bin/tools/, so go up 2 levels)
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from speech2text import SpeechToText
+from modules.speech2text import SpeechToText
 
 
 def print_args(cl_args):
