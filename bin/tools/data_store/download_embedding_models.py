@@ -123,9 +123,11 @@ Examples:
     if args.cache_dir:
         cache_dir = Path(args.cache_dir)
     else:
-        # Default: data_stores/embedding_models relative to this script
-        script_dir = Path(__file__).parent
-        cache_dir = script_dir / 'embedding_models'
+        # Default: data_stores/embedding_models (project root)
+        # Script is in bin/tools/data_store/, so go up 4 levels to project root
+        # download_embedding_models.py -> data_store -> tools -> bin -> project_root
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        cache_dir = project_root / 'data_stores' / 'embedding_models'
 
     # Create cache directory if it doesn't exist
     cache_dir.mkdir(parents=True, exist_ok=True)
