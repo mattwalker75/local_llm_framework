@@ -16,6 +16,7 @@ from typing import Optional
 import signal
 from datetime import datetime, UTC
 import json
+import shutil
 
 from rich.console import Console
 from rich.panel import Panel
@@ -1046,6 +1047,7 @@ Examples:
   llf memory create MEMORY_NAME           Create a new memory instance
   llf memory enable MEMORY_NAME           Enable a memory instance
   llf memory disable MEMORY_NAME          Disable a memory instance
+  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
   llf memory info MEMORY_NAME             Show memory instance information
 
   # Module management
@@ -1548,6 +1550,7 @@ actions:
   create MEMORY_NAME        Create a new memory instance
   enable MEMORY_NAME        Enable a memory instance
   disable MEMORY_NAME       Disable a memory instance
+  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
   info MEMORY_NAME          Show memory instance information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -2533,9 +2536,87 @@ Contains the memory data files
             console.print(f"Memory location: memory/{memory_name}/")
             console.print()
 
+        elif action == 'delete':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for delete command")
+                console.print("[dim]Usage: llf memory delete MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory = None
+                memory_index = None
+                for idx, m in enumerate(memories):
+                    if m.get('name') == memory_name or m.get('display_name') == memory_name:
+                        memory = m
+                        memory_index = idx
+                        break
+
+                if not memory:
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' not found")
+                    return 1
+
+                # Check if memory is enabled
+                if memory.get('enabled', False):
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' is currently enabled")
+                    console.print(f"[yellow]Please disable it first using: llf memory disable {memory_name}[/yellow]")
+                    return 1
+
+                # Get directory path
+                directory = memory.get('directory', memory_name)
+                project_root = Path(__file__).parent.parent
+                memory_dir = project_root / 'memory' / directory
+
+                # Delete directory if it exists
+                if memory_dir.exists():
+                    try:
+                        shutil.rmtree(memory_dir)
+                        console.print(f"[green]✓[/green] Deleted directory: {memory_dir}")
+                    except Exception as e:
+                        console.print(f"[red]Error:[/red] Failed to delete directory {memory_dir}: {e}")
+                        return 1
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Directory not found: {memory_dir}")
+
+                # Remove from registry
+                memories.pop(memory_index)
+                registry['memories'] = memories
+                registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+                # Save registry
+                try:
+                    with open(memory_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+                    console.print(f"[green]✓[/green] Removed entry from memory_registry.json")
+                except Exception as e:
+                    console.print(f"[red]Error:[/red] Failed to update registry file: {e}")
+                    return 1
+
+                console.print()
+                console.print(f"[green]Successfully deleted memory instance '{memory_name}'[/green]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to delete memory: {e}")
+                return 1
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, enable, disable, info, create[/dim]")
+            console.print("[dim]Available actions: list, enable, disable, info, create, delete[/dim]")
             return 1
 
         return 0

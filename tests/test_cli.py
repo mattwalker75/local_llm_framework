@@ -3277,3 +3277,132 @@ class TestMemoryCreateCommand:
             # Check that name required error was printed
             print_calls = [str(call) for call in mock_print.call_args_list]
             assert any('name required' in str(call).lower() for call in print_calls)
+
+
+class TestMemoryDeleteCommand:
+    """Tests for 'llf memory delete' command."""
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_delete_success(self, mock_setup_logging, mock_print, tmp_path):
+        """Test successfully deleting a disabled memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open, MagicMock
+        from pathlib import Path
+
+        registry_data = {
+            "version": "1.0",
+            "last_updated": "2026-01-05",
+            "memories": [
+                {
+                    "name": "test_memory",
+                    "display_name": "Test Memory",
+                    "enabled": False,
+                    "directory": "test_memory"
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'delete', 'test_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        # Mock the memory directory
+        mock_memory_dir = MagicMock(spec=Path)
+        mock_memory_dir.exists.return_value = True
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))), \
+             patch('llf.cli.shutil.rmtree') as mock_rmtree:
+
+            result = main()
+
+            # Check that success message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('successfully deleted' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_delete_enabled_memory(self, mock_setup_logging, mock_print):
+        """Test deleting an enabled memory instance (should fail)."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": [
+                {
+                    "name": "enabled_memory",
+                    "display_name": "Enabled Memory",
+                    "enabled": True,
+                    "directory": "enabled_memory"
+                }
+            ]
+        }
+
+        test_args = ['llf', 'memory', 'delete', 'enabled_memory']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Check that enabled error was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('currently enabled' in str(call).lower() for call in print_calls)
+            assert any('disable it first' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_delete_not_found(self, mock_setup_logging, mock_print):
+        """Test deleting a non-existent memory instance."""
+        from llf.cli import main
+        import json
+        from unittest.mock import mock_open
+
+        registry_data = {
+            "version": "1.0",
+            "memories": []
+        }
+
+        test_args = ['llf', 'memory', 'delete', 'nonexistent']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config), \
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+
+            result = main()
+
+            assert result == 1
+            # Check that not found error was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('not found' in str(call).lower() for call in print_calls)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.setup_logging')
+    def test_memory_delete_no_name(self, mock_setup_logging, mock_print):
+        """Test deleting without providing a memory name."""
+        from llf.cli import main
+
+        test_args = ['llf', 'memory', 'delete']
+        mock_config = MagicMock()
+        mock_config.log_level = 'INFO'
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('llf.cli.get_config', return_value=mock_config):
+
+            result = main()
+
+            assert result == 1
+            # Check that name required error was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any('name required' in str(call).lower() for call in print_calls)

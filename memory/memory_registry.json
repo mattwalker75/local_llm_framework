@@ -5,39 +5,9 @@
     {
       "name": "main_memory",
       "display_name": "Main Memory",
-      "description": "Long-term memory for persistent information storage",
+      "description": "Custom memory instance",
       "directory": "main_memory",
       "enabled": true,
-      "type": "persistent",
-      "created_date": null,
-      "last_modified": null,
-      "metadata": {
-        "storage_type": "json",
-        "max_entries": 10000,
-        "compression": false
-      }
-    },
-    {
-      "name": "test_memory",
-      "display_name": "Test Memory",
-      "description": "Custom memory instance",
-      "directory": "test_memory",
-      "enabled": false,
-      "type": "persistent",
-      "created_date": "2026-01-05",
-      "last_modified": null,
-      "metadata": {
-        "storage_type": "json",
-        "max_entries": 10000,
-        "compression": false
-      }
-    },
-    {
-      "name": "matt_test",
-      "display_name": "Matt Test",
-      "description": "Custom memory instance",
-      "directory": "matt_test",
-      "enabled": false,
       "type": "persistent",
       "created_date": "2026-01-05",
       "last_modified": null,

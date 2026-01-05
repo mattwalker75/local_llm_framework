@@ -1,74 +1,21 @@
 {
-  "mem_example_001": {
+  "mem_7cd5f43e21bd": {
     "line": 0,
-    "timestamp": "2025-12-27T00:00:00Z",
-    "type": "note",
+    "timestamp": "2026-01-05T18:52:06.766084+00:00Z",
+    "type": "fact",
     "tags": [
-      "example",
-      "system"
+      "personal",
+      "name",
+      "user_preference"
     ]
   },
-  "mem_5e1780260419": {
+  "mem_7f4e570690f0": {
     "line": 1,
-    "timestamp": "2025-12-28T04:32:30.577162+00:00Z",
-    "type": "fact",
+    "timestamp": "2026-01-05T18:53:06.062930+00:00Z",
+    "type": "preference",
     "tags": [
-      "name",
-      "identity"
-    ]
-  },
-  "mem_79f8b59e7615": {
-    "line": 2,
-    "timestamp": "2025-12-28T04:34:35.649822+00:00Z",
-    "type": "fact",
-    "tags": [
-      "personal",
-      "user_info"
-    ]
-  },
-  "mem_8269849dc7ae": {
-    "line": 3,
-    "timestamp": "2025-12-28T05:08:12.322085+00:00Z",
-    "type": "fact",
-    "tags": [
-      "programming",
-      "preferences"
-    ]
-  },
-  "mem_cc4546f55c5e": {
-    "line": 4,
-    "timestamp": "2025-12-28T05:11:01.520670+00:00Z",
-    "type": "fact",
-    "tags": [
-      "personal",
+      "user_preference",
       "name"
-    ]
-  },
-  "mem_f40a8b0543bf": {
-    "line": 5,
-    "timestamp": "2026-01-05T00:10:25.479513+00:00Z",
-    "type": "context",
-    "tags": [
-      "etiquette",
-      "communication"
-    ]
-  },
-  "mem_c13e4cd6dc58": {
-    "line": 6,
-    "timestamp": "2026-01-05T00:11:05.638202+00:00Z",
-    "type": "fact",
-    "tags": [
-      "programming",
-      "coding assistance"
-    ]
-  },
-  "mem_fad699cd6e11": {
-    "line": 7,
-    "timestamp": "2026-01-05T00:53:48.716041+00:00Z",
-    "type": "fact",
-    "tags": [
-      "name",
-      "personal"
     ]
   }
 }
