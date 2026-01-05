@@ -27,7 +27,7 @@ By default, the LLM server only accepts connections from your local computer (`1
 | Aspect | Localhost Only (Default) | Network Access |
 |--------|-------------------------|----------------|
 | **Binding** | 127.0.0.1 | 0.0.0.0 |
-| **Access** | Only your computer | Any device on network |
+| **Access** | Only your computer | Remote users |
 | **Security** | Secure (isolated) | Less secure (exposed) |
 | **Use Case** | Personal use | Share with team/devices |
 | **Setup** | Automatic | Requires configuration |
