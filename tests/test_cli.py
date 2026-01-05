@@ -9,7 +9,7 @@ import sys
 from io import StringIO
 
 from llf.config import Config
-from llf.cli import CLI, download_command, list_command, info_command, server_command
+from llf.cli import CLI, download_command, list_command, info_command, delete_command, server_command
 
 
 @pytest.fixture
@@ -570,6 +570,152 @@ class TestCLICommands:
 
         assert result == 0
         mock_manager.get_model_info.assert_called_once()
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_model_not_found(self, mock_config, mock_manager_class, mock_print, mock_prompt):
+        """Test delete command when model does not exist."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = False
+
+        args = MagicMock()
+        args.model_name = 'nonexistent/model'
+        args.force = False
+
+        result = delete_command(args)
+
+        assert result == 1
+        mock_manager.is_model_downloaded.assert_called_once_with('nonexistent/model')
+        mock_manager.delete_model.assert_not_called()
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_cancelled(self, mock_config, mock_manager_class, mock_print, mock_prompt):
+        """Test delete command when user cancels."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+        mock_manager.get_model_info.return_value = {
+            'name': 'test/model',
+            'path': '/fake/path',
+            'size_gb': 5.0
+        }
+        mock_prompt.return_value = 'no'
+
+        args = MagicMock()
+        args.model_name = 'test/model'
+        args.force = False
+
+        result = delete_command(args)
+
+        assert result == 0
+        mock_manager.delete_model.assert_not_called()
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_success(self, mock_config, mock_manager_class, mock_print, mock_prompt):
+        """Test delete command successful deletion."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+        mock_manager.get_model_info.return_value = {
+            'name': 'test/model',
+            'path': '/fake/path',
+            'size_gb': 5.0
+        }
+        mock_manager.delete_model.return_value = True
+        mock_prompt.return_value = 'yes'
+
+        args = MagicMock()
+        args.model_name = 'test/model'
+        args.force = False
+
+        result = delete_command(args)
+
+        assert result == 0
+        mock_manager.delete_model.assert_called_once_with('test/model')
+
+    @patch('llf.cli.Prompt.ask')
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_failure(self, mock_config, mock_manager_class, mock_print, mock_prompt):
+        """Test delete command when deletion fails."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+        mock_manager.get_model_info.return_value = {
+            'name': 'test/model',
+            'path': '/fake/path',
+            'size_gb': 5.0
+        }
+        mock_manager.delete_model.return_value = False
+        mock_prompt.return_value = 'yes'
+
+        args = MagicMock()
+        args.model_name = 'test/model'
+        args.force = False
+
+        result = delete_command(args)
+
+        assert result == 1
+        mock_manager.delete_model.assert_called_once_with('test/model')
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_with_force_success(self, mock_config, mock_manager_class, mock_print):
+        """Test delete command with --force flag (no confirmation needed)."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+        mock_manager.get_model_info.return_value = {
+            'name': 'test/model',
+            'path': '/fake/path',
+            'size_gb': 5.0
+        }
+        mock_manager.delete_model.return_value = True
+
+        args = MagicMock()
+        args.model_name = 'test/model'
+        args.force = True
+
+        result = delete_command(args)
+
+        assert result == 0
+        mock_manager.delete_model.assert_called_once_with('test/model')
+        # Verify that Prompt.ask was NOT called (no confirmation needed)
+
+    @patch('llf.cli.console.print')
+    @patch('llf.cli.ModelManager')
+    @patch('llf.cli.get_config')
+    def test_delete_command_with_force_failure(self, mock_config, mock_manager_class, mock_print):
+        """Test delete command with --force flag when deletion fails."""
+        mock_manager = MagicMock()
+        mock_manager_class.return_value = mock_manager
+        mock_manager.is_model_downloaded.return_value = True
+        mock_manager.get_model_info.return_value = {
+            'name': 'test/model',
+            'path': '/fake/path',
+            'size_gb': 5.0
+        }
+        mock_manager.delete_model.return_value = False
+
+        args = MagicMock()
+        args.model_name = 'test/model'
+        args.force = True
+
+        result = delete_command(args)
+
+        assert result == 1
+        mock_manager.delete_model.assert_called_once_with('test/model')
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.LLMRuntime')

@@ -782,6 +782,53 @@ Verification:
     return 0
 
 
+def delete_command(args) -> int:
+    """
+    Handle delete command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    config = get_config()
+    model_manager = ModelManager(config)
+
+    model_name = args.model_name
+
+    # Check if model exists
+    if not model_manager.is_model_downloaded(model_name):
+        console.print(f"[red]Model '{model_name}' not found in models directory.[/red]")
+        console.print(f"[yellow]Use 'llf model list' to see available models.[/yellow]")
+        return 1
+
+    # Get model info for confirmation
+    info = model_manager.get_model_info(model_name)
+    model_path = info['path']
+
+    # Ask for confirmation unless --force is used
+    if not args.force:
+        console.print(f"[yellow]Are you sure you want to delete model '{model_name}'?[/yellow]")
+        console.print(f"[dim]Path: {model_path}[/dim]")
+        if 'size_gb' in info:
+            console.print(f"[dim]Size: {info['size_gb']} GB[/dim]")
+
+        confirm = Prompt.ask("[yellow]Type 'yes' to confirm[/yellow]", default="no")
+
+        if confirm.lower() != 'yes':
+            console.print("[cyan]Deletion cancelled.[/cyan]")
+            return 0
+
+    # Delete the model
+    if model_manager.delete_model(model_name):
+        console.print(f"[green]Successfully deleted model '{model_name}'.[/green]")
+        return 0
+    else:
+        console.print(f"[red]Failed to delete model '{model_name}'.[/red]")
+        return 1
+
+
 def server_command(args) -> int:
     """
     Handle server command.
@@ -970,6 +1017,7 @@ Examples:
   llf model list                   List downloaded models
   llf model info                   Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model delete MODEL_NAME      Delete a model and all its contents
 
   # GUI interface
   llf gui                          Start web-based GUI (localhost only, port 7860)
@@ -1162,6 +1210,12 @@ Examples:
   llf model info                        Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
                                         View information about a specific downloaded model
+
+  # Delete a model
+  llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Delete a model and all its contents
+  llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF --force
+                                        Delete without confirmation prompt
         """
     )
     model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
@@ -1223,6 +1277,24 @@ Examples:
         '--model',
         metavar='NAME',
         help='Model identifier to show info for (default: configured default model)'
+    )
+
+    # model delete
+    delete_parser = model_subparsers.add_parser(
+        'delete',
+        help='Delete a model from local storage',
+        description='Permanently delete a model directory and all its contents from local storage.'
+    )
+    delete_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to delete (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+    delete_parser.add_argument(
+        '--force',
+        '-f',
+        action='store_true',
+        help='Skip confirmation prompt and delete immediately'
     )
 
     # Server command
@@ -1625,6 +1697,8 @@ actions:
             return list_command(args)
         elif args.action == 'info':
             return info_command(args)
+        elif args.action == 'delete':
+            return delete_command(args)
         else:
             model_parser.print_help()
             return 0
