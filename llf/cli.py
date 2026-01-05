@@ -14,7 +14,7 @@ import argparse
 from pathlib import Path
 from typing import Optional
 import signal
-from datetime import datetime
+from datetime import datetime, UTC
 import json
 
 from rich.console import Console
@@ -1043,6 +1043,7 @@ Examples:
   # Memory management
   llf memory list                         List all memory instances
   llf memory list --enabled               List only enabled memory instances
+  llf memory create MEMORY_NAME           Create a new memory instance
   llf memory enable MEMORY_NAME           Enable a memory instance
   llf memory disable MEMORY_NAME          Disable a memory instance
   llf memory info MEMORY_NAME             Show memory instance information
@@ -1544,6 +1545,7 @@ actions:
 actions:
   list                      List memory instances
   list --enabled            List only enabled memory instances
+  create MEMORY_NAME        Create a new memory instance
   enable MEMORY_NAME        Enable a memory instance
   disable MEMORY_NAME       Disable a memory instance
   info MEMORY_NAME          Show memory instance information
@@ -2349,9 +2351,191 @@ finally:
                 console.print(f"[red]Error:[/red] Failed to retrieve memory info: {e}")
                 return 1
 
+        elif action == 'create':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for create command")
+                console.print("[dim]Usage: llf memory create MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Validate memory name
+            if not memory_name.replace('_', '').replace('-', '').isalnum():
+                console.print("[red]Error:[/red] Memory name must contain only alphanumeric characters, underscores, and hyphens")
+                return 1
+
+            # Check if memory already exists in registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Check if memory name already exists in registry
+                for memory in memories:
+                    if memory.get('name') == memory_name:
+                        console.print(f"[red]Error:[/red] Memory '{memory_name}' already exists in registry")
+                        console.print(f"[yellow]Delete it first before creating a new one with the same name[/yellow]")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read memory registry: {e}")
+                return 1
+
+            # Define paths
+            project_root = Path(__file__).parent.parent
+            memory_dir = project_root / 'memory' / memory_name
+
+            # Check if directory already exists
+            if memory_dir.exists():
+                console.print(f"[red]Error:[/red] Memory directory already exists: {memory_dir}")
+                console.print(f"[yellow]Delete it first before creating a new one with the same name[/yellow]")
+                return 1
+
+            # Create memory structure
+            console.print(f"Creating new memory instance: '{memory_name}'")
+            console.print()
+
+            # Create directory
+            try:
+                memory_dir.mkdir(parents=True, exist_ok=False)
+                console.print(f"[green]✓[/green] Created directory: {memory_dir}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create directory {memory_dir}: {e}")
+                return 1
+
+            # Create index.json (empty object)
+            index_file = memory_dir / 'index.json'
+            try:
+                with open(index_file, 'w') as f:
+                    json.dump({}, f, indent=2)
+                console.print(f"[green]✓[/green] Created: {index_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create index.json: {e}")
+                return 1
+
+            # Create memory.jsonl (empty file)
+            memory_file = memory_dir / 'memory.jsonl'
+            try:
+                memory_file.touch()
+                console.print(f"[green]✓[/green] Created: {memory_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create memory.jsonl: {e}")
+                return 1
+
+            # Create metadata.json (initialized with defaults)
+            metadata_file = memory_dir / 'metadata.json'
+            current_time = datetime.now(UTC).isoformat() + "Z"
+
+            metadata = {
+                "total_entries": 0,
+                "last_updated": current_time,
+                "created_date": current_time,
+                "size_bytes": 0,
+                "oldest_entry": None,
+                "newest_entry": None,
+                "entry_types": {
+                    "note": 0,
+                    "fact": 0,
+                    "preference": 0,
+                    "task": 0,
+                    "context": 0
+                },
+                "statistics": {
+                    "average_importance": 0.0,
+                    "most_accessed_id": None,
+                    "total_accesses": 0
+                }
+            }
+
+            try:
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓[/green] Created: {metadata_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create metadata.json: {e}")
+                return 1
+
+            # Create README.md
+            readme_file = memory_dir / 'README.md'
+            readme_content = """
+Contains the memory data files
+
+"""
+
+            try:
+                with open(readme_file, 'w') as f:
+                    f.write(readme_content)
+                console.print(f"[green]✓[/green] Created: {readme_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create README.md: {e}")
+                return 1
+
+            # Add to registry
+            display_name = memory_name.replace('_', ' ').replace('-', ' ').title()
+            current_date = datetime.now().strftime('%Y-%m-%d')
+
+            new_entry = {
+                "name": memory_name,
+                "display_name": display_name,
+                "description": "Custom memory instance",
+                "directory": memory_name,
+                "enabled": False,
+                "type": "persistent",
+                "created_date": current_date,
+                "last_modified": None,
+                "metadata": {
+                    "storage_type": "json",
+                    "max_entries": 10000,
+                    "compression": False
+                }
+            }
+
+            # Add to registry
+            memories.append(new_entry)
+            registry['memories'] = memories
+            registry['last_updated'] = current_date
+
+            # Save registry
+            try:
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+                console.print(f"\n[green]✓[/green] Added entry to memory_registry.json")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to update registry file: {e}")
+                return 1
+
+            # Print success message
+            console.print()
+            console.print("=" * 70)
+            console.print("[green]SUCCESS! Memory instance created successfully.[/green]")
+            console.print("=" * 70)
+            console.print()
+            console.print("Registry entry added with default values:")
+            console.print(f"  - enabled: false (use 'llf memory enable {memory_name}' to activate)")
+            console.print(f"  - display_name: {display_name}")
+            console.print(f"  - description: Custom memory instance")
+            console.print(f"  - type: persistent")
+            console.print(f"  - max_entries: 10000")
+            console.print()
+            console.print("[bold]IMPORTANT:[/bold] Please review and edit the following fields in memory_registry.json:")
+            console.print(f"  - description: Update to describe the purpose of this memory instance")
+            console.print(f"  - display_name: Customize if desired")
+            console.print(f"  - metadata.max_entries: Adjust based on your needs")
+            console.print(f"  - enabled: Set to true when ready to use (or use 'llf memory enable {memory_name}')")
+            console.print()
+            console.print(f"Memory location: memory/{memory_name}/")
+            console.print()
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, enable, disable, info[/dim]")
+            console.print("[dim]Available actions: list, enable, disable, info, create[/dim]")
             return 1
 
         return 0
