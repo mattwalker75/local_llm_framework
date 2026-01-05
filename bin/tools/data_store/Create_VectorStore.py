@@ -616,6 +616,11 @@ For more models: https://huggingface.co/models?library=sentence-transformers
             verbose=args.verbose
         )
 
+        # Print next steps
+        logger.info(f"\n\nPerform the following task:\n \
+- Move the '{args.output}' directory to 'data_stores/vector_stores'\n \
+- Import it into the system with'llf datastore import' command\n")
+
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", file=sys.stderr)
         sys.exit(130)

@@ -19,6 +19,9 @@ The script will:
 
 Author: Local LLM Framework
 License: MIT
+
+THIS IS LEGACY CODE...  Use "llf memory create NAME" instead
+
 """
 
 import argparse

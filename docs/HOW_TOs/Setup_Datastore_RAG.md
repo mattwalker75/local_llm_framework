@@ -24,23 +24,29 @@ cd bin/tools/data_store
    - PDF
    - Microsoft Word (DOC/DOCX)
    - TXT
+   - MD
    - Web Site URL text content
 
 ### Convert files to JSONL so they can be loaded into a Data Store
-- Convert PDF files
+- Convert PDF files ( .pdf )
 ```bash
 cd bin/tools/data_store
 ./Process_PDF.py -i document.pdf -o output.jsonl -f jsonl
 ```
-- Convert Microsoft Word Docs and Docx
+- Convert Microsoft Word Docs and Docx ( .doc / .docx )
 ```bash
 cd bin/tools/data_store
 ./Process_DOC.py -i document.docx -o output.jsonl -f jsonl
 ```
-- Convert Text files
+- Convert Text files ( .txt )
 ```bash
 cd bin/tools/data_store
 ./Process_TXT.py -i document.txt -o output.jsonl -f jsonl
+```
+- Convert Markdown files ( .md )
+```bash
+cd bin/tools/data_store
+./Process_MD.py -i README.md -o output.jsonl -f jsonl
 ```
 - Convert the text content of a Web Site
 ```bash
