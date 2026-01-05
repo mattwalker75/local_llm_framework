@@ -74,7 +74,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Module registry modules_registry.json](docs/Config_Files/modules_registry_json.md)
    - [Tool registry tools_registry.json](docs/Config_Files/tools_registry_json.md)
 - How To documents
-   - [Cool stuff to do with chat](docs/HOW_TOs/Fun_With_Chat.md)
+   - [Cool stuff to do with chat (prompt engineering / scripting / task specialization)](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want](docs/HOW_TOs/Setup_Memory.md)
    - [How to talk to the LLM and have it talk back](docs/HOW_TOs/Setup_Talking.md)
