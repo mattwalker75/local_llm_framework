@@ -515,6 +515,10 @@ Open `configs/config.json` in your editor:
 | `api_base_url` | Server URL | `http://127.0.0.1:8000/v1` |
 | `model_name` | Model identifier | `Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` |
 
+The `model_dir` can be obtained by looking in the `models` directory by running `ls models`.
+
+The `gguf_file` can be obtaind by looking in the directory in the `models` directory and find the .gguf file by running `ls models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF`
+
 ### Step 4: Verify Configuration
 
 ```bash
@@ -622,6 +626,8 @@ If any models need GGUF conversion:
 ### Step 3: Create Multi-Server Configuration
 
 **Edit `configs/config.json`:**
+
+In the below configuration the `model_dir` can be obtained by looking in the `models` directory by running `ls models`.  The `gguf_file` can be obtaind by looking in the directory in the `models` directory and find the .gguf file by running `ls models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF`
 
 ```json
 {
