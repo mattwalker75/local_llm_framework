@@ -25,7 +25,7 @@ The LLM Framework provides two complementary modules for voice interaction:
 ### Speech-to-Text (STT)
 - **What it does**: Converts your spoken words into text input for the LLM
 - **How it works**: Uses your computer's microphone to capture audio and OpenAI Whisper to transcribe it
-- **Key benefit**: Completely offline - no internet connection required
+- **Key benefit**: Less keyboard engagement needed.  Hands-free experience.
 - **Use case**: Speak to the LLM instead of typing
 
 ### Text-to-Speech (TTS)

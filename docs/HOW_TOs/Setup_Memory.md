@@ -153,8 +153,9 @@ Example conversation:
 ```
 You: My name is Alex and I prefer concise responses.
 LLM: Got it, Alex! I'll keep my responses concise. I've stored that in my memory.
+You: I want you to remember that my name is Alex
 
-[Later conversation...]
+[Multiple conversation sessions later...]
 
 You: What's my name?
 LLM: Your name is Alex.
@@ -227,6 +228,8 @@ Shows:
 You can create multiple memory instances for different purposes (e.g., work, personal, projects).
 
 ### Using the create_memory.py Tool
+
+NOTE:  This will be replaced with the `llf memory create MEMORY_MODULE_NAME`
 
 **Location:** `bin/tools/create_memory.py`
 
