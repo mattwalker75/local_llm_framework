@@ -235,6 +235,8 @@ List available models to verify your API key works:
 llf server list_models
 ```
 
+You can update the `model_name` config parameter in the `configs/config.json` to any of the listed models.
+
 **Expected output:**
 ```
 Available models from https://api.openai.com/v1:
@@ -348,6 +350,8 @@ List available models:
 ```bash
 llf server list_models
 ```
+
+You can update the `model_name` config parameter in the `configs/config.json` to any of the listed models.
 
 **Expected output:**
 ```
