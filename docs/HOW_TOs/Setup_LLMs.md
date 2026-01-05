@@ -929,6 +929,14 @@ llf chat
 
 After converting models to GGUF, you can delete original downloads to save disk space.
 
+You can use the following command to delete models that are not used or not needed:
+```bash
+#  List the existing models and select the one you want to delete
+llf model list
+#  Delete the model you no longer need
+llf model delete <local LLM name>
+```
+
 ### Understanding Disk Usage
 
 **Typical sizes:**

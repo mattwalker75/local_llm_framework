@@ -20,6 +20,7 @@ This document will review the other commands and programs that you can use and h
 
 - create_memory.py
    - Creates new memory modules in the `memory` directory
+   - NOTE:  This has been replaced with "llf memory create" command
    - Run the following command to create a new memory module
    ```bash
    ./create_memory.py my_test_memory

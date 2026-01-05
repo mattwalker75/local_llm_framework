@@ -180,6 +180,16 @@ llf memory list
 llf memory list --enabled
 ```
 
+### Create a Memory Instance
+
+```bash
+llf memory create <memory_name>
+```
+
+This will perform the following:
+- Add memory module entry from `memory/memory_registry.json`
+- Creates the memory module in the `memory` directory
+
 ### Enable a Memory Instance
 
 ```bash
@@ -221,15 +231,26 @@ Shows:
 - Storage configuration
 - Creation and modification dates
 
+### Delete Memory Module
+
+```bash
+llf memory delete <memory_name>
+```
+
+This will perform the following:
+- Delete the memory module entry from `memory/memory_registry.json`
+- Delete the memory module in the `memory` directory
+- The memory module will NOT be deleted if it is enabled
+
 ---
 
 ## Creating Custom Memory Instances
 
 You can create multiple memory instances for different purposes (e.g., work, personal, projects).
 
-### Using the create_memory.py Tool
+### Using the create_memory.py Tool ( THIS IS LEGACY METHOD )
 
-NOTE:  This will be replaced with the `llf memory create MEMORY_MODULE_NAME`
+NOTE:  THIS HAS BEEN REPLACED WITH `llf memory create MEMORY_MODULE_NAME`
 
 **Location:** `bin/tools/create_memory.py`
 
@@ -248,6 +269,12 @@ NOTE:  This will be replaced with the `llf memory create MEMORY_MODULE_NAME`
 
 # Create a personal memory
 ./bin/tools/create_memory.py personal_notes
+```
+
+### Creating The Memory Module
+
+```bash
+llf memory create my_memory_module
 ```
 
 ### What Gets Created
