@@ -43,5 +43,23 @@
       "personal",
       "name"
     ]
+  },
+  "mem_f40a8b0543bf": {
+    "line": 5,
+    "timestamp": "2026-01-05T00:10:25.479513+00:00Z",
+    "type": "context",
+    "tags": [
+      "etiquette",
+      "communication"
+    ]
+  },
+  "mem_c13e4cd6dc58": {
+    "line": 6,
+    "timestamp": "2026-01-05T00:11:05.638202+00:00Z",
+    "type": "fact",
+    "tags": [
+      "programming",
+      "coding assistance"
+    ]
   }
 }

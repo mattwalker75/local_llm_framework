@@ -33,6 +33,7 @@ Before you begin, ensure you have:
 
 3. **llama.cpp Compiled**: The llama-server binary must be available
    - See [llama.cpp setup](https://github.com/ggml-org/llama.cpp)
+   - Setup and installion located in [QUICK_INSTALL.md](../QUICK_INSTALL.md)
 
 4. **Basic Understanding**: Familiarity with terminal/command line usage
 
@@ -185,7 +186,7 @@ EXAMPLE:
 After conversion, test the model with llama.cpp directly:
 
 ```bash
-../llama.cpp/llama-cli \
+../llama.cpp/build/bin/llama-cli -st\
   -m models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/model.gguf \
   -p "Write a Python hello world"
 ```
@@ -239,6 +240,12 @@ Edit `configs/config.json`:
 | `gguf_file` | GGUF filename | `qwen2.5-coder-7b-instruct-q5_k_m.gguf` |
 | `api_base_url` | Server URL (matches host:port) | `http://127.0.0.1:8000/v1` |
 | `model_name` | Model identifier for API | `Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` |
+
+The `model_dir` can be obtained by looking in the `models` directory by running `ls models`.
+
+The `gguf_file` can be obtaind by looking in the directory in the `models` directory and find the .gguf file by running `ls models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF`
+
+The `model_name` can be obtained by running `llf model list`.  Copy the name you want to use that matches up with the associated model you are configuration to be used by the server.
 
 ### Multiple Server Configuration
 
@@ -474,7 +481,8 @@ llf chat
 2. Chat interface opens in your terminal
 3. Type your messages and press Enter
 4. LLM responds in real-time
-5. Type `exit` or `quit` to end the session
+5. Display helpful commands in chat `help`
+6. Type `exit` or `quit` to end the session
 
 ### Chat with Auto-Start Server
 
@@ -546,8 +554,8 @@ echo "Generated: $ANSWER"
 ### Chat with Specific Model
 
 ```bash
-# Use a different model for this session
-llf chat --huggingface-model Mistral/Mistral-7B-Instruct-GGUF
+# Use a different model for this session ( for non-GGUF models )
+llf chat --huggingface-model Mistral/Mistral-7B-Instruct
 
 # Use specific GGUF file
 llf chat --gguf-dir MyModel-GGUF --gguf-file model.gguf

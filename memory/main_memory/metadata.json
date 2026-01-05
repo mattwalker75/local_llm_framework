@@ -1,16 +1,16 @@
 {
-  "total_entries": 5,
-  "last_updated": "2025-12-28T05:11:01.520670+00:00Z",
+  "total_entries": 7,
+  "last_updated": "2026-01-05T00:11:05.638202+00:00Z",
   "created_date": "2025-12-27T00:00:00Z",
-  "size_bytes": 1529,
+  "size_bytes": 2180,
   "oldest_entry": "2025-12-27T00:00:00Z",
-  "newest_entry": "2025-12-28T05:11:01.520670+00:00Z",
+  "newest_entry": "2026-01-05T00:11:05.638202+00:00Z",
   "entry_types": {
     "note": 1,
-    "fact": 4,
+    "fact": 5,
     "preference": 0,
     "task": 0,
-    "context": 0
+    "context": 1
   },
   "statistics": {
     "average_importance": 0.5,

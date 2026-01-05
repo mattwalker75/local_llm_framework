@@ -77,7 +77,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Cool stuff to do with chat](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want](docs/HOW_TOs/Setup_Memory.md)
-   - [How to talk to the LLLM and have it talk back](docs/HOW_TOs/Setup_Talking.md)
+   - [How to talk to the LLM and have it talk back](docs/HOW_TOs/Setup_Talking.md)
    - [Use all these tools with ChatGTP](docs/HOW_TOs/Setup_External_LLM.md)
    - [Access the backend local LLM from another computer](docs/HOW_TOs/Setup_Network_Access_LLM.md)
    - [Access the GUI from another computer](docs/HOW_TOs/Setup_Network_Access_GUI.md)
