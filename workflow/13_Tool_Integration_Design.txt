@@ -1,0 +1,34 @@
+
+I sent the following prompt to Claude to do some brain storming and come up with a plan on how we can add a framework or consistent structure that can be used to enable different tools to be integrated in to be used by the LLM.
+
+We are now going to focus on building different tools that the LLM can use.  These tools can include, but are not lilmited to:
+   - Enable the LLM to access the Internet to get data
+   - Enable the LLM to access files on my local computer via a white list policy ( wild cards allowed )
+   - Enable the LLM to execute commands on my local computer via a white list policy ( wild cards allowed )
+
+- I like the idea of a main registry, like we have in the following sections:
+   - data_stores/data_store_registry.json
+   - memory/memory_registry.json
+   - modules/modules_registry.json
+
+- Review what we currently have in place from a tools perspective:
+   - We have a set of tool management commands:  bin/llf tool -h
+   - Tools location:  tools
+   - Tools registry:  tools/tools_registry.json
+   - Our first tool:  tools/xml_format
+      - Review what we have in the registry for it
+   - There is code in place using this tool
+
+- Idea:
+   - We want to keep all the tools located in their own directory within "tools"
+   - Each tool should do something "simple".  There should be no grouping tools in the same directory under the "tools" directory unless it makes sense
+   - We should be able to enable and disable the tools via a "bin/llf llf enable/disable" command
+   - We should have a consistent framework and structure that is used to add additional tools in the future that should be well documented.  Thus if someone wants to add a new tool in the future, the integration should be relatively simple and straightforward. 
+
+Review the code base to understand how the current tool integrates into the LLM for use and focus on that integration and determine if that is a standard method that we will want to use for all tools moving forward based on the tools we will want to create.
+Lets plan it out and see if we want to make any changes to the current implementation of "tools".  If we do not want to make any changes, then we can move forward with our first tool, which will be to enable the LLM to access the Internet.  If we feel that we are safe to move forward, then lets plan out the Internet enablement tool.
+Remember to run all commands, code, and unit tests in the llf_venv virtual environment.
+
+Feel free to ask any questions you need answered before starting.
+
+

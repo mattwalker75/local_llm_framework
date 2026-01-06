@@ -62,7 +62,7 @@ class TestToolsManager:
         manager = ToolsManager(registry_path=registry_path)
 
         # Should use defaults
-        assert manager.registry['version'] == '1.0'
+        assert manager.registry['version'] == '1.1'
         assert len(manager.registry['tools']) >= 1
         assert any(tool['name'] == 'xml_format' for tool in manager.registry['tools'])
 
@@ -72,7 +72,7 @@ class TestToolsManager:
 
         default_registry = manager._get_default_registry()
 
-        assert default_registry['version'] == '1.0'
+        assert default_registry['version'] == '1.1'
         assert 'tools' in default_registry
         assert 'metadata' in default_registry
         assert len(default_registry['tools']) >= 1
@@ -465,7 +465,7 @@ class TestToolsManager:
         manager = ToolsManager(registry_path=registry_path)
 
         # Should use defaults
-        assert manager.registry['version'] == '1.0'
+        assert manager.registry['version'] == '1.1'
         assert 'tools' in manager.registry
         assert len(manager.registry['tools']) >= 1
 

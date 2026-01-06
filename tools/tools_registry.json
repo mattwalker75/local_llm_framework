@@ -1,23 +1,27 @@
 {
-  "version": "1.0",
-  "last_updated": "2025-12-28",
+  "version": "1.1",
+  "last_updated": "2026-01-06",
+  "global_config": {
+    "require_approval": false,
+    "sensitive_operations": ["file_write", "file_delete", "command_exec"]
+  },
   "tools": [
     {
       "name": "xml_format",
       "display_name": "XML Format Parser",
       "description": "Parse XML-style function calls and convert to OpenAI JSON format",
-      "type": "compatibility_layer",
+      "type": "postprocessor",
       "enabled": "auto",
       "directory": "xml_format",
       "created_date": null,
-      "last_modified": "2025-12-28",
+      "last_modified": "2026-01-06",
       "metadata": {
         "input_format": "XML",
         "output_format": "JSON",
         "use_case": "Model outputs XML instead of JSON tool calls",
         "example_input": "<function=search_memories><parameter=query>value</parameter></function>",
         "example_output": "{\"name\": \"search_memories\", \"parameters\": {\"query\": \"value\"}}",
-        "behavior": "compatibility_layer",
+        "behavior": "postprocessor",
         "activation": "automatic_on_pattern",
         "supported_states": [
           "false",
@@ -28,25 +32,32 @@
   ],
   "metadata": {
     "description": "Registry of all available tools and compatibility layers for the LLM Framework",
-    "note": "This file tracks which tool features are available and their enabled/disabled status.",
-    "schema_version": "1.0",
+    "note": "This file tracks which tool features are available and their enabled/disabled status. Tools can be postprocessors (modify LLM output) or llm_invokable (functions the LLM can call).",
+    "schema_version": "1.1",
     "configuration_notes": {
       "enabled": "Tool activation state: false (disabled), 'auto' (load at init, use when needed), true (actively enabled/forced)",
-      "type": "Type of tool: compatibility_layer, function_calling, preprocessor, postprocessor",
+      "type": "Type of tool: 'postprocessor' (modifies LLM output), 'preprocessor' (modifies input), 'llm_invokable' (LLM can call as function)",
       "directory": "Directory path where tool implementation is stored (relative to tools/)",
-      "metadata.behavior": "How tool integrates: compatibility_layer, llm_invoked, preprocessor, postprocessor",
-      "metadata.activation": "When tool activates: automatic_on_pattern, on_demand, always",
+      "metadata.behavior": "How tool integrates: 'postprocessor', 'preprocessor', 'llm_invoked'",
+      "metadata.activation": "When tool activates: 'automatic_on_pattern', 'on_demand', 'always'",
       "metadata.supported_states": "Array of enabled states this tool supports (e.g., ['false', 'auto'] or ['false', 'auto', 'true'])",
-      "metadata.input_format": "Format the tool expects as input",
-      "metadata.output_format": "Format the tool produces as output",
-      "metadata.use_case": "When this tool should be used"
+      "metadata.permissions": "For llm_invokable tools: whitelist, rate limits, size limits, etc.",
+      "global_config.require_approval": "If true, prompt user before executing sensitive operations",
+      "global_config.sensitive_operations": "List of operation types that require approval when require_approval is true"
+    },
+    "tool_types": {
+      "postprocessor": "Modifies LLM output after generation (e.g., XML format converter)",
+      "preprocessor": "Modifies input before sending to LLM (future use)",
+      "llm_invokable": "Functions the LLM can actively call (e.g., web search, file access, command execution)"
     },
     "usage_instructions": {
       "enabling_tool": "Set enabled to: false (disabled), 'auto' (recommended - loads at init), or true (force active)",
       "managing_tools": "Use 'llf tool' commands to list, enable, disable, auto, and view tool info",
-      "creating_tool": "Add new tool definitions to the 'tools' array"
+      "managing_config": "Use 'llf tool config' commands to manage global tool configuration",
+      "creating_tool": "Add new tool definitions to the 'tools' array following the appropriate type template"
     },
     "changes": [
+      "v1.1: Added type distinction (postprocessor vs llm_invokable), added global_config for approval prompts",
       "v1.0: Initial schema migrated from tools_config.json"
     ]
   }

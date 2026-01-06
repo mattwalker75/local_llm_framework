@@ -355,9 +355,19 @@ with which prompts I passed to the AI.
     I then went in and modified.  I used AI the create the initial draft that I 
     then cleaned up.
        - 12_Documentation.txt
-        
+7.  From going through the documentation, I came up with a few minor enhancements
+    that I added.  Such as the following:
+       - Have the tool create and delete long term memory modules so you don't have to
+         run an external script
+       - Have the tool import and export the Data Stores ( RAG Vector Stores ) which
+         will handle all the updates to the registry file so you don't have to.        
 
 #### Develop different tools that can be enabled and disabled
+1.  Explain to Claude what we are going to do and see if there is a common coding interface
+    it should setup to enable the LLM to work with different tools.  This is so we can 
+    easily create tools to perform different tasks that can easily be plugged into the LLM
+    for use.
+       - 13_Tool_Integration_Design.txt
 
 
 
