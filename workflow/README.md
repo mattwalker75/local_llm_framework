@@ -346,7 +346,16 @@ with which prompts I passed to the AI.
 1.  Perform another round of detailed testing and create documentation in
     the process.
 2.  Update README.md and have it reference documentation in the "docs" directory
-
+3.  Moved all the tool scripts to a single location under bin
+4.  Had Claude create a tool for me and used the following prompt
+       -  10_Tool_script.txt
+5.  Had Claude create/modify some tool testing scripts with the following prompt:
+       - 11_More_Tools.txt
+6.  Here is one of the prompts I gave to Claude to create documentation that
+    I then went in and modified.  I used AI the create the initial draft that I 
+    then cleaned up.
+       - 12_Documentation.txt
+        
 
 #### Develop different tools that can be enabled and disabled
 

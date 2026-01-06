@@ -1,15 +1,15 @@
 {
   "version": "1.0",
-  "last_updated": "2025-12-28",
+  "last_updated": "2026-01-05",
   "memories": [
     {
       "name": "main_memory",
       "display_name": "Main Memory",
-      "description": "Long-term memory for persistent information storage",
+      "description": "Custom memory instance",
       "directory": "main_memory",
       "enabled": true,
       "type": "persistent",
-      "created_date": null,
+      "created_date": "2026-01-05",
       "last_modified": null,
       "metadata": {
         "storage_type": "json",

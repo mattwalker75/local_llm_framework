@@ -14,8 +14,9 @@ import argparse
 from pathlib import Path
 from typing import Optional
 import signal
-from datetime import datetime
+from datetime import datetime, UTC
 import json
+import shutil
 
 from rich.console import Console
 from rich.panel import Panel
@@ -782,6 +783,53 @@ Verification:
     return 0
 
 
+def delete_command(args) -> int:
+    """
+    Handle delete command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    config = get_config()
+    model_manager = ModelManager(config)
+
+    model_name = args.model_name
+
+    # Check if model exists
+    if not model_manager.is_model_downloaded(model_name):
+        console.print(f"[red]Model '{model_name}' not found in models directory.[/red]")
+        console.print(f"[yellow]Use 'llf model list' to see available models.[/yellow]")
+        return 1
+
+    # Get model info for confirmation
+    info = model_manager.get_model_info(model_name)
+    model_path = info['path']
+
+    # Ask for confirmation unless --force is used
+    if not args.force:
+        console.print(f"[yellow]Are you sure you want to delete model '{model_name}'?[/yellow]")
+        console.print(f"[dim]Path: {model_path}[/dim]")
+        if 'size_gb' in info:
+            console.print(f"[dim]Size: {info['size_gb']} GB[/dim]")
+
+        confirm = Prompt.ask("[yellow]Type 'yes' to confirm[/yellow]", default="no")
+
+        if confirm.lower() != 'yes':
+            console.print("[cyan]Deletion cancelled.[/cyan]")
+            return 0
+
+    # Delete the model
+    if model_manager.delete_model(model_name):
+        console.print(f"[green]Successfully deleted model '{model_name}'.[/green]")
+        return 0
+    else:
+        console.print(f"[red]Failed to delete model '{model_name}'.[/red]")
+        return 1
+
+
 def server_command(args) -> int:
     """
     Handle server command.
@@ -970,6 +1018,7 @@ Examples:
   llf model list                   List downloaded models
   llf model info                   Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model delete MODEL_NAME      Delete a model and all its contents
 
   # GUI interface
   llf gui                          Start web-based GUI (localhost only, port 7860)
@@ -986,6 +1035,8 @@ Examples:
   # Data Store management
   llf datastore list                      List all available data stores
   llf datastore list --attached           List only attached data stores
+  llf datastore import DIRECTORY_NAME     Import vector store from data_stores/vector_stores
+  llf datastore export DATA_STORE_NAME    Export data store (remove from registry, keep data)
   llf datastore attach DATA_STORE_NAME    Attach data store to query
   llf datastore attach all                Attach all data stores
   llf datastore detach DATA_STORE_NAME    Detach data store
@@ -995,8 +1046,10 @@ Examples:
   # Memory management
   llf memory list                         List all memory instances
   llf memory list --enabled               List only enabled memory instances
+  llf memory create MEMORY_NAME           Create a new memory instance
   llf memory enable MEMORY_NAME           Enable a memory instance
   llf memory disable MEMORY_NAME          Disable a memory instance
+  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
   llf memory info MEMORY_NAME             Show memory instance information
 
   # Module management
@@ -1162,6 +1215,12 @@ Examples:
   llf model info                        Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
                                         View information about a specific downloaded model
+
+  # Delete a model
+  llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Delete a model and all its contents
+  llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF --force
+                                        Delete without confirmation prompt
         """
     )
     model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
@@ -1223,6 +1282,24 @@ Examples:
         '--model',
         metavar='NAME',
         help='Model identifier to show info for (default: configured default model)'
+    )
+
+    # model delete
+    delete_parser = model_subparsers.add_parser(
+        'delete',
+        help='Delete a model from local storage',
+        description='Permanently delete a model directory and all its contents from local storage.'
+    )
+    delete_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to delete (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+    delete_parser.add_argument(
+        '--force',
+        '-f',
+        action='store_true',
+        help='Skip confirmation prompt and delete immediately'
     )
 
     # Server command
@@ -1406,6 +1483,8 @@ Examples:
 actions:
   list                      List data stores
   list --attached           List only attached data stores
+  import DIRECTORY_NAME     Import a vector store from data_stores/vector_stores
+  export DATA_STORE_NAME    Export a data store (remove from registry, keep data)
   attach DATA_STORE_NAME    Attach data store to query
   attach all                Attach all data stores
   detach DATA_STORE_NAME    Detach data store
@@ -1472,8 +1551,10 @@ actions:
 actions:
   list                      List memory instances
   list --enabled            List only enabled memory instances
+  create MEMORY_NAME        Create a new memory instance
   enable MEMORY_NAME        Enable a memory instance
   disable MEMORY_NAME       Disable a memory instance
+  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
   info MEMORY_NAME          Show memory instance information
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1625,6 +1706,8 @@ actions:
             return list_command(args)
         elif args.action == 'info':
             return info_command(args)
+        elif args.action == 'delete':
+            return delete_command(args)
         else:
             model_parser.print_help()
             return 0
@@ -2074,9 +2157,212 @@ finally:
                 console.print(f"[red]Error:[/red] Failed to get data store info: {e}")
                 return 1
 
+        elif action == 'import':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store directory name required for import command")
+                console.print("[dim]Usage: llf datastore import DIRECTORY_NAME[/dim]")
+                console.print("[dim]       (where DIRECTORY_NAME is under data_stores/vector_stores/)[/dim]")
+                return 1
+
+            directory_name = args.datastore_name
+            project_root = Path(__file__).parent.parent
+            vector_stores_dir = project_root / 'data_stores' / 'vector_stores'
+            datastore_dir = vector_stores_dir / directory_name
+
+            # Verify directory is under data_stores/vector_stores
+            if not datastore_dir.exists():
+                console.print(f"[red]Error:[/red] Directory '{directory_name}' not found in data_stores/vector_stores")
+                console.print(f"[yellow]The data store must first be moved to data_stores/vector_stores before it can be imported[/yellow]")
+                return 1
+
+            # Verify it's actually under vector_stores
+            try:
+                # Resolve both paths and check if datastore_dir is under vector_stores_dir
+                datastore_resolved = datastore_dir.resolve()
+                vector_stores_resolved = vector_stores_dir.resolve()
+                if not str(datastore_resolved).startswith(str(vector_stores_resolved)):
+                    console.print(f"[red]Error:[/red] Directory must be located under data_stores/vector_stores")
+                    console.print(f"[yellow]The data store must first be moved to data_stores/vector_stores before it can be imported[/yellow]")
+                    return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to verify directory location: {e}")
+                return 1
+
+            # Read config.json from the vector store directory
+            config_file = datastore_dir / 'config.json'
+            if not config_file.exists():
+                console.print(f"[red]Error:[/red] config.json not found in {datastore_dir}")
+                console.print(f"[yellow]The directory must contain a valid vector store with config.json[/yellow]")
+                return 1
+
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+
+                embedding_model = config.get('embedding_model')
+                embedding_dimension = config.get('embedding_dimension')
+                num_vectors = config.get('num_vectors', 0)
+                index_type = config.get('index_type', 'IndexFlatIP')
+
+                if not embedding_model or not embedding_dimension:
+                    console.print(f"[red]Error:[/red] Invalid config.json - missing embedding_model or embedding_dimension")
+                    return 1
+
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in config.json: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read config.json: {e}")
+                return 1
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Check if entry already exists
+                for ds in data_stores:
+                    if ds.get('name') == directory_name:
+                        console.print(f"[red]Error:[/red] Data store '{directory_name}' already exists in registry")
+                        console.print(f"[yellow]Cannot import - there is already an entry with that name[/yellow]")
+                        return 1
+
+                # Create new registry entry with default settings
+                display_name = directory_name.replace('_', ' ').replace('-', ' ').title()
+                current_date = datetime.now().strftime('%Y-%m-%d')
+
+                new_entry = {
+                    "name": directory_name,
+                    "display_name": display_name,
+                    "description": "Imported vector store",
+                    "attached": False,
+                    "vector_store_path": f"data_stores/vector_stores/{directory_name}",
+                    "embedding_model": embedding_model,
+                    "embedding_dimension": embedding_dimension,
+                    "index_type": index_type,
+                    "_comment2": "========== OPTIONAL PARAMETERS ==========",
+                    "model_cache_dir": "data_stores/embedding_models",
+                    "top_k_results": 5,
+                    "similarity_threshold": 0.3,
+                    "max_context_length": 4000,
+                    "created_date": current_date,
+                    "num_vectors": num_vectors,
+                    "metadata": {
+                        "source_type": "general",
+                        "content_description": "general documentation",
+                        "search_mode": "semantic"
+                    }
+                }
+
+                # Add to registry
+                data_stores.append(new_entry)
+                registry['data_stores'] = data_stores
+                registry['last_updated'] = current_date
+
+                # Save registry
+                with open(datastore_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully imported data store '{directory_name}'")
+                console.print()
+                console.print("Registry entry added with default settings:")
+                console.print(f"  - name: {directory_name}")
+                console.print(f"  - display_name: {display_name}")
+                console.print(f"  - embedding_model: {embedding_model}")
+                console.print(f"  - embedding_dimension: {embedding_dimension}")
+                console.print(f"  - num_vectors: {num_vectors}")
+                console.print(f"  - attached: false")
+                console.print()
+                console.print("[bold]Note:[/bold] You can manually tweak the settings in data_stores/data_store_registry.json")
+                console.print(f"[dim]Use 'llf datastore attach {directory_name}' to enable this data store[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to import data store: {e}")
+                return 1
+
+        elif action == 'export':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for export command")
+                console.print("[dim]Usage: llf datastore export DATA_STORE_NAME[/dim]")
+                return 1
+
+            datastore_name = args.datastore_name
+            project_root = Path(__file__).parent.parent
+            vector_stores_dir = project_root / 'data_stores' / 'vector_stores'
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Find the datastore by name or display_name
+                datastore_found = False
+                datastore_to_remove = None
+                for ds in data_stores:
+                    if ds.get('name') == datastore_name or ds.get('display_name') == datastore_name:
+                        datastore_found = True
+                        datastore_to_remove = ds
+                        break
+
+                if not datastore_found:
+                    console.print(f"[red]Error:[/red] Data store '{datastore_name}' not found in registry")
+                    console.print(f"[yellow]The data store must exist in the registry to be exported[/yellow]")
+                    return 1
+
+                # Get the actual name and vector store path
+                actual_name = datastore_to_remove.get('name')
+                vector_store_path = datastore_to_remove.get('vector_store_path', f'data_stores/vector_stores/{actual_name}')
+
+                # Remove from registry
+                data_stores.remove(datastore_to_remove)
+                registry['data_stores'] = data_stores
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                registry['last_updated'] = current_date
+
+                # Save updated registry
+                with open(datastore_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully exported data store '{datastore_name}'")
+                console.print()
+                console.print("The data store has been removed from the registry.")
+                console.print()
+                console.print(f"[bold]Data Location:[/bold]")
+                console.print(f"  The vector store data is still located at:")
+                console.print(f"  [cyan]{vector_store_path}[/cyan]")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - You can manually delete the directory if no longer needed")
+                console.print(f"  - Or move it to another location for use elsewhere")
+                console.print(f"  - To re-import later, use: [dim]llf datastore import {actual_name}[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to export data store: {e}")
+                return 1
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, attach, detach, info[/dim]")
+            console.print("[dim]Available actions: list, attach, detach, info, import, export[/dim]")
             return 1
 
         return 0
@@ -2275,9 +2561,269 @@ finally:
                 console.print(f"[red]Error:[/red] Failed to retrieve memory info: {e}")
                 return 1
 
+        elif action == 'create':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for create command")
+                console.print("[dim]Usage: llf memory create MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Validate memory name
+            if not memory_name.replace('_', '').replace('-', '').isalnum():
+                console.print("[red]Error:[/red] Memory name must contain only alphanumeric characters, underscores, and hyphens")
+                return 1
+
+            # Check if memory already exists in registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Check if memory name already exists in registry
+                for memory in memories:
+                    if memory.get('name') == memory_name:
+                        console.print(f"[red]Error:[/red] Memory '{memory_name}' already exists in registry")
+                        console.print(f"[yellow]Delete it first before creating a new one with the same name[/yellow]")
+                        return 1
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read memory registry: {e}")
+                return 1
+
+            # Define paths
+            project_root = Path(__file__).parent.parent
+            memory_dir = project_root / 'memory' / memory_name
+
+            # Check if directory already exists
+            if memory_dir.exists():
+                console.print(f"[red]Error:[/red] Memory directory already exists: {memory_dir}")
+                console.print(f"[yellow]Delete it first before creating a new one with the same name[/yellow]")
+                return 1
+
+            # Create memory structure
+            console.print(f"Creating new memory instance: '{memory_name}'")
+            console.print()
+
+            # Create directory
+            try:
+                memory_dir.mkdir(parents=True, exist_ok=False)
+                console.print(f"[green]✓[/green] Created directory: {memory_dir}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create directory {memory_dir}: {e}")
+                return 1
+
+            # Create index.json (empty object)
+            index_file = memory_dir / 'index.json'
+            try:
+                with open(index_file, 'w') as f:
+                    json.dump({}, f, indent=2)
+                console.print(f"[green]✓[/green] Created: {index_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create index.json: {e}")
+                return 1
+
+            # Create memory.jsonl (empty file)
+            memory_file = memory_dir / 'memory.jsonl'
+            try:
+                memory_file.touch()
+                console.print(f"[green]✓[/green] Created: {memory_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create memory.jsonl: {e}")
+                return 1
+
+            # Create metadata.json (initialized with defaults)
+            metadata_file = memory_dir / 'metadata.json'
+            current_time = datetime.now(UTC).isoformat() + "Z"
+
+            metadata = {
+                "total_entries": 0,
+                "last_updated": current_time,
+                "created_date": current_time,
+                "size_bytes": 0,
+                "oldest_entry": None,
+                "newest_entry": None,
+                "entry_types": {
+                    "note": 0,
+                    "fact": 0,
+                    "preference": 0,
+                    "task": 0,
+                    "context": 0
+                },
+                "statistics": {
+                    "average_importance": 0.0,
+                    "most_accessed_id": None,
+                    "total_accesses": 0
+                }
+            }
+
+            try:
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓[/green] Created: {metadata_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create metadata.json: {e}")
+                return 1
+
+            # Create README.md
+            readme_file = memory_dir / 'README.md'
+            readme_content = """
+Contains the memory data files
+
+"""
+
+            try:
+                with open(readme_file, 'w') as f:
+                    f.write(readme_content)
+                console.print(f"[green]✓[/green] Created: {readme_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to create README.md: {e}")
+                return 1
+
+            # Add to registry
+            display_name = memory_name.replace('_', ' ').replace('-', ' ').title()
+            current_date = datetime.now().strftime('%Y-%m-%d')
+
+            new_entry = {
+                "name": memory_name,
+                "display_name": display_name,
+                "description": "Custom memory instance",
+                "directory": memory_name,
+                "enabled": False,
+                "type": "persistent",
+                "created_date": current_date,
+                "last_modified": None,
+                "metadata": {
+                    "storage_type": "json",
+                    "max_entries": 10000,
+                    "compression": False
+                }
+            }
+
+            # Add to registry
+            memories.append(new_entry)
+            registry['memories'] = memories
+            registry['last_updated'] = current_date
+
+            # Save registry
+            try:
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+                console.print(f"\n[green]✓[/green] Added entry to memory_registry.json")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to update registry file: {e}")
+                return 1
+
+            # Print success message
+            console.print()
+            console.print("=" * 70)
+            console.print("[green]SUCCESS! Memory instance created successfully.[/green]")
+            console.print("=" * 70)
+            console.print()
+            console.print("Registry entry added with default values:")
+            console.print(f"  - enabled: false (use 'llf memory enable {memory_name}' to activate)")
+            console.print(f"  - display_name: {display_name}")
+            console.print(f"  - description: Custom memory instance")
+            console.print(f"  - type: persistent")
+            console.print(f"  - max_entries: 10000")
+            console.print()
+            console.print("[bold]IMPORTANT:[/bold] Please review and edit the following fields in memory_registry.json:")
+            console.print(f"  - description: Update to describe the purpose of this memory instance")
+            console.print(f"  - display_name: Customize if desired")
+            console.print(f"  - metadata.max_entries: Adjust based on your needs")
+            console.print(f"  - enabled: Set to true when ready to use (or use 'llf memory enable {memory_name}')")
+            console.print()
+            console.print(f"Memory location: memory/{memory_name}/")
+            console.print()
+
+        elif action == 'delete':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for delete command")
+                console.print("[dim]Usage: llf memory delete MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory = None
+                memory_index = None
+                for idx, m in enumerate(memories):
+                    if m.get('name') == memory_name or m.get('display_name') == memory_name:
+                        memory = m
+                        memory_index = idx
+                        break
+
+                if not memory:
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' not found")
+                    return 1
+
+                # Check if memory is enabled
+                if memory.get('enabled', False):
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' is currently enabled")
+                    console.print(f"[yellow]Please disable it first using: llf memory disable {memory_name}[/yellow]")
+                    return 1
+
+                # Get directory path
+                directory = memory.get('directory', memory_name)
+                project_root = Path(__file__).parent.parent
+                memory_dir = project_root / 'memory' / directory
+
+                # Delete directory if it exists
+                if memory_dir.exists():
+                    try:
+                        shutil.rmtree(memory_dir)
+                        console.print(f"[green]✓[/green] Deleted directory: {memory_dir}")
+                    except Exception as e:
+                        console.print(f"[red]Error:[/red] Failed to delete directory {memory_dir}: {e}")
+                        return 1
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Directory not found: {memory_dir}")
+
+                # Remove from registry
+                memories.pop(memory_index)
+                registry['memories'] = memories
+                registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+                # Save registry
+                try:
+                    with open(memory_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+                    console.print(f"[green]✓[/green] Removed entry from memory_registry.json")
+                except Exception as e:
+                    console.print(f"[red]Error:[/red] Failed to update registry file: {e}")
+                    return 1
+
+                console.print()
+                console.print(f"[green]Successfully deleted memory instance '{memory_name}'[/green]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to delete memory: {e}")
+                return 1
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, enable, disable, info[/dim]")
+            console.print("[dim]Available actions: list, enable, disable, info, create, delete[/dim]")
             return 1
 
         return 0

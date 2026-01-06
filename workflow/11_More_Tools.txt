@@ -1,0 +1,15 @@
+
+I passed the following prompt to Claude to begin coding a simple test scripts:
+
+We need to create 2 additional stand alone tools scripts and put them in the bin/tools directory:
+
+- Test the "speech to text" module ( modules/speech2text )
+   - Test your computer to verify that the speech to text functionality works on your computer.
+   - When you execute the script, it should use the  modules/speech2text to take test speech input from the user and convert it to text.
+   - I see a script called "modules/speech2text/manual_test_sst.py".  If this script does what we need, then move the script to the bin/tools directory and review it to make sure it will work from that location.
+
+- Test the "text to speech" module ( modules/text2speech ) 
+   - Test yoru computer to verify that the text to speech functionality works on your computer.
+   - When you execute the script, it should use the modules/text2speech to take test text input from the user and convert it to speech over the computer speakers.
+   - I see a script called "modules/text2speech/test_tts.py".  If this script does what we need, hen move the script to the bin/tools directory and review it to make sure it will work from that location
+

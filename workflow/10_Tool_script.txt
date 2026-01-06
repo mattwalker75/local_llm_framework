@@ -1,0 +1,37 @@
+
+I passed the following prompt to Claude to begin coding a simple tools script to create memory modules:
+
+We need a simple program to create new memory data directory and file structures that the LLM can enable and disable via the "llf memory" command set.  
+
+Create the program and put it in the following location:  local_llm_framework/bin/tools
+
+The program should support the following:
+
+- Create a "blank" directory structure in the "memory" directory and it should contain the following files ready to be enabled vai the "llf memory" command
+     - index.json
+     - memory.jsonl
+     - metadata.json
+     - README.md
+
+- Please review the following directory for an example:  memory/main_memory
+
+- The README.md can say the exact same thing as the memory/main_memory/README.md file
+
+- This script should NOT copy files from the memory/main_memory directory because it needs to be able to be used to create the memory/main_memory if it does not exist
+
+- The script should accept 1 parameter.  That parameter will be the name of the directory that is created in the "memory" directory.  It will create that directory and the files in there.
+
+- This should be a stand alone script, similar to what you can see in the other scripts in the "tools" directory
+
+- Add the entry to the "main_memory/memory_registry.json" and print out a statement saying how the fields were given default values that should be reviewd and edited accordingly
+
+- Please write it in Python
+
+- We do NOT need any unit tests written for it.  
+
+- Add a pytest ignore for all files under bin/tools.    Those are small stand alone scripts that do not need any unit tests and do not need to be marked against us from a unit testing perspective due to lack of code coverage
+
+- Do not worry about adding any .md documentation.  I will take care of that.
+
+- Please review the code base to better understand my need and ask any questions that are needed prior ot starting
+

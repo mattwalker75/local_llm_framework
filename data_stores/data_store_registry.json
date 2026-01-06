@@ -1,52 +1,7 @@
 {
   "version": "1.0",
-  "last_updated": "2025-12-26",
-  "data_stores": [
-    {
-      "name": "matt_docx",
-      "display_name": "DOCX Resume",
-      "description": "My resume in DOCX format",
-      "attached": false,
-      "vector_store_path": "data_stores/vector_stores/matt_docx",
-      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-      "embedding_dimension": 768,
-      "index_type": "IndexFlatIP",
-      "_comment2": "========== OPTIONAL PARAMETERS ==========",
-      "model_cache_dir": "data_stores/embedding_models",
-      "top_k_results": 5,
-      "similarity_threshold": 0.3,
-      "max_context_length": 4000,
-      "created_date": "2025-12-26",
-      "num_vectors": 50,
-      "metadata": {
-        "source_type": "documentation",
-        "content_description": "General documentation",
-        "search_mode": "semantic"
-      }
-    },
-    {
-      "name": "matt_pdf",
-      "display_name": "PDF Resume",
-      "description": "My resume in PDF format",
-      "attached": false,
-      "vector_store_path": "data_stores/vector_stores/matt_pdf",
-      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-      "embedding_dimension": 768,
-      "index_type": "IndexFlatIP",
-      "_comment2": "========== OPTIONAL PARAMETERS ==========",
-      "model_cache_dir": "data_stores/embedding_models",
-      "top_k_results": 5,
-      "similarity_threshold": 0.3,
-      "max_context_length": 4000,
-      "created_date": "2025-12-26",
-      "num_vectors": 9,
-      "metadata": {
-        "source_type": "documentation",
-        "content_description": "General documentation",
-        "search_mode": "semantic"
-      }
-    }
-  ],
+  "last_updated": "2026-01-05",
+  "data_stores": [],
   "metadata": {
     "description": "Registry of all available RAG vector stores for the LLM Framework",
     "note": "This file tracks which vector stores are available and their enabled/disabled status. The LLM will search through all attached stores.",

@@ -1,0 +1,20 @@
+
+I passed the following prompt to Claude to do some initial documentation:
+
+We need to create some end user mark down (.md) documention.
+
+Update the following user documentation:  docs/HOW_TOs/Setup_Memory.md
+
+This will focus on how to use the "Memory" functionality of the application, which includes the following:
+- What the memory functionality provides
+- How to use the memory functionality with the "bin/llf memory" set of commands
+- How to create new memory modules with the "bin/tools/create_memory.py" script
+- The location of the memory modules are in the "memory" directory.
+- There is a memory module registry located in "memory/memory_registry.json" which contains data that makes the "bin/llf memory" command aware of the memory modules
+
+You will want to perform the following preperation before creating the mark down end user documentation:
+- Review the whole code base
+- Review the "bin/llf memory -h", which is the help documentation focused on memory modules
+- Review the "bin/tools/create_memory.py" tool
+
+
