@@ -129,15 +129,19 @@ cd bin/tools/data_store
 
 NOTE:  The Data Store ( Also called a RAG Vector Store ) is a created directory with generated files in it.  That directory can be moved wherever you want.  The default location to put them is in `data_stores/vector_stores`
 
-### Make note of Embedding Dimensions
-- Get the notes you made of the Embedding Model that you used up above.  You will want to make note of this extra value and call it the `embedding dimension`
-   - sentence-transformers/all-MiniLM-L6-v2:  384
-   - sentence-transformers/all-mpnet-base-v2:  768
-   - sentence-transformers/multi-qa-mpnet-base-cos-v1:  768
-   - jinaai/jina-embeddings-v2-base-code:  768
+### Import the newly created Data Store into your framework
+- Copy or move the newly created Data Store ( RAG Vector Store ) to the `data_stores/vector_stores` directory
+- Run the following command to import the Data Store
+```bash
+llf datastore import DATA_STORE_NAME
+```
+   - This will fully update the Data Store Registry so your Data Store can be used by the LLM
+      - Registry file that is updated:  `data_stores/data_store_registry.json`
+      - In the below sections, you will see how you can customize the configuration
 
-### Select an Index type to use
+### Optionally select a difference Index type to use
 - A large majority of the time, you will use `IndexFlatIP`
+   - This is the default value set by the `llf datastore import` command
 - Below are the options to choose from:
    - NOTE:  The number of Vectors is the same as the number of text chunks
    - IndexFlatIP
@@ -157,8 +161,8 @@ NOTE:  The Data Store ( Also called a RAG Vector Store ) is a created directory 
       - Best for millions of vectors. Low memory, approximate.
 
 
-### Update the Data Store Registry file
-Updating the Data Store Registry is how we make the LLF tool aware of the Data Stores that it can use.
+### Optionally update the Data Store Registry file
+Modifying the Data Store Registry is how we make the LLF tool aware of the Data Stores that it can use along with how the LLM interacts with it
 - The file you will need to edit:  `data_stores/data_store_registry.json`     
 - The following is the list of required entries to create/edit in the file
    - "name": "A_NAME_THAT_MAKES_SENSE",
@@ -170,7 +174,7 @@ Updating the Data Store Registry is how we make the LLF tool aware of the Data S
    - "embedding_dimension": Embedding Diminsion of Embedding Model in this Doc,
    - "index_type":  Must likely it will be "IndexFlatIP",
 
-- The follwowing is an example of a configuration only using the required parameters
+- The following is an example of a configuration only using the required parameters
 ```JSON
 {
   "version": "1.0",
@@ -282,6 +286,17 @@ cd bin
 ./llf datastore detach DATA_STORE_NAME
 ```
 
+### Export your Data Store
+- If you no longer want the Data Store to be part of your framework, you can export it out by running the following command
+```bash
+llf datastore export DATA_STORE_NAME
+```
+- Exporting the Data Store will remove it from the `data_stores/data_store_registry.json` Registry.  It does NOT affect the data in the actual Data Store itself, which is stored under `data_stores/vector_stores'
+- Once exported, you can move or even delete the data store, if you no longer want it
+- To import the data store back into the framework, simply run the following
+```bash
+llf datastore import DATA_STORE_NAME
+```
 
 
 

@@ -1035,6 +1035,8 @@ Examples:
   # Data Store management
   llf datastore list                      List all available data stores
   llf datastore list --attached           List only attached data stores
+  llf datastore import DIRECTORY_NAME     Import vector store from data_stores/vector_stores
+  llf datastore export DATA_STORE_NAME    Export data store (remove from registry, keep data)
   llf datastore attach DATA_STORE_NAME    Attach data store to query
   llf datastore attach all                Attach all data stores
   llf datastore detach DATA_STORE_NAME    Detach data store
@@ -1481,6 +1483,8 @@ Examples:
 actions:
   list                      List data stores
   list --attached           List only attached data stores
+  import DIRECTORY_NAME     Import a vector store from data_stores/vector_stores
+  export DATA_STORE_NAME    Export a data store (remove from registry, keep data)
   attach DATA_STORE_NAME    Attach data store to query
   attach all                Attach all data stores
   detach DATA_STORE_NAME    Detach data store
@@ -2153,9 +2157,212 @@ finally:
                 console.print(f"[red]Error:[/red] Failed to get data store info: {e}")
                 return 1
 
+        elif action == 'import':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store directory name required for import command")
+                console.print("[dim]Usage: llf datastore import DIRECTORY_NAME[/dim]")
+                console.print("[dim]       (where DIRECTORY_NAME is under data_stores/vector_stores/)[/dim]")
+                return 1
+
+            directory_name = args.datastore_name
+            project_root = Path(__file__).parent.parent
+            vector_stores_dir = project_root / 'data_stores' / 'vector_stores'
+            datastore_dir = vector_stores_dir / directory_name
+
+            # Verify directory is under data_stores/vector_stores
+            if not datastore_dir.exists():
+                console.print(f"[red]Error:[/red] Directory '{directory_name}' not found in data_stores/vector_stores")
+                console.print(f"[yellow]The data store must first be moved to data_stores/vector_stores before it can be imported[/yellow]")
+                return 1
+
+            # Verify it's actually under vector_stores
+            try:
+                # Resolve both paths and check if datastore_dir is under vector_stores_dir
+                datastore_resolved = datastore_dir.resolve()
+                vector_stores_resolved = vector_stores_dir.resolve()
+                if not str(datastore_resolved).startswith(str(vector_stores_resolved)):
+                    console.print(f"[red]Error:[/red] Directory must be located under data_stores/vector_stores")
+                    console.print(f"[yellow]The data store must first be moved to data_stores/vector_stores before it can be imported[/yellow]")
+                    return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to verify directory location: {e}")
+                return 1
+
+            # Read config.json from the vector store directory
+            config_file = datastore_dir / 'config.json'
+            if not config_file.exists():
+                console.print(f"[red]Error:[/red] config.json not found in {datastore_dir}")
+                console.print(f"[yellow]The directory must contain a valid vector store with config.json[/yellow]")
+                return 1
+
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+
+                embedding_model = config.get('embedding_model')
+                embedding_dimension = config.get('embedding_dimension')
+                num_vectors = config.get('num_vectors', 0)
+                index_type = config.get('index_type', 'IndexFlatIP')
+
+                if not embedding_model or not embedding_dimension:
+                    console.print(f"[red]Error:[/red] Invalid config.json - missing embedding_model or embedding_dimension")
+                    return 1
+
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in config.json: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read config.json: {e}")
+                return 1
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Check if entry already exists
+                for ds in data_stores:
+                    if ds.get('name') == directory_name:
+                        console.print(f"[red]Error:[/red] Data store '{directory_name}' already exists in registry")
+                        console.print(f"[yellow]Cannot import - there is already an entry with that name[/yellow]")
+                        return 1
+
+                # Create new registry entry with default settings
+                display_name = directory_name.replace('_', ' ').replace('-', ' ').title()
+                current_date = datetime.now().strftime('%Y-%m-%d')
+
+                new_entry = {
+                    "name": directory_name,
+                    "display_name": display_name,
+                    "description": "Imported vector store",
+                    "attached": False,
+                    "vector_store_path": f"data_stores/vector_stores/{directory_name}",
+                    "embedding_model": embedding_model,
+                    "embedding_dimension": embedding_dimension,
+                    "index_type": index_type,
+                    "_comment2": "========== OPTIONAL PARAMETERS ==========",
+                    "model_cache_dir": "data_stores/embedding_models",
+                    "top_k_results": 5,
+                    "similarity_threshold": 0.3,
+                    "max_context_length": 4000,
+                    "created_date": current_date,
+                    "num_vectors": num_vectors,
+                    "metadata": {
+                        "source_type": "general",
+                        "content_description": "general documentation",
+                        "search_mode": "semantic"
+                    }
+                }
+
+                # Add to registry
+                data_stores.append(new_entry)
+                registry['data_stores'] = data_stores
+                registry['last_updated'] = current_date
+
+                # Save registry
+                with open(datastore_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully imported data store '{directory_name}'")
+                console.print()
+                console.print("Registry entry added with default settings:")
+                console.print(f"  - name: {directory_name}")
+                console.print(f"  - display_name: {display_name}")
+                console.print(f"  - embedding_model: {embedding_model}")
+                console.print(f"  - embedding_dimension: {embedding_dimension}")
+                console.print(f"  - num_vectors: {num_vectors}")
+                console.print(f"  - attached: false")
+                console.print()
+                console.print("[bold]Note:[/bold] You can manually tweak the settings in data_stores/data_store_registry.json")
+                console.print(f"[dim]Use 'llf datastore attach {directory_name}' to enable this data store[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to import data store: {e}")
+                return 1
+
+        elif action == 'export':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for export command")
+                console.print("[dim]Usage: llf datastore export DATA_STORE_NAME[/dim]")
+                return 1
+
+            datastore_name = args.datastore_name
+            project_root = Path(__file__).parent.parent
+            vector_stores_dir = project_root / 'data_stores' / 'vector_stores'
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Find the datastore by name or display_name
+                datastore_found = False
+                datastore_to_remove = None
+                for ds in data_stores:
+                    if ds.get('name') == datastore_name or ds.get('display_name') == datastore_name:
+                        datastore_found = True
+                        datastore_to_remove = ds
+                        break
+
+                if not datastore_found:
+                    console.print(f"[red]Error:[/red] Data store '{datastore_name}' not found in registry")
+                    console.print(f"[yellow]The data store must exist in the registry to be exported[/yellow]")
+                    return 1
+
+                # Get the actual name and vector store path
+                actual_name = datastore_to_remove.get('name')
+                vector_store_path = datastore_to_remove.get('vector_store_path', f'data_stores/vector_stores/{actual_name}')
+
+                # Remove from registry
+                data_stores.remove(datastore_to_remove)
+                registry['data_stores'] = data_stores
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                registry['last_updated'] = current_date
+
+                # Save updated registry
+                with open(datastore_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully exported data store '{datastore_name}'")
+                console.print()
+                console.print("The data store has been removed from the registry.")
+                console.print()
+                console.print(f"[bold]Data Location:[/bold]")
+                console.print(f"  The vector store data is still located at:")
+                console.print(f"  [cyan]{vector_store_path}[/cyan]")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - You can manually delete the directory if no longer needed")
+                console.print(f"  - Or move it to another location for use elsewhere")
+                console.print(f"  - To re-import later, use: [dim]llf datastore import {actual_name}[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to export data store: {e}")
+                return 1
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, attach, detach, info[/dim]")
+            console.print("[dim]Available actions: list, attach, detach, info, import, export[/dim]")
             return 1
 
         return 0
