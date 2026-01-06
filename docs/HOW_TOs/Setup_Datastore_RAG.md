@@ -217,7 +217,7 @@ Modifying the Data Store Registry is how we make the LLF tool aware of the Data 
             - keyword - text matching only
             - hybrid - for semantic and keyword
 
-- The follwowing is an example of a configuration using all of the parameters
+- The following is an example of a configuration using all of the parameters
 ```JSON
 {
   "version": "1.0",
