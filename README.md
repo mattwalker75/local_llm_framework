@@ -74,6 +74,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Module registry modules_registry.json](docs/Config_Files/modules_registry_json.md)
    - [Tool registry tools_registry.json](docs/Config_Files/tools_registry_json.md)
 - How To documents
+   - [How to add functionality to the LLM, such as updating files and Intenet access](docs/HOW_TOs/Setup_Tools.md)
    - [Cool stuff to do with chat (prompt engineering / scripting / task specialization)](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool (RAG Vector Store)](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want (Long term Memory)](docs/HOW_TOs/Setup_Memory.md)
