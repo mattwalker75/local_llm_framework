@@ -1,17 +1,19 @@
 {
-  "name": "internet_google_api",
+  "name": "search_internet_google_api",
   "display_name": "Google Custom Search API",
-  "description": "Search the internet using Google's official Custom Search API (requires API key, paid after 100 queries/day)",
+  "description": "Search the internet using Google's official Custom Search API (requires API key, paid after 100 queries/day). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
   "type": "llm_invokable",
   "enabled": true,
   "directory": "internet_google_api",
   "created_date": "2026-01-06",
-  "last_modified": "2026-01-06",
+  "last_modified": "2026-01-07",
   "metadata": {
     "category": "internet",
     "requires_approval": false,
-    "use_case": "High-quality Google search results via official API",
+    "use_case": "High-quality Google search results via official API. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
     "dependencies": ["google-api-python-client"],
+    "companion_tools": ["fetch_webpage"],
+    "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
     "requires_env_vars": ["GOOGLE_API_KEY", "GOOGLE_CSE_ID"],
     "pricing": "Free: 100 queries/day, Paid: $5 per 1000 queries",
     "supported_states": [

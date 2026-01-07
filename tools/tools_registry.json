@@ -34,79 +34,6 @@
       }
     },
     {
-      "name": "internet_google_webscrape",
-      "display_name": "Google Web Scraping Search",
-      "description": "Search the internet using Google via web scraping (free, but may be rate limited)",
-      "type": "llm_invokable",
-      "enabled": true,
-      "directory": "internet_google_webscrape",
-      "created_date": "2026-01-06",
-      "last_modified": "2026-01-07",
-      "metadata": {
-        "category": "internet",
-        "requires_approval": false,
-        "use_case": "Search Google for potentially better results than DuckDuckGo",
-        "dependencies": [
-          "googlesearch-python"
-        ],
-        "warning": "May be rate limited by Google - use sparingly",
-        "supported_states": [
-          "false",
-          "true"
-        ]
-      }
-    },
-    {
-      "name": "internet_google_api",
-      "display_name": "Google Custom Search API",
-      "description": "Search the internet using Google's official Custom Search API (requires API key, paid after 100 queries/day)",
-      "type": "llm_invokable",
-      "enabled": true,
-      "directory": "internet_google_api",
-      "created_date": "2026-01-06",
-      "last_modified": "2026-01-07",
-      "metadata": {
-        "category": "internet",
-        "requires_approval": false,
-        "use_case": "High-quality Google search results via official API",
-        "dependencies": [
-          "google-api-python-client"
-        ],
-        "requires_env_vars": [
-          "GOOGLE_API_KEY",
-          "GOOGLE_CSE_ID"
-        ],
-        "pricing": "Free: 100 queries/day, Paid: $5 per 1000 queries",
-        "supported_states": [
-          "false",
-          "true"
-        ]
-      }
-    },
-    {
-      "name": "internet_duckduckgo",
-      "display_name": "DuckDuckGo Internet Search",
-      "description": "Search the internet using DuckDuckGo (free, no API key required)",
-      "type": "llm_invokable",
-      "enabled": true,
-      "directory": "internet_duckduckgo",
-      "created_date": "2026-01-06",
-      "last_modified": "2026-01-07",
-      "metadata": {
-        "category": "internet",
-        "requires_approval": false,
-        "use_case": "Search the web for current information, facts, news, or documentation",
-        "dependencies": [
-          "ddgs"
-        ],
-        "supported_states": [
-          "false",
-          "true"
-        ],
-        "whitelist": []
-      }
-    },
-    {
       "name": "file_access",
       "display_name": "File Access Tool",
       "description": "Read and write files with whitelist validation and security controls",
@@ -140,7 +67,7 @@
       "display_name": "Command Execution Tool",
       "description": "Execute shell commands with whitelist validation and parameter support",
       "type": "llm_invokable",
-      "enabled": true,
+      "enabled": false,
       "directory": "command_exec",
       "created_date": "2026-01-06",
       "last_modified": "2026-01-07",
@@ -149,7 +76,6 @@
         "requires_approval": false,
         "use_case": "Allow LLM to execute whitelisted shell commands with parameters",
         "whitelist": [
-          "sleep",
           "pwd",
           "ls",
           "df",
@@ -164,6 +90,118 @@
           "max_timeout": "300s",
           "dangerous_commands_require_approval": true
         },
+        "supported_states": [
+          "false",
+          "true"
+        ]
+      }
+    },
+    {
+      "name": "search_internet_duckduckgo",
+      "display_name": "DuckDuckGo Internet Search",
+      "description": "Search the internet using DuckDuckGo (free, no API key required). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
+      "type": "llm_invokable",
+      "enabled": true,
+      "directory": "internet_duckduckgo",
+      "created_date": "2026-01-06",
+      "last_modified": "2026-01-07",
+      "metadata": {
+        "category": "internet",
+        "requires_approval": false,
+        "use_case": "Search the web for current information, facts, news, or documentation. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
+        "dependencies": [
+          "ddgs"
+        ],
+        "companion_tools": [
+          "fetch_webpage"
+        ],
+        "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
+        "supported_states": [
+          "false",
+          "true"
+        ]
+      }
+    },
+    {
+      "name": "search_internet_google",
+      "display_name": "Google Web Scraping Search",
+      "description": "Search the internet using Google via web scraping (free, but may be rate limited). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
+      "type": "llm_invokable",
+      "enabled": false,
+      "directory": "internet_google_webscrape",
+      "created_date": "2026-01-06",
+      "last_modified": "2026-01-07",
+      "metadata": {
+        "category": "internet",
+        "requires_approval": false,
+        "use_case": "Search Google for potentially better results than DuckDuckGo. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
+        "dependencies": [
+          "googlesearch-python"
+        ],
+        "companion_tools": [
+          "fetch_webpage"
+        ],
+        "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
+        "warning": "May be rate limited by Google - use sparingly",
+        "supported_states": [
+          "false",
+          "true"
+        ]
+      }
+    },
+    {
+      "name": "search_internet_google_api",
+      "display_name": "Google Custom Search API",
+      "description": "Search the internet using Google's official Custom Search API (requires API key, paid after 100 queries/day). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
+      "type": "llm_invokable",
+      "enabled": false,
+      "directory": "internet_google_api",
+      "created_date": "2026-01-06",
+      "last_modified": "2026-01-07",
+      "metadata": {
+        "category": "internet",
+        "requires_approval": false,
+        "use_case": "High-quality Google search results via official API. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
+        "dependencies": [
+          "google-api-python-client"
+        ],
+        "companion_tools": [
+          "fetch_webpage"
+        ],
+        "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
+        "requires_env_vars": [
+          "GOOGLE_API_KEY",
+          "GOOGLE_CSE_ID"
+        ],
+        "pricing": "Free: 100 queries/day, Paid: $5 per 1000 queries",
+        "supported_states": [
+          "false",
+          "true"
+        ]
+      }
+    },
+    {
+      "name": "fetch_webpage",
+      "display_name": "Webpage Fetcher",
+      "description": "Fetch and extract clean text content from web pages. Converts HTML to readable text and extracts main content. Required companion tool for internet search tools.",
+      "type": "llm_invokable",
+      "enabled": true,
+      "directory": "webpage_fetcher",
+      "created_date": "2026-01-07",
+      "last_modified": "2026-01-07",
+      "metadata": {
+        "category": "internet",
+        "requires_approval": false,
+        "use_case": "Retrieve and read actual webpage content from URLs. Use with search tools to get detailed information from search results.",
+        "dependencies": [
+          "requests",
+          "beautifulsoup4"
+        ],
+        "companion_tools": [
+          "search_internet_duckduckgo",
+          "search_internet_google",
+          "search_internet_google_api"
+        ],
         "supported_states": [
           "false",
           "true"

@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "fetch_webpage",
+    "description": "Fetch and read the content of any web page from a URL. When you see a URL starting with http:// or https://, use this tool to retrieve and read its content. Returns clean, readable text extracted from the HTML page. Works with any website, documentation, articles, repositories, or web resources.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The full URL of the webpage to fetch (must start with http:// or https://)"
+        },
+        "max_length": {
+          "type": "integer",
+          "description": "Maximum number of characters to return (1000-50000). Defaults to 10000. Use smaller values for quick info, larger for detailed content.",
+          "minimum": 1000,
+          "maximum": 50000
+        }
+      },
+      "required": ["url"]
+    }
+  }
+}

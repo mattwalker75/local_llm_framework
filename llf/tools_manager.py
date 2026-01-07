@@ -473,10 +473,6 @@ class ToolsManager:
                 if field not in tool_config:
                     return False, f"Tool config missing required field: {field}"
 
-            # Verify the tool name matches
-            if tool_config['name'] != tool_name:
-                return False, f"Tool config name '{tool_config['name']}' doesn't match directory '{tool_name}'"
-
             # Add to registry
             tools = self.registry.get('tools', [])
             tools.append(tool_config)
