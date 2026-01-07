@@ -368,6 +368,21 @@ with which prompts I passed to the AI.
     easily create tools to perform different tasks that can easily be plugged into the LLM
     for use.
        - 13_Tool_Integration_Design.txt
+2.  Worked on building out a number of different tools, such as the following
+       command_exec - Enable LLM to run commands locally on computer
+          - This is controlled via whitelisting commands that the LLM can execute
+       file_access - Enable LLM to view and updated files on local computer
+          - This is controlled via whitelisting files and directories the LLM can access
+       internet_duckduckgo - Enable LLM to use DuckDuckGo Internet search access
+       internet_google_webscrape - Enable LLM to use Google Internet search for free
+       internet_google_api - Enable LLM to use the official Google API for search
+          - This requires the purchase of tokens to use and an API key
+3.  Add documentation about using and developing tools and how different LLF workflows operate
+4.  Review code base of any possible coding enhancements
+5.  Review unit testing
+
+#### Testing all the functionality to verify everything seems to work as expected
+
 
 
 
