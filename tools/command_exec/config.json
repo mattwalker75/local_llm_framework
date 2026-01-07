@@ -1,0 +1,24 @@
+{
+  "name": "command_exec",
+  "display_name": "Command Execution Tool",
+  "description": "Execute shell commands with whitelist validation and parameter support",
+  "type": "llm_invokable",
+  "enabled": false,
+  "directory": "command_exec",
+  "created_date": "2026-01-06",
+  "last_modified": "2026-01-06",
+  "metadata": {
+    "category": "command_execution",
+    "requires_approval": false,
+    "use_case": "Allow LLM to execute whitelisted shell commands with parameters",
+    "whitelist": [],
+    "permissions": {
+      "max_timeout": "300s",
+      "dangerous_commands_require_approval": true
+    },
+    "supported_states": [
+      "false",
+      "true"
+    ]
+  }
+}

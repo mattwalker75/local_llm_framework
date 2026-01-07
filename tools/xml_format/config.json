@@ -1,0 +1,23 @@
+{
+  "name": "xml_format",
+  "display_name": "XML Format Parser",
+  "description": "Parse XML-style function calls and convert to OpenAI JSON format",
+  "type": "postprocessor",
+  "enabled": "auto",
+  "directory": "xml_format",
+  "created_date": null,
+  "last_modified": "2026-01-06",
+  "metadata": {
+    "input_format": "XML",
+    "output_format": "JSON",
+    "use_case": "Model outputs XML instead of JSON tool calls",
+    "example_input": "<function=search_memories><parameter=query>value</parameter></function>",
+    "example_output": "{\"name\": \"search_memories\", \"parameters\": {\"query\": \"value\"}}",
+    "behavior": "postprocessor",
+    "activation": "automatic_on_pattern",
+    "supported_states": [
+      "false",
+      "auto"
+    ]
+  }
+}

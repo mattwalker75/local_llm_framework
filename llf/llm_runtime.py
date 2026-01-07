@@ -528,11 +528,11 @@ class LLMRuntime:
             # else: messages are already in full format, use as-is
 
         # ===== Tool Calling Setup =====
-        # Get memory tools if enabled
+        # Get all available tools (memory + llm_invokable)
         tools = None
         memory_manager = None
         if use_prompt_config and self.prompt_config:
-            tools = self.prompt_config.get_memory_tools()
+            tools = self.prompt_config.get_all_tools()
             memory_manager = self.prompt_config.get_memory_manager()
 
         # Build API parameters
@@ -623,7 +623,6 @@ class LLMRuntime:
                 # Execute each tool call
                 for idx, tool_call in enumerate(message.tool_calls, 1):
                     import json
-                    from llf.memory_tools import execute_memory_tool
 
                     tool_name = tool_call.function.name
 
@@ -635,12 +634,8 @@ class LLMRuntime:
 
                     logger.debug(f"Executing tool: {tool_name} with args: {arguments}")
 
-                    # Execute the tool
-                    if memory_manager:
-                        tool_result = execute_memory_tool(tool_name, arguments, memory_manager)
-                    else:
-                        logger.error(f"Memory manager not available for tool: {tool_name}")
-                        tool_result = {"success": False, "error": "Memory manager not available"}
+                    # Dispatch tool execution based on tool type
+                    tool_result = self._execute_tool(tool_name, arguments, memory_manager)
 
                     # Add tool result to conversation
                     current_messages.append({
@@ -659,6 +654,50 @@ class LLMRuntime:
         except Exception as e:
             logger.error(f"Chat generation failed: {e}")
             raise RuntimeError(f"Failed to generate chat completion: {e}") from e
+
+    def _execute_tool(self, tool_name: str, arguments: dict, memory_manager) -> dict:
+        """
+        Execute a tool call by dispatching to the appropriate handler.
+
+        This method routes tool calls to either:
+        - Memory tools (handled by memory_tools module)
+        - LLM-invokable tools (loaded from tools registry)
+
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Tool arguments as dictionary
+            memory_manager: Memory manager instance (for memory tools)
+
+        Returns:
+            Tool execution result as dictionary
+        """
+        # Try memory tools first
+        from llf.memory_tools import MEMORY_TOOL_NAMES, execute_memory_tool
+
+        if tool_name in MEMORY_TOOL_NAMES:
+            if memory_manager:
+                return execute_memory_tool(tool_name, arguments, memory_manager)
+            else:
+                logger.error(f"Memory manager not available for tool: {tool_name}")
+                return {"success": False, "error": "Memory manager not available"}
+
+        # Try llm_invokable tools from registry
+        try:
+            from llf.tools_manager import ToolsManager
+            tools_manager = ToolsManager()
+
+            # Load the tool module
+            module = tools_manager.load_tool_module(tool_name)
+            if module and hasattr(module, 'execute'):
+                logger.debug(f"Executing llm_invokable tool: {tool_name}")
+                return module.execute(arguments)
+            else:
+                logger.error(f"Tool '{tool_name}' not found or missing execute() function")
+                return {"success": False, "error": f"Tool '{tool_name}' not properly configured"}
+
+        except Exception as e:
+            logger.error(f"Error executing tool '{tool_name}': {e}")
+            return {"success": False, "error": str(e)}
 
     def list_models(self) -> list:
         """

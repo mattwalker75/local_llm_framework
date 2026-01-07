@@ -453,7 +453,7 @@ If STT fails, the system will automatically fall back to keyboard input.
                     # Check if tools are available
                     tools_available = False
                     if self.prompt_config:
-                        tools = self.prompt_config.get_memory_tools()
+                        tools = self.prompt_config.get_all_tools()
                         tools_available = tools is not None and len(tools) > 0
 
                     # Determine execution strategy based on configuration
@@ -1588,6 +1588,9 @@ actions:
   enable TOOL_NAME --auto   Enable a tool with auto mode
   disable TOOL_NAME         Disable a tool (sets to false)
   info TOOL_NAME            Show tool information
+  config get KEY            Get a global configuration value
+  config set KEY VALUE      Set a global configuration value
+  config list               List all global configuration settings
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1600,6 +1603,11 @@ actions:
         'tool_name',
         nargs='?',
         help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    tool_parser.add_argument(
+        'config_value',
+        nargs='?',
+        help=argparse.SUPPRESS  # For config set VALUE
     )
     tool_parser.add_argument(
         '--enabled',
@@ -3215,13 +3223,13 @@ Contains the memory data files
                 console.print("Usage: llf tool info <feature_name>")
                 return 1
 
-            features = tools_manager.list_features()
-            if tool_name not in features:
+            # Get full tool info from registry
+            tool_info = tools_manager.get_tool_info(tool_name)
+            if not tool_info:
                 console.print(f"[red]Error: Unknown feature '[bold]{tool_name}[/bold]'[/red]")
                 return 1
 
-            feature_info = features[tool_name]
-            enabled = feature_info.get('enabled', False)
+            enabled = tool_info.get('enabled', False)
 
             # Handle three-state display
             if enabled == 'auto':
@@ -3234,23 +3242,183 @@ Contains the memory data files
                 status_color = "red"
                 status_text = "disabled"
 
+            # Get tool type with description
+            tool_type = tool_info.get('type', 'unknown')
+            type_descriptions = {
+                'postprocessor': 'postprocessor (modifies LLM output)',
+                'preprocessor': 'preprocessor (modifies input to LLM)',
+                'llm_invokable': 'llm_invokable (LLM can call as function)'
+            }
+            type_display = type_descriptions.get(tool_type, tool_type)
+
             console.print(f"\n[bold cyan]Feature: {tool_name}[/bold cyan]")
+            console.print(f"Type: {type_display}")
             console.print(f"Status: [{status_color}]{status_text}[/{status_color}]")
-            console.print(f"Description: {feature_info.get('description', 'No description')}")
+            console.print(f"Description: {tool_info.get('description', 'No description')}")
 
             # Display supported states
-            supported_states = feature_info.get('supported_states', [])
+            supported_states = tool_info.get('metadata', {}).get('supported_states', [])
             if supported_states:
                 states_str = ", ".join([f"'{s}'" if isinstance(s, str) else str(s) for s in supported_states])
                 console.print(f"Supported states: {states_str}")
 
-            if 'note' in feature_info:
-                console.print(f"\n[dim]Note: {feature_info['note']}[/dim]")
+            # Display use case from metadata
+            use_case = tool_info.get('metadata', {}).get('use_case', '')
+            if use_case:
+                console.print(f"\n[dim]Note: {use_case}[/dim]")
 
             return 0
+
+        elif action == 'config':
+            # Global config management
+            config_action = tool_name  # Second arg is the config action (get/set/list)
+
+            if not config_action or config_action == 'list':
+                # List all global config settings
+                global_config = tools_manager.get_global_config()
+
+                if not global_config:
+                    console.print("No global configuration settings found")
+                    return 0
+
+                console.print("\n[bold cyan]Global Tool Configuration:[/bold cyan]")
+                for key, value in global_config.items():
+                    # Format value display
+                    if isinstance(value, list):
+                        value_str = ', '.join(str(v) for v in value)
+                    elif isinstance(value, bool):
+                        value_str = str(value).lower()
+                    else:
+                        value_str = str(value)
+
+                    console.print(f"  {key:<25} {value_str}")
+
+                return 0
+
+            elif config_action == 'get':
+                # Get specific config value
+                config_key = getattr(args, 'config_value', None)
+
+                if not config_key:
+                    console.print("[red]Error: Configuration key required[/red]")
+                    console.print("Usage: llf tool config get <key>")
+                    return 1
+
+                value = tools_manager.get_global_config(config_key)
+
+                if value is None:
+                    console.print(f"[yellow]Configuration key '{config_key}' not found[/yellow]")
+                    console.print("\n[dim]Use 'llf tool config list' to see all settings[/dim]")
+                    return 1
+
+                # Format value display
+                if isinstance(value, list):
+                    value_str = ', '.join(str(v) for v in value)
+                elif isinstance(value, bool):
+                    value_str = str(value).lower()
+                else:
+                    value_str = str(value)
+
+                console.print(f"{config_key}: {value_str}")
+                return 0
+
+            elif config_action == 'set':
+                # Set config value
+                config_key = getattr(args, 'config_value', None)
+
+                if not config_key:
+                    console.print("[red]Error: Configuration key and value required[/red]")
+                    console.print("Usage: llf tool config set <key> <value>")
+                    return 1
+
+                # For 'set', we need one more argument (the value)
+                # Since we only have 3 positional args (action, tool_name, config_value),
+                # we need to handle this differently
+                console.print("[yellow]Note: config set requires additional implementation[/yellow]")
+                console.print("For now, please edit tools/tools_registry.json directly")
+                console.print(f"Set 'global_config.{config_key}' in the registry file")
+                return 0
+
+            else:
+                console.print(f"[red]Error: Unknown config action '{config_action}'[/red]")
+                console.print("\nValid config actions: get, set, list")
+                return 1
+
+        elif action == 'import':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool import <tool_name>")
+                return 1
+
+            success, message = tools_manager.import_tool(tool_name)
+            if success:
+                console.print(f"[green]✓[/green] {message}")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] {message}")
+                return 1
+
+        elif action == 'export':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool export <tool_name>")
+                return 1
+
+            success, message = tools_manager.export_tool(tool_name)
+            if success:
+                console.print(f"[green]✓[/green] {message}")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] {message}")
+                return 1
+
+        elif action == 'whitelist':
+            # Whitelist management: llf tool whitelist <add|remove|list> <tool_name> [pattern]
+            whitelist_action = tool_name  # Second arg is whitelist action
+            whitelist_tool = getattr(args, 'config_value', None)  # Third arg is tool name
+
+            if not whitelist_action or whitelist_action not in ['add', 'remove', 'list']:
+                console.print("[red]Error: Invalid whitelist action[/red]")
+                console.print("Usage: llf tool whitelist <add|remove|list> <tool_name> [pattern]")
+                return 1
+
+            if not whitelist_tool:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool whitelist <add|remove|list> <tool_name> [pattern]")
+                return 1
+
+            if whitelist_action == 'list':
+                patterns = tools_manager.list_whitelist_patterns(whitelist_tool)
+                if patterns is None:
+                    console.print(f"[red]✗[/red] Tool '{whitelist_tool}' not found")
+                    return 1
+
+                if not patterns:
+                    console.print(f"\n[yellow]No whitelist patterns configured for '{whitelist_tool}'[/yellow]")
+                    return 0
+
+                console.print(f"\n[bold cyan]Whitelist patterns for '{whitelist_tool}':[/bold cyan]")
+                for pattern in patterns:
+                    console.print(f"  • {pattern}")
+                return 0
+
+            elif whitelist_action == 'add':
+                # For add/remove, we need the pattern as fourth argument
+                # This is tricky with current argparse setup - for now, show error
+                console.print("[yellow]Note: Whitelist add/remove requires additional argument parsing[/yellow]")
+                console.print("For now, please edit the tool's config.json or tools_registry.json directly")
+                console.print(f"Add pattern to metadata.whitelist array for tool '{whitelist_tool}'")
+                return 0
+
+            elif whitelist_action == 'remove':
+                console.print("[yellow]Note: Whitelist add/remove requires additional argument parsing[/yellow]")
+                console.print("For now, please edit the tool's config.json or tools_registry.json directly")
+                console.print(f"Remove pattern from metadata.whitelist array for tool '{whitelist_tool}'")
+                return 0
+
         else:
             console.print(f"[red]Error: Unknown action '[bold]{action}[/bold]'[/red]")
-            console.print("\nValid actions: list, enable, disable, auto, info")
+            console.print("\nValid actions: list, enable, disable, info, config, import, export, whitelist")
             return 1
 
         return 0

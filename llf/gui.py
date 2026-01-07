@@ -263,7 +263,7 @@ class LLMFrameworkGUI:
             # Check if tools are available
             tools_available = False
             if self.prompt_config:
-                tools = self.prompt_config.get_memory_tools()
+                tools = self.prompt_config.get_all_tools()
                 tools_available = tools is not None and len(tools) > 0
 
             # Determine execution strategy based on configuration

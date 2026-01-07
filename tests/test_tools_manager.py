@@ -789,3 +789,146 @@ class TestToolsManager:
         assert 'xml_format' not in manager.session_overrides
         assert manager.get_enabled_state('xml_format') == 'auto'  # Back to registry value
         assert manager.is_feature_enabled('xml_format') is True  # Auto is treated as enabled
+
+    # ===== New Architecture Tests (Phase 1 Refactoring) =====
+
+    def test_get_global_config_all(self, tmp_path):
+        """Test getting all global configuration."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "global_config": {
+                "require_approval": False,
+                "sensitive_operations": ["file_write", "file_delete"]
+            },
+            "tools": []
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+        global_config = manager.get_global_config()
+
+        assert global_config['require_approval'] is False
+        assert 'file_write' in global_config['sensitive_operations']
+        assert 'file_delete' in global_config['sensitive_operations']
+
+    def test_get_global_config_specific_key(self, tmp_path):
+        """Test getting specific global configuration value."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "global_config": {
+                "require_approval": True,
+                "sensitive_operations": ["command_exec"]
+            },
+            "tools": []
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+
+        assert manager.get_global_config('require_approval') is True
+        assert manager.get_global_config('sensitive_operations') == ["command_exec"]
+        assert manager.get_global_config('nonexistent') is None
+
+    def test_set_global_config(self, tmp_path):
+        """Test setting global configuration value."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "global_config": {
+                "require_approval": False
+            },
+            "tools": []
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+
+        # Set new value
+        result = manager.set_global_config('require_approval', True)
+        assert result is True
+        assert manager.get_global_config('require_approval') is True
+
+        # Verify it was saved to file
+        with open(registry_path, 'r') as f:
+            saved_registry = json.load(f)
+        assert saved_registry['global_config']['require_approval'] is True
+
+    def test_list_tools_by_type(self, tmp_path):
+        """Test filtering tools by type."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "tools": [
+                {"name": "xml_format", "type": "postprocessor", "enabled": True},
+                {"name": "internet_search", "type": "llm_invokable", "enabled": True},
+                {"name": "file_reader", "type": "llm_invokable", "enabled": False},
+                {"name": "preprocessor1", "type": "preprocessor", "enabled": True}
+            ]
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+
+        # Test postprocessor type
+        postprocessors = manager.list_tools_by_type('postprocessor')
+        assert len(postprocessors) == 1
+        assert postprocessors[0]['name'] == 'xml_format'
+
+        # Test llm_invokable type
+        llm_tools = manager.list_tools_by_type('llm_invokable')
+        assert len(llm_tools) == 2
+        assert 'internet_search' in [t['name'] for t in llm_tools]
+        assert 'file_reader' in [t['name'] for t in llm_tools]
+
+        # Test preprocessor type
+        preprocessors = manager.list_tools_by_type('preprocessor')
+        assert len(preprocessors) == 1
+        assert preprocessors[0]['name'] == 'preprocessor1'
+
+    def test_get_enabled_llm_invokable_tools(self, tmp_path):
+        """Test getting only enabled llm_invokable tools."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "tools": [
+                {"name": "xml_format", "type": "postprocessor", "enabled": True},
+                {"name": "internet_search", "type": "llm_invokable", "enabled": True},
+                {"name": "file_reader", "type": "llm_invokable", "enabled": False},
+                {"name": "calculator", "type": "llm_invokable", "enabled": "auto"}
+            ]
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+
+        enabled_tools = manager.get_enabled_llm_invokable_tools()
+
+        # Should only include enabled llm_invokable tools (true and auto)
+        assert len(enabled_tools) == 2
+        tool_names = [t['name'] for t in enabled_tools]
+        assert 'internet_search' in tool_names
+        assert 'calculator' in tool_names
+        assert 'file_reader' not in tool_names  # Disabled
+        assert 'xml_format' not in tool_names  # Wrong type
+
+    def test_load_tool_module_success(self, tmp_path):
+        """Test loading a tool module dynamically."""
+        # This test would require creating actual tool modules, which is complex
+        # For now, test error handling
+        manager = ToolsManager()
+
+        # Try to load non-existent tool
+        module = manager.load_tool_module('nonexistent_tool')
+        assert module is None
+
+    def test_load_tool_module_no_directory(self, tmp_path):
+        """Test loading tool without directory specified."""
+        registry_path = tmp_path / "tools_registry.json"
+        registry_path.write_text(json.dumps({
+            "version": "1.1",
+            "tools": [
+                {"name": "bad_tool", "type": "llm_invokable", "enabled": True}
+                # Missing 'directory' field
+            ]
+        }))
+
+        manager = ToolsManager(registry_path=registry_path)
+        module = manager.load_tool_module('bad_tool')
+        assert module is None

@@ -15,6 +15,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Memory tool names for dispatcher routing
+MEMORY_TOOL_NAMES = {
+    'add_memory',
+    'search_memories',
+    'get_memory',
+    'update_memory',
+    'delete_memory',
+    'get_memory_stats'
+}
+
+
 # Tool definitions for OpenAI-style function calling
 MEMORY_TOOLS = [
     {

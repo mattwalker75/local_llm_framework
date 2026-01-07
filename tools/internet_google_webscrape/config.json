@@ -1,0 +1,21 @@
+{
+  "name": "internet_google_webscrape",
+  "display_name": "Google Web Scraping Search",
+  "description": "Search the internet using Google via web scraping (free, but may be rate limited)",
+  "type": "llm_invokable",
+  "enabled": false,
+  "directory": "internet_google_webscrape",
+  "created_date": "2026-01-06",
+  "last_modified": "2026-01-06",
+  "metadata": {
+    "category": "internet",
+    "requires_approval": false,
+    "use_case": "Search Google for potentially better results than DuckDuckGo",
+    "dependencies": ["googlesearch-python"],
+    "warning": "May be rate limited by Google - use sparingly",
+    "supported_states": [
+      "false",
+      "true"
+    ]
+  }
+}
