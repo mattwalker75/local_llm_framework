@@ -633,3 +633,36 @@ class ToolsManager:
             return None
 
         return tool_info.get('metadata', {}).get('whitelist', [])
+
+    def update_tool_metadata(self, tool_name: str, metadata_key: str, value: Any) -> bool:
+        """
+        Update a metadata field for a tool.
+
+        Args:
+            tool_name: Name of the tool
+            metadata_key: Metadata field to update
+            value: New value for the metadata field
+
+        Returns:
+            True if successful, False otherwise
+        """
+        tool_info = self.get_tool_info(tool_name)
+        if not tool_info:
+            logger.error(f"Tool '{tool_name}' not found")
+            return False
+
+        # Ensure metadata dict exists
+        if 'metadata' not in tool_info:
+            tool_info['metadata'] = {}
+
+        # Update the metadata field
+        tool_info['metadata'][metadata_key] = value
+        tool_info['last_modified'] = datetime.now().strftime('%Y-%m-%d')
+
+        # Save registry
+        if self._save_registry():
+            logger.info(f"Updated metadata '{metadata_key}' for tool '{tool_name}'")
+            return True
+        else:
+            logger.error(f"Failed to save registry after updating tool '{tool_name}'")
+            return False

@@ -1094,6 +1094,9 @@ Examples:
   llf tool enable TOOL_NAME        Enable a tool
   llf tool disable TOOL_NAME       Disable a tool
   llf tool info TOOL_NAME          Show tool information
+  llf tool whitelist list TOOL_NAME           List whitelisted patterns for a tool
+  llf tool whitelist add TOOL_NAME PATTERN    Add pattern to tool whitelist
+  llf tool whitelist remove TOOL_NAME INDEX   Remove pattern from tool whitelist by index
 
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
@@ -1609,15 +1612,18 @@ actions:
         description='Manage tools that extend the ability of the LLM.\n( An example of a tool would be to enable the LLM to perform searches on the Internet )',
         epilog='''
 actions:
-  list                      List tools
-  list --enabled            List only enabled tools
-  enable TOOL_NAME          Enable a tool (sets to true)
-  enable TOOL_NAME --auto   Enable a tool with auto mode
-  disable TOOL_NAME         Disable a tool (sets to false)
-  info TOOL_NAME            Show tool information
-  config get KEY            Get a global configuration value
-  config set KEY VALUE      Set a global configuration value
-  config list               List all global configuration settings
+  list                             List tools
+  list --enabled                   List only enabled tools
+  enable TOOL_NAME                 Enable a tool (sets to true)
+  enable TOOL_NAME --auto          Enable a tool with auto mode
+  disable TOOL_NAME                Disable a tool (sets to false)
+  info TOOL_NAME                   Show tool information
+  config get KEY                   Get a global configuration value
+  config set KEY VALUE             Set a global configuration value
+  config list                      List all global configuration settings
+  whitelist list TOOL_NAME         List whitelisted items for a tool
+  whitelist add TOOL_NAME PATTERN  Add pattern to tool whitelist
+  whitelist remove TOOL_NAME INDEX Remove pattern from tool whitelist
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1634,7 +1640,12 @@ actions:
     tool_parser.add_argument(
         'config_value',
         nargs='?',
-        help=argparse.SUPPRESS  # For config set VALUE
+        help=argparse.SUPPRESS  # For config set VALUE or whitelist pattern/index
+    )
+    tool_parser.add_argument(
+        'whitelist_value',
+        nargs='?',
+        help=argparse.SUPPRESS  # For whitelist pattern when tool_name is whitelist subaction
     )
     tool_parser.add_argument(
         '--enabled',
@@ -3368,6 +3379,142 @@ Contains the memory data files
             else:
                 console.print(f"[red]Error: Unknown config action '{config_action}'[/red]")
                 console.print("\nValid config actions: get, set, list")
+                return 1
+
+        elif action == 'whitelist':
+            # Whitelist management for tools
+            whitelist_action = tool_name  # Second arg is the whitelist action (list/add/remove)
+            target_tool = getattr(args, 'config_value', None)  # Third arg is the tool name
+            pattern_or_index = getattr(args, 'whitelist_value', None)  # Fourth arg is pattern/index
+
+            if not whitelist_action:
+                console.print("[red]Error: Whitelist action required[/red]")
+                console.print("Usage: llf tool whitelist <list|add|remove> <tool_name> [pattern/index]")
+                console.print("\nExamples:")
+                console.print("  llf tool whitelist list command_exec")
+                console.print("  llf tool whitelist add command_exec 'ls'")
+                console.print("  llf tool whitelist add file_access '*.txt'")
+                console.print("  llf tool whitelist remove command_exec 0")
+                return 1
+
+            if whitelist_action == 'list':
+                # List whitelist for tool
+                if not target_tool:
+                    console.print("[red]Error: Tool name required[/red]")
+                    console.print("Usage: llf tool whitelist list <tool_name>")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get whitelist from metadata
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                if not whitelist:
+                    console.print(f"[yellow]Tool '{target_tool}' has no whitelist entries[/yellow]")
+                    console.print("\n[dim]Add entries with: llf tool whitelist add {target_tool} <pattern>[/dim]")
+                    return 0
+
+                console.print(f"\n[bold cyan]Whitelist for {target_tool}:[/bold cyan]")
+                for idx, pattern in enumerate(whitelist):
+                    console.print(f"  [{idx}] {pattern}")
+
+                console.print(f"\n[dim]Total entries: {len(whitelist)}[/dim]")
+                return 0
+
+            elif whitelist_action == 'add':
+                # Add pattern to whitelist
+                if not target_tool or not pattern_or_index:
+                    console.print("[red]Error: Tool name and pattern required[/red]")
+                    console.print("Usage: llf tool whitelist add <tool_name> <pattern>")
+                    console.print("\nExamples:")
+                    console.print("  llf tool whitelist add command_exec 'ls'")
+                    console.print("  llf tool whitelist add command_exec 'git*'")
+                    console.print("  llf tool whitelist add file_access '*.txt'")
+                    console.print("  llf tool whitelist add file_access 'docs/*'")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get current whitelist
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                # Check if pattern already exists
+                if pattern_or_index in whitelist:
+                    console.print(f"[yellow]Pattern '{pattern_or_index}' already in whitelist[/yellow]")
+                    return 0
+
+                # Add pattern
+                whitelist.append(pattern_or_index)
+
+                # Update tool metadata in registry
+                success = tools_manager.update_tool_metadata(target_tool, 'whitelist', whitelist)
+
+                if success:
+                    console.print(f"[green]✓[/green] Added pattern '[bold]{pattern_or_index}[/bold]' to {target_tool} whitelist")
+                    return 0
+                else:
+                    console.print(f"[red]✗[/red] Failed to update whitelist for {target_tool}")
+                    return 1
+
+            elif whitelist_action == 'remove':
+                # Remove pattern from whitelist by index
+                if not target_tool or pattern_or_index is None:
+                    console.print("[red]Error: Tool name and index required[/red]")
+                    console.print("Usage: llf tool whitelist remove <tool_name> <index>")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get current whitelist
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                if not whitelist:
+                    console.print(f"[yellow]Tool '{target_tool}' has no whitelist entries[/yellow]")
+                    return 0
+
+                # Parse index
+                try:
+                    index = int(pattern_or_index)
+                except ValueError:
+                    console.print(f"[red]Error: Invalid index '{pattern_or_index}'. Must be a number.[/red]")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Validate index
+                if index < 0 or index >= len(whitelist):
+                    console.print(f"[red]Error: Index {index} out of range (0-{len(whitelist)-1})[/red]")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Remove pattern
+                removed_pattern = whitelist.pop(index)
+
+                # Update tool metadata in registry
+                success = tools_manager.update_tool_metadata(target_tool, 'whitelist', whitelist)
+
+                if success:
+                    console.print(f"[green]✓[/green] Removed pattern '[bold]{removed_pattern}[/bold]' from {target_tool} whitelist")
+                    return 0
+                else:
+                    console.print(f"[red]✗[/red] Failed to update whitelist for {target_tool}")
+                    return 1
+
+            else:
+                console.print(f"[red]Error: Unknown whitelist action '{whitelist_action}'[/red]")
+                console.print("\nValid whitelist actions: list, add, remove")
                 return 1
 
         elif action == 'import':
