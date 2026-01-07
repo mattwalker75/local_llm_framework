@@ -9,16 +9,17 @@ respective module directories.
 """
 
 import time
-import logging
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+from .logging_config import get_logger
 
 if TYPE_CHECKING:
     from modules.text2speech.tts_base import TTSBase
     from modules.speech2text.stt_engine import SpeechToText
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _load_tts_config() -> dict:
@@ -96,7 +97,6 @@ def wait_for_tts_clearance(tts: 'TTSBase', stt: 'SpeechToText', text: str,
     """
     # Load configuration from module_info.json if not provided
     tts_config = _load_tts_config()
-    stt_config = _load_stt_config()
 
     # Get configurable parameters with fallback defaults
     macos_buffer_time = macos_buffer if macos_buffer is not None else tts_config.get("audio_clearance_buffer_macos", 0.5)

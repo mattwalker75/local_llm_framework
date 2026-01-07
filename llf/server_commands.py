@@ -4,10 +4,8 @@ Enhanced server management commands for multi-server support.
 This module provides CLI commands for managing multiple local LLM servers.
 """
 
-from typing import Optional
 from rich.console import Console
 from rich.table import Table
-from rich.prompt import Prompt
 
 from .config import Config
 from .llm_runtime import LLMRuntime

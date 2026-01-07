@@ -9,10 +9,11 @@ Author: Local LLM Framework
 License: MIT
 """
 
-from typing import List, Dict, Any, Optional
-import logging
+from typing import Dict, Any
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 # Memory tool names for dispatcher routing

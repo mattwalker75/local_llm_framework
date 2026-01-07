@@ -6,11 +6,12 @@ how prompts are structured and formatted when sent to LLMs.
 """
 
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class PromptConfig:

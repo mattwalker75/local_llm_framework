@@ -507,11 +507,8 @@ class ToolsManager:
         # Find tool in registry
         tools = self.registry.get('tools', [])
         tool_found = False
-        tool_config = None
-
         for i, tool in enumerate(tools):
             if tool.get('name') == tool_name:
-                tool_config = tool
                 tools.pop(i)
                 tool_found = True
                 break

@@ -130,12 +130,45 @@ class Config:
 
     def _load_from_file(self, config_file: Path) -> None:
         """
-        Load configuration from JSON file.
+        Load configuration from JSON file with backward compatibility support.
 
-        Relative paths in the config file are resolved relative to the project root.
+        This method handles three different configuration formats for server setup:
+
+        1. NEW Multi-server (recommended):
+           {
+             "local_llm_servers": [
+               {"name": "server1", "llama_server_path": "...", ...},
+               {"name": "server2", "llama_server_path": "...", ...}
+             ]
+           }
+
+        2. LEGACY Single server:
+           {
+             "local_llm_server": {
+               "llama_server_path": "...",
+               "model_path": "...",
+               ...
+             }
+           }
+
+        3. External API only (no local server):
+           {
+             "api_base_url": "https://api.openai.com/v1",
+             "api_key": "sk-...",
+             ...
+           }
+
+        Path Resolution:
+            - Relative paths are resolved relative to PROJECT_ROOT
+            - Absolute paths are used as-is
+            - Model paths are resolved relative to model_dir
 
         Args:
             config_file: Path to JSON configuration file.
+
+        Raises:
+            ValueError: If configuration structure is invalid or required fields missing.
+            FileNotFoundError: If config file doesn't exist.
         """
         try:
             with open(config_file, 'r') as f:

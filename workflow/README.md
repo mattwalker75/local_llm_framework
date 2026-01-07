@@ -380,6 +380,15 @@ with which prompts I passed to the AI.
 3.  Add documentation about using and developing tools and how different LLF workflows operate
 4.  Review code base of any possible coding enhancements
 5.  Review unit testing
+6.  Ask the AI to review the code and see if there is any functionality that it would recommend
+    adding and explain what it would do and how it would benefit the application and end user
+        - This information will be collected and reviewed.  It may get acted upon in 
+          the following section.
+
+#### Review recommendations from the AI.
+1.  The following is the list of recommendations from the AI regarding what should be added or
+    changed and why.
+       - 14_Input_From_AI.txt
 
 #### Testing all the functionality to verify everything seems to work as expected
 

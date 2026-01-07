@@ -1,11 +1,39 @@
 #!/usr/bin/env python
 """
-CLI interface module for Local LLM Framework.
+CLI Interface for Local LLM Framework
 
-This module provides the command-line interface for interacting with LLMs.
+This module provides the command-line interface for interacting with both local
+and external LLM services. It handles interactive chat, model management, server
+control, and configuration management.
 
-Design: Modular CLI that separates UI from business logic for future extensibility.
-Future: Can be extended to support different modes (chat, completion, batch, etc.).
+Architecture:
+    - CLI class: Main interface handling interactive chat loop and user commands
+    - Argparse-based command structure: model, server, datastore, module, tool commands
+    - Rich library integration: Beautiful terminal output with colors and formatting
+    - Multi-server support: Manages multiple local llama-server instances
+
+Key Features:
+    - Interactive chat with streaming responses
+    - Model download and management (HuggingFace integration)
+    - Server lifecycle management (start, stop, restart, status)
+    - Tool/Module/Datastore configuration via CLI
+    - Memory management with dual-pass execution modes
+    - Question mode: Single-shot queries without entering chat loop
+
+Execution Modes:
+    - Single-pass: Non-streaming, accurate tool execution (default for READ operations)
+    - Dual-pass: Stream response first, execute tools in background (WRITE operations)
+    - Streaming-only: Fast responses without tool support (GENERAL conversation)
+
+Design Philosophy:
+    - Separation of concerns: CLI handles UI, managers handle business logic
+    - Extensibility: Easy to add new commands and execution modes
+    - User experience: Rich formatting, clear error messages, helpful prompts
+
+Future Extensions:
+    - Batch processing mode
+    - Completion API (non-chat)
+    - Plugin system for custom commands
 """
 
 import sys
@@ -468,7 +496,6 @@ If STT fails, the system will automatically fall back to keyboard input.
 
                     if use_dual_pass:
                         # Dual-pass mode: Stream first for UX, then execute with tools in background
-                        import asyncio
                         import threading
 
                         # Pass 1: Streaming response for user (no tools)
@@ -3135,8 +3162,7 @@ Contains the memory data files
             # Check if --auto flag was used
             use_auto = getattr(args, 'auto', False)
 
-            # Determine desired state
-            desired_state = 'auto' if use_auto else True
+            # Determine desired state string
             desired_state_str = 'auto' if use_auto else 'true'
 
             # Get supported states

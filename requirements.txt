@@ -1,40 +1,69 @@
+# ============================================================================
+# Local LLM Framework - Requirements
+# ============================================================================
 
+# ----------------------------------------------------------------------------
+# Core Dependencies
+# ----------------------------------------------------------------------------
+openai>=1.0.0                    # OpenAI API client for LLM communication (llm_runtime.py, cli.py, gui.py)
+requests>=2.31.0                 # HTTP requests for API calls and downloads
+psutil>=5.9.0                    # Process management for server lifecycle monitoring
+
+# ----------------------------------------------------------------------------
 # CLI and UI
-# Core dependencies for Local LLM Framework
-# Development tools
-# HTTP requests
-# Model downloading
-# OpenAI API client (for llama.cpp and external API compatibility)
-# Process management
-# RAG data store tools
-# Speech-to-Text (for modules)
-# Testing
-# Text-to-Speech (for modules)
-beautifulsoup4>=4.12.0  # HTML parsing for web pages (Process_WEB.py)
-black>=24.0.0
-ddgs>=9.10.0  # DuckDuckGo search (internet_duckduckgo tool)
-google-api-python-client>=2.187.0  # Google Custom Search API (internet_google_api tool)
-googlesearch-python>=1.3.0  # Google web scraping (internet_google_webscrape tool)
-faiss-cpu>=1.7.4  # FAISS vector database for RAG (Create_VectorStore.py, rag_retriever.py)
-flake8>=7.0.0
-gradio>=4.0.0
-huggingface-hub>=0.20.0
-mypy>=1.8.0
-openai-whisper
-openai>=1.0.0
-psutil>=5.9.0
-pymupdf>=1.23.0  # PDF processing (Process_PDF.py)
-pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'  # macOS TTS backend
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
-pytest>=8.0.0
-python-docx>=1.1.0  # Word document processing - .docx files (Process_DOC.py)
-pyttsx3>=2.90
-requests>=2.31.0
-rich>=13.0.0
-scipy
-sentence-transformers>=2.2.0  # Embedding models for RAG (Create_VectorStore.py, rag_retriever.py)
-sounddevice
-striprtf>=0.0.26  # Rich Text Format processing - .rtf files (Process_DOC.py)
-tqdm>=4.65.0  # Progress bars for vector store creation
-transformers>=4.57.3
+# ----------------------------------------------------------------------------
+rich>=13.0.0                     # Beautiful terminal output with colors and formatting (cli.py, logging_config.py)
+gradio>=4.0.0                    # Web-based GUI interface (gui.py)
+
+# ----------------------------------------------------------------------------
+# Model Management
+# ----------------------------------------------------------------------------
+huggingface-hub>=0.20.0          # Download and manage models from HuggingFace (model_manager.py)
+transformers>=4.57.3             # Transformer models and tokenizers (used by sentence-transformers)
+
+# ----------------------------------------------------------------------------
+# RAG (Retrieval-Augmented Generation)
+# ----------------------------------------------------------------------------
+sentence-transformers>=2.2.0     # Embedding models for semantic search (rag_retriever.py, modules/Create_VectorStore.py)
+faiss-cpu>=1.7.4                 # FAISS vector database for similarity search (rag_retriever.py, modules/Create_VectorStore.py)
+
+# ----------------------------------------------------------------------------
+# Document Processing (for RAG data ingestion)
+# ----------------------------------------------------------------------------
+beautifulsoup4>=4.12.0           # HTML parsing for web page processing (modules/Process_WEB.py)
+pymupdf>=1.23.0                  # PDF document processing (modules/Process_PDF.py)
+python-docx>=1.1.0               # Microsoft Word (.docx) processing (modules/Process_DOC.py)
+striprtf>=0.0.26                 # Rich Text Format (.rtf) processing (modules/Process_DOC.py)
+
+# ----------------------------------------------------------------------------
+# Internet Search Tools
+# ----------------------------------------------------------------------------
+ddgs>=9.10.0                     # DuckDuckGo search API (tools/internet_duckduckgo/)
+google-api-python-client>=2.187.0  # Google Custom Search API (tools/internet_google_api/)
+googlesearch-python>=1.3.0       # Google web scraping (tools/internet_google_webscrape/)
+
+# ----------------------------------------------------------------------------
+# Speech Recognition and Text-to-Speech (TTS/STT Modules)
+# ----------------------------------------------------------------------------
+openai-whisper                   # OpenAI Whisper for speech-to-text (modules/text2speech/)
+pyttsx3>=2.90                    # Cross-platform text-to-speech engine (modules/text2speech/)
+sounddevice                      # Audio I/O for recording and playback (modules/text2speech/)
+scipy                            # Scientific computing for audio processing (WAV file generation)
+
+# Platform-specific TTS backend (macOS only)
+pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'  # macOS native TTS support
+
+# ----------------------------------------------------------------------------
+# Utilities
+# ----------------------------------------------------------------------------
+tqdm>=4.65.0                     # Progress bars for long-running operations (vector store creation)
+
+# ----------------------------------------------------------------------------
+# Development and Testing
+# ----------------------------------------------------------------------------
+pytest>=8.0.0                    # Testing framework
+pytest-cov>=4.1.0                # Code coverage reporting
+pytest-mock>=3.12.0              # Mocking support for tests
+black>=24.0.0                    # Code formatter
+flake8>=7.0.0                    # Linting tool
+mypy>=1.8.0                      # Static type checker
