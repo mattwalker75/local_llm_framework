@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "search_internet_google",
+    "description": "Search the internet using Google (via web scraping). Use this when you need to find current information with Google's search results. May have better quality results than DuckDuckGo. Returns a list of search results with titles and URLs.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query. Be specific and clear about what you're looking for."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Maximum number of results to return (1-20). Defaults to 5.",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": ["query"]
+    }
+  }
+}

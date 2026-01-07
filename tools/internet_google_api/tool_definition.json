@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "search_internet_google_api",
+    "description": "Search the internet using Google's Custom Search API (high quality results, requires API key). Use this when you need reliable, high-quality search results from Google. Note: Limited to 100 free queries per day, then $5 per 1000 queries.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query. Be specific and clear about what you're looking for."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Maximum number of results to return (1-10). Defaults to 5.",
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "required": ["query"]
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "type": "function",
+  "function": {
+    "name": "command_exec",
+    "description": "Execute shell commands with whitelist validation. Only whitelisted commands can be executed. Supports command parameters and captures output.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Command to execute (e.g., 'ls', 'grep', 'find')"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Command arguments as array of strings (e.g., ['-la', '/path'])"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout in seconds (default: 30, max: 300)",
+          "minimum": 1,
+          "maximum": 300
+        }
+      },
+      "required": ["command"]
+    }
+  }
+}

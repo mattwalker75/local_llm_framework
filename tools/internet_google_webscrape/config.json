@@ -3,7 +3,7 @@
   "display_name": "Google Web Scraping Search",
   "description": "Search the internet using Google via web scraping (free, but may be rate limited)",
   "type": "llm_invokable",
-  "enabled": false,
+  "enabled": true,
   "directory": "internet_google_webscrape",
   "created_date": "2026-01-06",
   "last_modified": "2026-01-06",
