@@ -41,7 +41,7 @@
       "enabled": false,
       "directory": "internet_google_webscrape",
       "created_date": "2026-01-06",
-      "last_modified": "2026-01-06",
+      "last_modified": "2026-01-07",
       "metadata": {
         "category": "internet",
         "requires_approval": false,
@@ -91,7 +91,7 @@
       "enabled": false,
       "directory": "internet_duckduckgo",
       "created_date": "2026-01-06",
-      "last_modified": "2026-01-06",
+      "last_modified": "2026-01-07",
       "metadata": {
         "category": "internet",
         "requires_approval": false,
@@ -119,9 +119,9 @@
         "requires_approval": false,
         "use_case": "Allow LLM to read and write files within configured whitelist patterns",
         "mode": "ro",
-        "root_dir": "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-292/test_root_dir_relative_path_re0",
+        "root_dir": "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-294/test_root_dir_relative_path_re0",
         "whitelist": [
-          "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-292/test_execute_write_ro_mode0/*"
+          "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-294/test_execute_write_ro_mode0/*"
         ],
         "permissions": {
           "max_file_size": "10MB",
@@ -138,16 +138,25 @@
       "display_name": "Command Execution Tool",
       "description": "Execute shell commands with whitelist validation and parameter support",
       "type": "llm_invokable",
-      "enabled": false,
+      "enabled": true,
       "directory": "command_exec",
       "created_date": "2026-01-06",
-      "last_modified": "2026-01-06",
+      "last_modified": "2026-01-07",
       "metadata": {
         "category": "command_execution",
         "requires_approval": false,
         "use_case": "Allow LLM to execute whitelisted shell commands with parameters",
         "whitelist": [
-          "sleep"
+          "sleep",
+          "pwd",
+          "ls",
+          "df",
+          "grep",
+          "cat",
+          "file",
+          "cd",
+          "awk",
+          "sed"
         ],
         "permissions": {
           "max_timeout": "300s",
