@@ -564,7 +564,7 @@ class TestLLMFrameworkGUI:
             yield "response"
 
         # Mock prompt_config to have no tools for simpler streaming test
-        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
+        with patch.object(gui.prompt_config, 'get_all_tools', return_value=None), \
              patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
             history = []
             results = list(gui.chat_respond("Hello", history))
@@ -585,7 +585,7 @@ class TestLLMFrameworkGUI:
             yield "2"
 
         # Mock prompt_config to have no tools for simpler streaming test
-        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
+        with patch.object(gui.prompt_config, 'get_all_tools', return_value=None), \
              patch.object(gui.runtime, 'chat', return_value=mock_stream()) as mock_chat:
             history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there"}]
             results = list(gui.chat_respond("How are you?", history))
@@ -683,7 +683,7 @@ class TestLLMFrameworkGUI:
     def test_chat_respond_no_tools_streaming(self, gui):
         """Test chat response when no tools are available (streaming)."""
         # Mock prompt_config to have no tools
-        with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None):
+        with patch.object(gui.prompt_config, 'get_all_tools', return_value=None):
 
             def mock_stream():
                 yield "Hello "
@@ -1097,9 +1097,13 @@ class TestShareModeTTS:
             mock_tts.speak.return_value = None
             gui.tts = mock_tts
 
+            def mock_stream():
+                yield "Hello"
+                yield " world"
+
             # Mock prompt_config to have no tools for simpler streaming test
-            with patch.object(gui.prompt_config, 'get_memory_tools', return_value=None), \
-                 patch.object(gui.runtime, 'chat', return_value=iter(["Hello", " world"])):
+            with patch.object(gui.prompt_config, 'get_all_tools', return_value=None), \
+                 patch.object(gui.runtime, 'chat', return_value=mock_stream()):
                 results = list(gui.chat_respond("test", []))
 
                 # Should complete without errors

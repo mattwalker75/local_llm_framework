@@ -105,12 +105,15 @@ class Config:
         self.log_level = self.LOG_LEVEL
         self.custom_model_dir = None  # Custom model directory (optional)
         self.server_params = {}  # Additional llama-server parameters (optional)
-        self._has_local_server_section = False  # Track if local_llm_server was in config file
+        self._has_local_server_section = False  # Track if local_llm_servers was in config file
         self.tool_execution_mode = self.DEFAULT_TOOL_EXECUTION_MODE  # Tool execution mode
 
         # Multi-server support
         self.servers: Dict[str, ServerConfig] = {}  # Dictionary of server configurations by name
         self.default_local_server: Optional[str] = None  # Name of the default local server
+
+        # Track which config file was loaded
+        self.config_file: Optional[Path] = None
 
         # Determine which config file to use
         config_to_load = None
@@ -124,17 +127,18 @@ class Config:
         # Load from config file if available
         if config_to_load and config_to_load.exists():
             self._load_from_file(config_to_load)
+            self.config_file = config_to_load  # Store the actual config file that was loaded
 
         # Create necessary directories
         self._ensure_directories()
 
     def _load_from_file(self, config_file: Path) -> None:
         """
-        Load configuration from JSON file with backward compatibility support.
+        Load configuration from JSON file.
 
-        This method handles three different configuration formats for server setup:
+        This method handles two different configuration formats:
 
-        1. NEW Multi-server (recommended):
+        1. Multi-server (for local llama-server):
            {
              "local_llm_servers": [
                {"name": "server1", "llama_server_path": "...", ...},
@@ -142,16 +146,7 @@ class Config:
              ]
            }
 
-        2. LEGACY Single server:
-           {
-             "local_llm_server": {
-               "llama_server_path": "...",
-               "model_path": "...",
-               ...
-             }
-           }
-
-        3. External API only (no local server):
+        2. External API only (no local server):
            {
              "api_base_url": "https://api.openai.com/v1",
              "api_key": "sk-...",
@@ -175,9 +170,6 @@ class Config:
                 config_data = json.load(f)
 
             # ===== Server Configuration (for local llama-server) =====
-            # Supports both:
-            # 1. NEW: 'local_llm_servers' array for multiple servers
-            # 2. OLD: Single 'local_llm_server' for backward compatibility
             if 'local_llm_servers' in config_data:
                 # New multi-server configuration
                 self._has_local_server_section = True
@@ -199,7 +191,7 @@ class Config:
 
                     # Parse optional model_dir (subdirectory within models/)
                     model_dir = None
-                    if 'model_dir' in server_data:
+                    if 'model_dir' in server_data and server_data['model_dir'] is not None:
                         model_dir = self.model_dir / server_data['model_dir']
 
                     # Parse server_params (filter out underscore-prefixed comment keys)
@@ -219,7 +211,7 @@ class Config:
                         auto_start=server_data.get('auto_start', False)
                     )
 
-                # Set default single-server attributes to first server for backward compatibility
+                # Populate default attributes from first server for backward compatibility with single-server APIs
                 if self.servers:
                     first_server = list(self.servers.values())[0]
                     self.llama_server_path = first_server.llama_server_path
@@ -230,47 +222,6 @@ class Config:
                     if first_server.gguf_file:
                         self.gguf_file = first_server.gguf_file
                     self.server_params = first_server.server_params
-
-            elif 'local_llm_server' in config_data:
-                # Legacy single server configuration - maintain backward compatibility
-                self._has_local_server_section = True
-                server_config = config_data['local_llm_server']
-
-                # Path to llama-server binary
-                if 'llama_server_path' in server_config:
-                    path = Path(server_config['llama_server_path'])
-                    self.llama_server_path = path if path.is_absolute() else self.PROJECT_ROOT / path
-
-                # Server bind address
-                self.server_host = server_config.get('server_host', self.server_host)
-                # Server port number
-                self.server_port = server_config.get('server_port', self.server_port)
-                # Health check interval
-                self.healthcheck_interval = server_config.get('healthcheck_interval', self.healthcheck_interval)
-
-                # Custom model directory (optional)
-                if 'model_dir' in server_config:
-                    self.custom_model_dir = self.model_dir / server_config['model_dir']
-
-                # GGUF model file
-                self.gguf_file = server_config.get('gguf_file', self.gguf_file)
-
-                # Additional llama-server parameters
-                raw_params = server_config.get('server_params', {})
-                self.server_params = {k: v for k, v in raw_params.items() if not k.startswith('_')}
-
-                # Create a default server entry in servers dict for consistency
-                self.servers['default'] = ServerConfig(
-                    name='default',
-                    llama_server_path=self.llama_server_path,
-                    server_host=self.server_host,
-                    server_port=self.server_port,
-                    healthcheck_interval=self.healthcheck_interval,
-                    model_dir=self.custom_model_dir,
-                    gguf_file=self.gguf_file,
-                    server_params=self.server_params,
-                    auto_start=False
-                )
 
             else:
                 # Fallback to flat structure for backward compatibility
@@ -318,7 +269,7 @@ class Config:
                 # Only apply these if newer nested structures aren't present
                 if 'model_name' in llm_config and 'llm_endpoint' not in config_data:
                     self.model_name = llm_config['model_name']
-                if 'gguf_file' in llm_config and 'local_llm_server' not in config_data:
+                if 'gguf_file' in llm_config and 'local_llm_servers' not in config_data:
                     self.gguf_file = llm_config['gguf_file']
 
             # ===== Directory Paths =====
@@ -410,12 +361,12 @@ class Config:
         Check if local LLM server is properly configured.
 
         Returns False if:
-        - No 'local_llm_server' section in config file
+        - No 'local_llm_servers' section in config file
         - Using external API (OpenAI, Anthropic, etc.)
         - llama-server binary doesn't exist at configured path
 
         Returns True if:
-        - 'local_llm_server' section present in config file
+        - 'local_llm_servers' section present in config file
         - AND llama-server binary exists
 
         This should be used to determine if local server operations
@@ -424,7 +375,7 @@ class Config:
         Returns:
             True if local server is configured and ready, False otherwise.
         """
-        # If no local_llm_server section in config, not configured
+        # If no local_llm_servers section in config, not configured
         if not self._has_local_server_section:
             return False
 
@@ -493,7 +444,7 @@ class Config:
             except Exception:
                 pass
 
-        # If single server in legacy config, return it
+        # If only one server configured, return it
         if len(self.servers) == 1:
             return list(self.servers.values())[0]
 
@@ -510,7 +461,7 @@ class Config:
 
     def update_default_server(self, server_name: str) -> None:
         """
-        Update the default local server and sync api_base_url.
+        Update the default local server and sync api_base_url and model_name.
 
         Args:
             server_name: Name of server to set as default.
@@ -526,7 +477,14 @@ class Config:
         # Update api_base_url to match server's port
         self.api_base_url = f"http://{server.server_host}:{server.server_port}/v1"
 
-        # Update legacy single-server attributes for backward compatibility
+        # Update model_name to match the server's model
+        # Convert model_dir format (e.g., "bartowski--Llama-3.3-70B-Instruct-GGUF")
+        # to HuggingFace format (e.g., "bartowski/Llama-3.3-70B-Instruct-GGUF")
+        if server.model_dir:
+            model_dir_name = server.model_dir.name if hasattr(server.model_dir, 'name') else str(server.model_dir).split('/')[-1]
+            self.model_name = model_dir_name.replace('--', '/')
+
+        # Update default attributes for backward compatibility with single-server APIs
         self.server_host = server.server_host
         self.server_port = server.server_port
         self.llama_server_path = server.llama_server_path
@@ -545,8 +503,8 @@ class Config:
         """
         config_dict = {}
 
-        # Sync legacy attributes back to active server before serialization
-        # This ensures that direct modifications to legacy attributes (like config.server_port = 8888)
+        # Sync default attributes back to active server before serialization
+        # This ensures that direct modifications to default attributes (like config.server_port = 8888)
         # are preserved when saving
         active_server = self.get_active_server()
         if active_server:
@@ -560,8 +518,8 @@ class Config:
                 active_server.gguf_file = self.gguf_file
             active_server.server_params = self.server_params
 
-        # Add multi-server configuration if present
-        if len(self.servers) > 1 or (len(self.servers) == 1 and list(self.servers.keys())[0] != 'default'):
+        # Add multi-server configuration
+        if len(self.servers) > 0:
             # Multi-server format
             servers_list = []
             for server in self.servers.values():
@@ -586,16 +544,6 @@ class Config:
                     server_dict['server_params'] = server.server_params
                 servers_list.append(server_dict)
             config_dict['local_llm_servers'] = servers_list
-        elif len(self.servers) == 1 and list(self.servers.keys())[0] == 'default':
-            # Single legacy server format
-            config_dict['local_llm_server'] = {
-                'llama_server_path': str(self.llama_server_path),
-                'server_host': self.server_host,
-                'server_port': self.server_port,
-                'gguf_file': self.gguf_file,
-            }
-            if self.server_params:
-                config_dict['local_llm_server']['server_params'] = self.server_params
 
         # LLM endpoint configuration
         endpoint_dict = {

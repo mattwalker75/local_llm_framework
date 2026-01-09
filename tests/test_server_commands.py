@@ -58,6 +58,7 @@ def mock_config():
     config.model_dir = Path('/models')
     config.default_local_server = 'qwen-coder'
     config.api_base_url = 'http://127.0.0.1:8000/v1'
+    config.model_name = 'test/model'  # Add model_name for switch command
     config.DEFAULT_CONFIG_FILE = Path('/config.json')
 
     return config
@@ -189,6 +190,7 @@ class TestStartServerCommand:
     def test_start_server_legacy_mode_already_running(self, mock_console, mock_config, mock_runtime, mock_model_manager):
         """Test legacy mode when server is already running."""
         # Setup
+        mock_config.default_local_server = None  # Force legacy mode
         args = MagicMock()
         args.server_name = None  # Legacy mode
         args.daemon = True
@@ -208,6 +210,7 @@ class TestStartServerCommand:
     def test_start_server_legacy_mode_downloads_model(self, mock_console, mock_config, mock_runtime, mock_model_manager):
         """Test legacy mode downloads model if needed."""
         # Setup
+        mock_config.default_local_server = None  # Force legacy mode
         args = MagicMock()
         args.server_name = None  # Legacy mode
         args.daemon = True
@@ -266,6 +269,7 @@ class TestStopServerCommand:
     def test_stop_server_legacy_mode_success(self, mock_console, mock_config, mock_runtime):
         """Test stopping server in legacy mode."""
         # Setup
+        mock_config.default_local_server = None  # Force legacy mode
         args = MagicMock()
         args.server_name = None  # Legacy mode
         mock_runtime.is_server_running.return_value = True
@@ -281,6 +285,7 @@ class TestStopServerCommand:
     def test_stop_server_legacy_mode_not_running(self, mock_console, mock_config, mock_runtime):
         """Test stopping server in legacy mode when not running."""
         # Setup
+        mock_config.default_local_server = None  # Force legacy mode
         args = MagicMock()
         args.server_name = None  # Legacy mode
         mock_runtime.is_server_running.return_value = False
@@ -347,37 +352,37 @@ class TestStatusServerCommand:
 
     @patch('llf.server_commands.console')
     def test_status_server_legacy_mode_running(self, mock_console, mock_config, mock_runtime):
-        """Test status in legacy mode when server is running."""
+        """Test status showing all servers (always returns 0)."""
         # Setup
         args = MagicMock()
-        args.server_name = None  # Legacy mode
+        args.server_name = None  # Show all servers
         mock_config.has_local_server_config.return_value = True
-        mock_runtime.is_server_running.return_value = True
-        mock_config.get_server_url.return_value = 'http://127.0.0.1:8000'
-        mock_config.model_name = 'test/model'
+        mock_runtime.is_server_running_by_name.return_value = True
 
         # Execute
         result = status_server_command(mock_config, mock_runtime, args)
 
-        # Verify
+        # Verify - showing all servers always returns 0
         assert result == 0
-        mock_runtime.is_server_running.assert_called_once()
+        # Should have called is_server_running_by_name for each server
+        assert mock_runtime.is_server_running_by_name.call_count >= 1
 
     @patch('llf.server_commands.console')
     def test_status_server_legacy_mode_not_running(self, mock_console, mock_config, mock_runtime):
-        """Test status in legacy mode when server is not running."""
+        """Test status showing all servers when none running (still returns 0)."""
         # Setup
         args = MagicMock()
-        args.server_name = None  # Legacy mode
+        args.server_name = None  # Show all servers
         mock_config.has_local_server_config.return_value = True
-        mock_runtime.is_server_running.return_value = False
+        mock_runtime.is_server_running_by_name.return_value = False
 
         # Execute
         result = status_server_command(mock_config, mock_runtime, args)
 
-        # Verify
-        assert result == 1
-        mock_runtime.is_server_running.assert_called_once()
+        # Verify - showing all servers always returns 0 even if none running
+        assert result == 0
+        # Should have called is_server_running_by_name for each server
+        assert mock_runtime.is_server_running_by_name.call_count >= 1
 
     @patch('llf.server_commands.console')
     def test_status_no_local_server_configured(self, mock_console, mock_config, mock_runtime):

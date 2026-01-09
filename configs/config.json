@@ -1,25 +1,31 @@
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "healthcheck_interval": 2.0,
-    "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
-    "gguf_file": "Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf"
-  },
+  "local_llm_servers": [
+    {
+      "name": "default",
+      "llama_server_path": "/Users/matt/Desktop/My_Data/AI/Vibe_Coding/REPOS/local_llm_framework/../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8000,
+      "healthcheck_interval": 2.0,
+      "auto_start": false,
+      "model_dir": null,
+      "gguf_file": null
+    }
+  ],
   "llm_endpoint": {
-    "api_base_url": "http://127.0.0.1:8000/v1",
+    "api_base_url": "http://127.0.0.1:8002/v1",
     "api_key": "EMPTY",
-    "model_name": "Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF"
+    "model_name": null,
+    "tool_execution_mode": "single_pass",
+    "default_local_server": "qwen2.5-32b-instruct"
   },
-  "model_dir": "models",
-  "cache_dir": ".cache",
-  "log_level": "ERROR",
+  "model_dir": "/Users/matt/Desktop/My_Data/AI/Vibe_Coding/REPOS/local_llm_framework/models",
+  "cache_dir": "/Users/matt/Desktop/My_Data/AI/Vibe_Coding/REPOS/local_llm_framework/.cache",
   "inference_params": {
     "temperature": 0.7,
     "max_tokens": 2048,
     "top_p": 0.9,
     "top_k": 50,
     "repetition_penalty": 1.1
-  }
+  },
+  "log_level": "ERROR"
 }

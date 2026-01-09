@@ -353,7 +353,7 @@ If STT fails, the system will automatically fall back to keyboard input.
         # In multi-server setups, check if the default_local_server is running
         # In legacy setups, check if the default server is running
         is_running = False
-        if self.config.default_local_server:
+        if self.config.default_local_server and isinstance(self.config.default_local_server, str) and self.config.get_server_by_name(self.config.default_local_server):
             # Multi-server mode: Check if the active server is running
             is_running = self.runtime.is_server_running_by_name(self.config.default_local_server)
         else:
@@ -374,8 +374,10 @@ If STT fails, the system will automatically fall back to keyboard input.
         # If auto-start is not enabled, prompt the user
         if not self.auto_start_server:
             console.print("[yellow]Server is not running.[/yellow]")
+            # Determine which server will be started
+            server_name = self.config.default_local_server if self.config.default_local_server else "default server"
             response = Prompt.ask(
-                "Would you like to start the default server?",
+                f"Would you like to start the server '{server_name}'?",
                 choices=["y", "n"],
                 default="y"
             )
@@ -387,7 +389,11 @@ If STT fails, the system will automatically fall back to keyboard input.
         console.print("[dim]This may take a minute or two...[/dim]")
 
         try:
-            self.runtime.start_server()
+            # Start the server specified in default_local_server, or default server if not set
+            if self.config.default_local_server and isinstance(self.config.default_local_server, str) and self.config.get_server_by_name(self.config.default_local_server):
+                self.runtime.start_server_by_name(self.config.default_local_server)
+            else:
+                self.runtime.start_server()
             console.print("[green]Server started successfully![/green]")
             self.started_server = True  # Mark that we started the server
             return True
@@ -756,6 +762,92 @@ def list_command(args) -> int:
     config = get_config()
     model_manager = ModelManager(config)
 
+    # If --imported flag is used, show only configured models
+    if hasattr(args, 'imported') and args.imported:
+        # Load current config to get imported models
+        config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+        with open(config_file, 'r') as f:
+            config_data = json.load(f)
+
+        # Check for multi-server config
+        if 'local_llm_servers' in config_data:
+            servers = config_data['local_llm_servers']
+
+            if not servers:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            # Collect all unique models from servers
+            # Convert model_dir format to HuggingFace format for display
+            models_by_name = {}
+            for server in servers:
+                model_dir = server.get('model_dir')
+                if model_dir:
+                    # Convert format: "bartowski--Llama-3.3-70B-Instruct-GGUF" -> "bartowski/Llama-3.3-70B-Instruct-GGUF"
+                    model_name = model_dir.replace('--', '/')
+                    if model_name not in models_by_name:
+                        models_by_name[model_name] = []
+                    models_by_name[model_name].append({
+                        'server_name': server.get('name', 'unknown'),
+                        'model_dir': model_dir,
+                        'gguf_file': server.get('gguf_file')
+                    })
+
+            if not models_by_name:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            # Display the imported models
+            console.print("[bold]Imported Models (configured in config.json):[/bold]")
+
+            for model_name, servers_info in sorted(models_by_name.items()):
+                # Get size info if available
+                size_str = ""
+                if model_manager.is_model_downloaded(model_name):
+                    info = model_manager.get_model_info(model_name)
+                    if 'size_gb' in info:
+                        size_str = f" ({info['size_gb']} GB)"
+
+                console.print(f"  [green]✓[/green] {model_name}{size_str}")
+
+                # Show which servers use this model
+                if len(servers_info) == 1:
+                    server_info = servers_info[0]
+                    console.print(f"    [dim]Server:[/dim] {server_info['server_name']}")
+                    if server_info['gguf_file']:
+                        console.print(f"    [dim]GGUF File:[/dim] {server_info['gguf_file']}")
+                else:
+                    console.print(f"    [dim]Configured across {len(servers_info)} servers:[/dim]")
+                    for server_info in servers_info:
+                        console.print(f"      • {server_info['server_name']}")
+                        if server_info['gguf_file']:
+                            console.print(f"        GGUF File: {server_info['gguf_file']}")
+
+        else:
+            # Legacy single-server config
+            configured_model = config_data.get('llm_endpoint', {}).get('model_name')
+
+            if not configured_model:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            console.print("[bold]Imported Models (configured in config.json):[/bold]")
+
+            # Get size info if available
+            size_str = ""
+            if model_manager.is_model_downloaded(configured_model):
+                info = model_manager.get_model_info(configured_model)
+                if 'size_gb' in info:
+                    size_str = f" ({info['size_gb']} GB)"
+
+            console.print(f"  [green]✓[/green] {configured_model}{size_str}")
+
+        return 0
+
+    # Default behavior: list all downloaded models
     models = model_manager.list_downloaded_models()
 
     if not models:
@@ -857,6 +949,235 @@ def delete_command(args) -> int:
         return 1
 
 
+def import_model_command(args) -> int:
+    """
+    Handle model import command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    import glob
+    from datetime import datetime
+
+    config = get_config()
+    model_manager = ModelManager(config)
+
+    model_name = args.model_name
+
+    # Check if model exists
+    if not model_manager.is_model_downloaded(model_name):
+        console.print(f"[red]Model '{model_name}' not found in models directory.[/red]")
+        console.print(f"[yellow]Use 'llf model list' to see available models.[/yellow]")
+        return 1
+
+    # Get model info
+    info = model_manager.get_model_info(model_name)
+    model_path = Path(info['path'])
+
+    # Find Q5_K_M GGUF file in the model directory (case-insensitive)
+    gguf_files = []
+    for file in model_path.glob("*.gguf"):
+        if "q5_k_m" in file.name.lower():
+            gguf_files.append(str(file))
+
+    if not gguf_files:
+        console.print(f"[red]No Q5_K_M GGUF file found in {model_path}[/red]")
+        console.print(f"[yellow]Looking for files matching pattern: *Q5_K_M*.gguf (case-insensitive)[/yellow]")
+        return 1
+
+    # Sort files to ensure we get the first one in multi-part series
+    # Files like "model-q5_k_m-00001-of-00006.gguf" should come before "model-q5_k_m-00006-of-00006.gguf"
+    gguf_files.sort()
+
+    if len(gguf_files) > 1:
+        console.print(f"[yellow]Multiple Q5_K_M GGUF files found:[/yellow]")
+        for f in gguf_files:
+            console.print(f"  - {Path(f).name}")
+        console.print(f"[yellow]Selecting first file in series: {Path(gguf_files[0]).name}[/yellow]")
+
+    gguf_file = Path(gguf_files[0]).name
+    model_dir_name = model_path.name
+
+    # Load current config
+    config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+    with open(config_file, 'r') as f:
+        config_data = json.load(f)
+
+    # Create backup
+    backup_path = config.backup_config(config_file)
+    console.print(f"[green]✓[/green] Backup created: {backup_path}")
+
+    # Auto-detect and handle multi-server configuration
+    if 'local_llm_servers' not in config_data:
+        console.print(f"[red]Configuration does not have 'local_llm_servers' section.[/red]")
+        console.print(f"[yellow]This configuration file is not in the expected multi-server format.[/yellow]")
+        return 1
+
+    # Multi-server configuration exists - add a new server for this model
+    # Generate a unique server name based on the model
+    server_name = model_name.split('/')[-1].lower().replace('-gguf', '').replace('/', '-')
+
+    # Check if a server with this model already exists
+    existing_server = None
+    for server in config_data['local_llm_servers']:
+        if server.get('model_dir') == model_dir_name:
+            existing_server = server
+            break
+
+    if existing_server:
+        # Update existing server with the new GGUF file
+        existing_server['gguf_file'] = gguf_file
+        console.print(f"[green]✓[/green] Updated existing server '{existing_server['name']}' with new GGUF file")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+    else:
+        # Add a new server for this model
+        # Find next available port
+        used_ports = {server.get('server_port', 8000) for server in config_data['local_llm_servers']}
+        next_port = 8000
+        while next_port in used_ports:
+            next_port += 1
+
+        # Ensure unique server name
+        existing_names = {server['name'] for server in config_data['local_llm_servers']}
+        base_name = server_name
+        counter = 1
+        while server_name in existing_names:
+            server_name = f"{base_name}-{counter}"
+            counter += 1
+
+        new_server = {
+            'name': server_name,
+            'llama_server_path': config_data['local_llm_servers'][0].get('llama_server_path', '../llama.cpp/build/bin/llama-server'),
+            'server_host': '127.0.0.1',
+            'server_port': next_port,
+            'healthcheck_interval': 2.0,
+            'auto_start': False,
+            'model_dir': model_dir_name,
+            'gguf_file': gguf_file
+        }
+
+        config_data['local_llm_servers'].append(new_server)
+
+        console.print(f"[green]✓[/green] Added new server to multi-server configuration")
+        console.print(f"  Server Name: {server_name}")
+        console.print(f"  Server Port: {next_port}")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+        console.print(f"  Total Servers: {len(config_data['local_llm_servers'])}")
+
+    # Note: We do NOT update llm_endpoint.model_name here
+    # The model_name should only be updated via 'llf server switch' command
+
+    # Save updated configuration
+    with open(config_file, 'w') as f:
+        json.dump(config_data, f, indent=2)
+
+    console.print(f"[green]✓[/green] Configuration saved: {config_file}")
+    console.print(f"\n[cyan]Model '{model_name}' imported successfully![/cyan]")
+
+    return 0
+
+
+def export_model_command(args) -> int:
+    """
+    Handle model export command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from datetime import datetime
+
+    config = get_config()
+    model_name = args.model_name  # In HuggingFace format: "Qwen/Qwen2.5-32B-Instruct-GGUF"
+
+    # Load current config
+    config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+    with open(config_file, 'r') as f:
+        config_data = json.load(f)
+
+    # Auto-detect and handle multi-server configuration
+    if 'local_llm_servers' not in config_data:
+        console.print(f"[red]Configuration does not have 'local_llm_servers' section.[/red]")
+        console.print(f"[yellow]This configuration file is not in the expected multi-server format.[/yellow]")
+        return 1
+
+    # Convert HuggingFace format to directory format for matching
+    # "Qwen/Qwen2.5-32B-Instruct-GGUF" -> "Qwen--Qwen2.5-32B-Instruct-GGUF"
+    model_dir_format = model_name.replace('/', '--')
+
+    # Find ALL servers that use this model
+    servers_to_remove = []
+    for i, server in enumerate(config_data['local_llm_servers']):
+        server_model_dir = server.get('model_dir')
+        if server_model_dir:
+            # Extract just the directory name if it's a path
+            if isinstance(server_model_dir, str):
+                dir_name = server_model_dir.split('/')[-1]
+            else:
+                dir_name = str(server_model_dir)
+
+            if dir_name == model_dir_format:
+                servers_to_remove.append(i)
+
+    if not servers_to_remove:
+        console.print(f"[yellow]No servers found with model '{model_name}'.[/yellow]")
+        console.print(f"[yellow]Nothing to export.[/yellow]")
+        return 0
+
+    # Create backup
+    backup_path = config.backup_config(config_file)
+    console.print(f"[green]✓[/green] Backup created: {backup_path}")
+
+    # Check if we're removing all servers
+    remaining_servers = len(config_data['local_llm_servers']) - len(servers_to_remove)
+
+    if remaining_servers == 0:
+        # This is the LAST model - reset the last server to default state
+        # Keep the first server and reset it
+        first_server = config_data['local_llm_servers'][0]
+        first_server['model_dir'] = None
+        first_server['gguf_file'] = None
+        first_server['name'] = 'default'
+        first_server['server_port'] = 8000
+
+        # Remove all other servers
+        config_data['local_llm_servers'] = [first_server]
+
+        console.print(f"[green]✓[/green] Exported last model from configuration")
+        console.print(f"  Model: {model_name}")
+        console.print(f"  Reset to default server configuration (port 8000)")
+    else:
+        # Remove servers in reverse order to maintain indices
+        for idx in reversed(servers_to_remove):
+            removed_server = config_data['local_llm_servers'].pop(idx)
+            console.print(f"[green]✓[/green] Removed server '{removed_server['name']}' from configuration")
+
+        console.print(f"  Model: {model_name}")
+        console.print(f"  Servers removed: {len(servers_to_remove)}")
+        console.print(f"  Remaining servers: {remaining_servers}")
+
+    # Clear model_name if we removed all servers or if it matches the exported model
+    current_model_name = config_data.get('llm_endpoint', {}).get('model_name')
+    if remaining_servers == 0 or current_model_name == model_name:
+        config_data['llm_endpoint']['model_name'] = None
+
+    # Save updated configuration
+    with open(config_file, 'w') as f:
+        json.dump(config_data, f, indent=2)
+
+    console.print(f"[green]✓[/green] Configuration saved: {config_file}")
+    console.print(f"\n[cyan]Model configuration removed successfully![/cyan]")
+
+    return 0
+
+
 def server_command(args) -> int:
     """
     Handle server command.
@@ -919,7 +1240,26 @@ def server_command(args) -> int:
             return stop_server_command(config, runtime, args)
 
         elif args.action == 'restart':
-            # Restart server
+            # Restart server - use default_local_server if set
+            default_server_name = config.default_local_server
+
+            if default_server_name and isinstance(default_server_name, str) and config.get_server_by_name(default_server_name):
+                # Restart the configured default server
+                console.print(f"[yellow]Restarting default server '{default_server_name}'...[/yellow]")
+
+                if runtime.is_server_running_by_name(default_server_name):
+                    console.print("[dim]Stopping current server...[/dim]")
+                    runtime.stop_server_by_name(default_server_name)
+
+                console.print("[dim]Starting server...[/dim]")
+                runtime.start_server_by_name(default_server_name)
+
+                server_config = config.get_server_by_name(default_server_name)
+                console.print(f"[green]✓ Server '{default_server_name}' restarted successfully[/green]")
+                console.print(f"[cyan]URL: http://{server_config.server_host}:{server_config.server_port}/v1[/cyan]")
+                return 0
+
+            # Fallback to legacy mode if no default_local_server is set
             console.print("[yellow]Restarting server...[/yellow]")
 
             if runtime.is_server_running():
@@ -1017,35 +1357,36 @@ Examples:
   llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
-  # Multi-server commands
+  # Local Server management
   llf server list                              List all configured servers and status
+  llf server start                             Start default server (localhost, foreground)
   llf server start LOCAL_SERVER_NAME           Start specific server by name
-  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
+  llf server start --force                     Start without memory safety prompt
+  llf server start --share                     Start server on local network (0.0.0.0)
+  llf server start --daemon                    Start server in background
+  llf server start --share --daemon            Start server in background (network accessible)
+  llf server start --huggingface-model MODEL   Start with specific model
+  llf server start --gguf-dir DIR --gguf-file FILE  Start with custom GGUF file
+  llf server stop                              Stop default server
   llf server stop LOCAL_SERVER_NAME            Stop specific server by name
-  llf server status LOCAL_SERVER_NAME          Check status of specific server
+  llf server status                            Check default server status
+  llf server status LOCAL_SERVER_NAME          Check specific server status
+  llf server restart                           Restart default server
+  llf server restart --share                   Restart server with network access
   llf server switch LOCAL_SERVER_NAME          Switch default server
-
-  # Single-server commands
-  llf server start                 Start llama-server (localhost only, stays in foreground)
-  llf server start --share         Start server accessible on local network (0.0.0.0)
-  llf server start --daemon        Start server in background (localhost only)
-  llf server start --share --daemon  Start server in background (network accessible)
-  llf server start --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
-  llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
-  llf server stop                  Stop running server
-  llf server status                Check if server is running
-  llf server restart               Restart server with current model
-  llf server restart --share       Restart server with network access
-  llf server list_models           List available models from configured endpoint
+  llf server list_models                       List available models from configured endpoint
 
   # Model management
   llf model download               Download default HuggingFace model
   llf model download --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf model download --url https://example.com/model.gguf --name my-model
-  llf model list                   List downloaded models
+  llf model list                   List all downloaded models
+  llf model list --imported        List models configured in config.json
   llf model info                   Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf model delete MODEL_NAME      Delete a model and all its contents
+  llf model import MODEL_NAME      Import model to config
+  llf model export MODEL_NAME      Remove model from config
 
   # GUI interface
   llf gui                          Start web-based GUI (localhost only, port 7860)
@@ -1242,6 +1583,7 @@ Examples:
 
   # List and info
   llf model list                        List all downloaded models
+  llf model list --imported             List models currently configured in config.json
   llf model info                        Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
                                         View information about a specific downloaded model
@@ -1251,6 +1593,12 @@ Examples:
                                         Delete a model and all its contents
   llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF --force
                                         Delete without confirmation prompt
+
+  # Import/Export models to configuration
+  llf model import Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Import model to configuration
+  llf model export Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Export (remove) model from configuration
         """
     )
     model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
@@ -1299,7 +1647,12 @@ Examples:
     list_parser = model_subparsers.add_parser(
         'list',
         help='List all downloaded models',
-        description='Display all models currently downloaded and cached locally.'
+        description='Display all models currently downloaded and cached locally. Use --imported to show only models configured in config.json.'
+    )
+    list_parser.add_argument(
+        '--imported',
+        action='store_true',
+        help='Show only models that are currently imported/configured in config.json'
     )
 
     # model info
@@ -1332,6 +1685,30 @@ Examples:
         help='Skip confirmation prompt and delete immediately'
     )
 
+    # model import
+    import_parser = model_subparsers.add_parser(
+        'import',
+        help='Import a model into the configuration',
+        description='Import a downloaded model into the config.json file for use with the local LLM server. Creates a backup before making changes.'
+    )
+    import_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to import (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+
+    # model export
+    export_parser = model_subparsers.add_parser(
+        'export',
+        help='Export (remove) model from the configuration',
+        description='Remove model configuration from config.json file. Validates model name matches current configuration before removal. Creates a backup before making changes.'
+    )
+    export_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to export (must match currently configured model, e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+
     # Server command
     server_parser = subparsers.add_parser(
         'server',
@@ -1340,33 +1717,31 @@ Examples:
 
 Positional arguments:
   list         List all configured servers and their status
-  start        Start local LLM server (llama-server)
-  stop         Stop local LLM server (llama-server)
+  start        Start local LLM server (default or by name)
+  stop         Stop local LLM server (default or by name)
   status       Display running status of local LLM server
   restart      Restart the local LLM server
-  switch       Switch the default local server (multi-server setups)
+  switch       Switch the default local server
   list_models  List available models hosted from LLM server
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Multi-server commands
+  # Local Server management
   llf server list                              List all configured servers and status
+  llf server start                             Start default server (localhost, foreground)
   llf server start LOCAL_SERVER_NAME           Start specific server by name
-  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
-  llf server start LOCAL_SERVER_NAME -f        Short form of --force
-  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
-  llf server status LOCAL_SERVER_NAME          Check status of specific server
-  llf server switch LOCAL_SERVER_NAME          Switch default server
-
-  # Single-server commands
-  llf server start                             Start server with default model
-  llf server stop                              Stop the running server
-  llf server status                            Check server status
-  llf server restart                           Restart the server
-
-  # Server options
+  llf server start --force                     Start without memory safety prompt
+  llf server start --share                     Start server on local network (0.0.0.0)
+  llf server start --daemon                    Start server in background
   llf server start --share --daemon            Start server in background (network accessible)
+  llf server stop                              Stop default server
+  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
+  llf server status                            Check default server status
+  llf server status LOCAL_SERVER_NAME          Check specific server status
+  llf server restart                           Restart default server
+  llf server restart --share                   Restart server with network access
+  llf server switch LOCAL_SERVER_NAME          Switch default server
 
   # Model selection
   llf server start --gguf-dir model_GGUF --gguf-file my-model.gguf
@@ -1384,11 +1759,11 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help=argparse.SUPPRESS  # Suppress auto-generated help - using custom description instead
     )
 
-    # Optional server name for multi-server commands
+    # Optional server name
     server_parser.add_argument(
         'server_name',
         nargs='?',  # Optional
-        help='Server name (for multi-server configurations). Use with start, stop, status, or switch commands.'
+        help='Server name (optional). Specify to operate on a specific server, omit to use default server.'
     )
 
     # Model selection for server
@@ -1754,6 +2129,10 @@ actions:
             return info_command(args)
         elif args.action == 'delete':
             return delete_command(args)
+        elif args.action == 'import':
+            return import_model_command(args)
+        elif args.action == 'export':
+            return export_model_command(args)
         else:
             model_parser.print_help()
             return 0

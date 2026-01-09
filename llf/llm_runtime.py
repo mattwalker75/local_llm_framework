@@ -51,7 +51,7 @@ class LLMRuntime:
         # Multi-server support: Dictionary of server processes and clients by server name
         self.server_processes: Dict[str, subprocess.Popen] = {}
         self.clients: Dict[str, OpenAI] = {}
-        # Legacy single-server attributes for backward compatibility
+        # Default server attributes (for backward compatibility with single-server APIs)
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[OpenAI] = None
 

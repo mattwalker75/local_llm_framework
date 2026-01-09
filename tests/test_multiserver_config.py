@@ -11,34 +11,6 @@ from llf.config import Config, ServerConfig
 class TestMultiServerConfig:
     """Test multi-server configuration loading and management."""
 
-    def test_single_server_legacy_format(self, tmp_path):
-        """Test that legacy single server config still works."""
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
-            "local_llm_server": {
-                "llama_server_path": "/usr/bin/llama-server",
-                "server_host": "127.0.0.1",
-                "server_port": 8000,
-                "gguf_file": "model.gguf"
-            },
-            "llm_endpoint": {
-                "api_base_url": "http://127.0.0.1:8000/v1",
-                "api_key": "EMPTY",
-                "model_name": "test-model"
-            }
-        }))
-
-        config = Config(config_file)
-
-        # Check legacy attributes
-        assert config.server_host == "127.0.0.1"
-        assert config.server_port == 8000
-        assert config.gguf_file == "model.gguf"
-
-        # Check servers dict has default entry
-        assert "default" in config.servers
-        assert config.servers["default"].server_port == 8000
-
     def test_multi_server_configuration(self, tmp_path):
         """Test loading multiple servers from config."""
         config_file = tmp_path / "config.json"

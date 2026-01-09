@@ -447,7 +447,7 @@ class LLMFrameworkGUI:
         try:
             if not self.config.has_local_server_config():
                 return "❌ Cannot start server: Local LLM server not configured\n\n" + \
-                       "Please configure local_llm_server section in config.json"
+                       "Please configure local_llm_servers section in config.json"
 
             if self.runtime.is_server_running():
                 return "ℹ️ Server is already running"
@@ -1827,7 +1827,7 @@ class LLMFrameworkGUI:
             server_name = self.config.default_local_server if self.config.default_local_server else None
 
             if not server_name:
-                # Legacy single-server mode - just restart default server
+                # No default server set - restart default server
                 stop_msg, _ = self.stop_server()
                 time.sleep(2)
                 start_msg, _ = self.start_server()
