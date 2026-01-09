@@ -109,20 +109,20 @@ class TestModelImport:
             with open(config_file, 'r') as f:
                 updated_config = json.load(f)
 
-            # A new server should be added (original config has 2 servers, now should have 3)
-            assert len(updated_config['local_llm_servers']) == 3
+            # The default server should be updated (not adding a new server since default has null model fields)
+            assert len(updated_config['local_llm_servers']) == 2
 
-            # Find the new server
-            new_server = None
+            # Find the default server
+            default_server = None
             for server in updated_config['local_llm_servers']:
-                if server.get('model_dir') == "Qwen--Qwen2.5-32B-Instruct-GGUF":
-                    new_server = server
+                if server.get('name') == 'default':
+                    default_server = server
                     break
 
-            assert new_server is not None
-            assert new_server['gguf_file'] == "Qwen2.5-32B-Instruct-Q5_K_M.gguf"
-            assert new_server['name'] == "qwen2.5-32b-instruct"  # Generated from model name
-            assert new_server['server_port'] == 8002  # Should be next available port
+            assert default_server is not None
+            assert default_server['model_dir'] == "Qwen--Qwen2.5-32B-Instruct-GGUF"
+            assert default_server['gguf_file'] == "Qwen2.5-32B-Instruct-Q5_K_M.gguf"
+            assert default_server['server_port'] == 8000  # Should keep the default port
 
             # Verify that model_name was NOT updated (should only be updated via 'llf server switch')
             assert updated_config['llm_endpoint']['model_name'] is None
@@ -297,6 +297,84 @@ class TestModelImport:
 
             # Should select 00001, not 00003, 00004, or 00006
             assert new_server['gguf_file'] == "qwen2.5-32b-instruct-q5_k_m-00001-of-00006.gguf"
+
+    def test_import_adds_new_server_when_default_has_model(self, mock_args, tmp_path):
+        """Test that import adds a new server when default server already has a model."""
+        # Create config with default server that already has a model
+        config_data = {
+            "local_llm_servers": [
+                {
+                    "name": "default",
+                    "llama_server_path": "/path/to/llama-server",
+                    "server_host": "127.0.0.1",
+                    "server_port": 8000,
+                    "healthcheck_interval": 2.0,
+                    "auto_start": False,
+                    "model_dir": "ExistingModel--GGUF",
+                    "gguf_file": "existing-model.gguf"
+                }
+            ],
+            "llm_endpoint": {
+                "api_base_url": "http://127.0.0.1:8000/v1",
+                "api_key": "EMPTY",
+                "model_name": None,
+                "default_local_server": "default"
+            },
+            "model_dir": "/path/to/models",
+            "cache_dir": "/path/to/.cache"
+        }
+
+        config_file = tmp_path / "config.json"
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f, indent=2)
+
+        with patch('llf.cli.get_config') as mock_get_config, \
+             patch('llf.cli.ModelManager') as mock_model_manager_class, \
+             patch('llf.cli.console'):
+
+            mock_config = Mock()
+            mock_config.DEFAULT_CONFIG_FILE = config_file
+            mock_config.config_file = config_file
+            mock_config.backups_dir = tmp_path / "backups"
+            mock_config.backups_dir.mkdir(exist_ok=True)
+            mock_get_config.return_value = mock_config
+
+            mock_model_manager = Mock()
+            mock_model_manager.is_model_downloaded.return_value = True
+
+            model_info = {
+                'path': tmp_path / "Qwen--Qwen2.5-32B-Instruct-GGUF",
+                'size_gb': 21.66
+            }
+            model_info['path'].mkdir(parents=True, exist_ok=True)
+            (model_info['path'] / "Qwen2.5-32B-Instruct-Q5_K_M.gguf").touch()
+
+            mock_model_manager.get_model_info.return_value = model_info
+            mock_model_manager_class.return_value = mock_model_manager
+
+            mock_config.backup_config.return_value = tmp_path / "backups" / "config_backup.json"
+
+            result = import_model_command(mock_args)
+
+            assert result == 0
+
+            with open(config_file, 'r') as f:
+                updated_config = json.load(f)
+
+            # Should add a new server instead of updating default
+            assert len(updated_config['local_llm_servers']) == 2
+
+            # Default server should still have its original model
+            default_server = updated_config['local_llm_servers'][0]
+            assert default_server['name'] == 'default'
+            assert default_server['model_dir'] == "ExistingModel--GGUF"
+            assert default_server['gguf_file'] == "existing-model.gguf"
+
+            # New server should be added
+            new_server = updated_config['local_llm_servers'][1]
+            assert new_server['model_dir'] == "Qwen--Qwen2.5-32B-Instruct-GGUF"
+            assert new_server['gguf_file'] == "Qwen2.5-32B-Instruct-Q5_K_M.gguf"
+            assert new_server['server_port'] == 8001  # Next available port
 
 
 class TestModelExport:

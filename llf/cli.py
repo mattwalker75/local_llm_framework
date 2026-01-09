@@ -1016,9 +1016,18 @@ def import_model_command(args) -> int:
         console.print(f"[yellow]This configuration file is not in the expected multi-server format.[/yellow]")
         return 1
 
-    # Multi-server configuration exists - add a new server for this model
+    # Multi-server configuration exists
     # Generate a unique server name based on the model
     server_name = model_name.split('/')[-1].lower().replace('-gguf', '').replace('/', '-')
+
+    # Check if there's a default server with null model fields (first import case)
+    default_server_with_null_model = None
+    for server in config_data['local_llm_servers']:
+        if (server.get('name') == 'default' and
+            server.get('model_dir') is None and
+            server.get('gguf_file') is None):
+            default_server_with_null_model = server
+            break
 
     # Check if a server with this model already exists
     existing_server = None
@@ -1031,6 +1040,15 @@ def import_model_command(args) -> int:
         # Update existing server with the new GGUF file
         existing_server['gguf_file'] = gguf_file
         console.print(f"[green]✓[/green] Updated existing server '{existing_server['name']}' with new GGUF file")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+    elif default_server_with_null_model:
+        # This is the first import - update the default server
+        default_server_with_null_model['model_dir'] = model_dir_name
+        default_server_with_null_model['gguf_file'] = gguf_file
+        console.print(f"[green]✓[/green] Updated default server with first model")
+        console.print(f"  Server Name: default")
+        console.print(f"  Server Port: {default_server_with_null_model['server_port']}")
         console.print(f"  Model Directory: {model_dir_name}")
         console.print(f"  GGUF File: {gguf_file}")
     else:
