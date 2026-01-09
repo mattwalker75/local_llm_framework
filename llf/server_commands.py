@@ -4,10 +4,8 @@ Enhanced server management commands for multi-server support.
 This module provides CLI commands for managing multiple local LLM servers.
 """
 
-from typing import Optional
 from rich.console import Console
 from rich.table import Table
-from rich.prompt import Prompt
 
 from .config import Config
 from .llm_runtime import LLMRuntime
@@ -176,7 +174,45 @@ def start_server_command(config: Config, runtime: LLMRuntime, model_manager: Mod
             console.print(f"[red]Failed to start server '{server_name}': {e}[/red]")
             return 1
 
-    # Legacy single-server mode (backward compatibility)
+    # No server name specified - start default server from default_local_server setting
+    default_server_name = config.default_local_server
+    if default_server_name and isinstance(default_server_name, str) and config.get_server_by_name(default_server_name):
+        # Use the configured default server
+        if runtime.is_server_running_by_name(default_server_name):
+            server_config = config.get_server_by_name(default_server_name)
+            console.print(f"[yellow]Default server '{default_server_name}' is already running on http://{server_config.server_host}:{server_config.server_port}/v1[/yellow]")
+            return 0
+
+        console.print(f"[yellow]Starting default server '{default_server_name}'...[/yellow]")
+        console.print("[dim]This may take a minute or two...[/dim]")
+
+        runtime.start_server_by_name(default_server_name, force=force)
+
+        # Verify server actually started
+        if not runtime.is_server_running_by_name(default_server_name):
+            return 0
+
+        server_config = config.get_server_by_name(default_server_name)
+        console.print(f"[green]✓ Server '{default_server_name}' started successfully[/green]")
+        console.print(f"[cyan]URL: http://{server_config.server_host}:{server_config.server_port}/v1[/cyan]")
+
+        if args.daemon:
+            console.print("[cyan]Server is running in daemon mode.[/cyan]")
+            console.print(f"[cyan]Use 'llf server stop' to stop it.[/cyan]")
+        else:
+            console.print("[cyan]Server is running. Press Ctrl+C to stop.[/cyan]")
+            try:
+                import time
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                console.print(f"\n[yellow]Stopping server '{default_server_name}'...[/yellow]")
+                runtime.stop_server_by_name(default_server_name)
+                console.print("[green]Server stopped.[/green]")
+
+        return 0
+
+    # Fallback to legacy mode if no default_local_server is set
     if runtime.is_server_running():
         console.print(f"[yellow]Default server is already running on {config.get_server_url()}[/yellow]")
         return 0
@@ -263,7 +299,20 @@ def stop_server_command(config: Config, runtime: LLMRuntime, args) -> int:
         console.print(f"[green]✓ Server '{server_name}' stopped successfully[/green]")
         return 0
 
-    # Legacy single-server mode
+    # No server name specified - stop default server from default_local_server setting
+    default_server_name = config.default_local_server
+    if default_server_name and isinstance(default_server_name, str) and config.get_server_by_name(default_server_name):
+        # Use the configured default server
+        if not runtime.is_server_running_by_name(default_server_name):
+            console.print(f"[yellow]Default server '{default_server_name}' is not running[/yellow]")
+            return 0
+
+        console.print(f"[yellow]Stopping default server '{default_server_name}'...[/yellow]")
+        runtime.stop_server_by_name(default_server_name)
+        console.print(f"[green]✓ Server '{default_server_name}' stopped successfully[/green]")
+        return 0
+
+    # Fallback to legacy mode if no default_local_server is set
     if not runtime.is_server_running():
         console.print("[yellow]Default server is not running[/yellow]")
         return 0
@@ -306,20 +355,45 @@ def status_server_command(config: Config, runtime: LLMRuntime, args) -> int:
             console.print(f"[yellow]✗[/yellow] Server '{server_name}' is not running")
             return 1
 
-    # Legacy single-server mode or show all servers
+    # No server name specified - show all local servers status
     if not config.has_local_server_config():
         console.print("[yellow]Local LLM server is not configured[/yellow]")
         console.print(f"Using external API: [cyan]{config.api_base_url}[/cyan]")
         console.print(f"Model: [cyan]{config.model_name}[/cyan]")
         return 0
 
-    if runtime.is_server_running():
-        console.print(f"[green]✓[/green] Default server is running on {config.get_server_url()}")
-        console.print(f"[cyan]Model: {config.model_name}[/cyan]")
-        return 0
-    else:
-        console.print("[yellow]✗[/yellow] Default server is not running")
-        return 1
+    # Show status of all configured servers
+    from rich.table import Table
+    table = Table(title="Local Server Status", show_header=True, header_style="bold cyan")
+    table.add_column("Server Name", style="white")
+    table.add_column("Port", style="cyan")
+    table.add_column("Status", style="white")
+    table.add_column("Model", style="dim")
+
+    # Get default server for highlighting
+    default_server_name = config.default_local_server
+
+    # List all servers
+    for name, server_config in config.servers.items():
+        is_running = runtime.is_server_running_by_name(name)
+        status = "[green]Running[/green]" if is_running else "[dim]Stopped[/dim]"
+
+        # Get model info
+        model_info = server_config.gguf_file or "Not configured"
+        if server_config.model_dir:
+            try:
+                rel_path = server_config.model_dir.relative_to(config.model_dir)
+                model_info = f"{rel_path}/{server_config.gguf_file}" if server_config.gguf_file else str(rel_path)
+            except (ValueError, AttributeError):
+                pass
+
+        # Highlight default server
+        name_display = f"[bold magenta]{name}[/bold magenta] (default)" if name == default_server_name else name
+
+        table.add_row(name_display, str(server_config.server_port), status, model_info)
+
+    console.print(table)
+    return 0
 
 
 def switch_server_command(config: Config, args) -> int:
@@ -336,7 +410,7 @@ def switch_server_command(config: Config, args) -> int:
     server_name = args.server_name
 
     try:
-        # Update default server
+        # Update default server (also updates model_name)
         config.update_default_server(server_name)
 
         # Save to config file
@@ -346,6 +420,7 @@ def switch_server_command(config: Config, args) -> int:
         console.print(f"[green]✓ Switched to server '{server_name}'[/green]")
         console.print(f"[cyan]URL: {config.api_base_url}[/cyan]")
         console.print(f"[cyan]Port: {server_config.server_port}[/cyan]")
+        console.print(f"[cyan]Model: {config.model_name}[/cyan]")
         console.print(f"\n[dim]Config file updated: {config.DEFAULT_CONFIG_FILE}[/dim]")
 
         return 0

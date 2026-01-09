@@ -13,11 +13,12 @@ License: MIT
 """
 
 import json
-import logging
 import os
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any
 import numpy as np
+
+from .logging_config import get_logger
 
 # Set environment variables before imports to prevent threading issues
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
@@ -44,7 +45,7 @@ try:
 except ImportError:
     torch = None
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Default configuration values

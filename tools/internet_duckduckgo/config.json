@@ -1,0 +1,22 @@
+{
+  "name": "search_internet_duckduckgo",
+  "display_name": "DuckDuckGo Internet Search",
+  "description": "Search the internet using DuckDuckGo (free, no API key required). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
+  "type": "llm_invokable",
+  "enabled": true,
+  "directory": "internet_duckduckgo",
+  "created_date": "2026-01-06",
+  "last_modified": "2026-01-07",
+  "metadata": {
+    "category": "internet",
+    "requires_approval": false,
+    "use_case": "Search the web for current information, facts, news, or documentation. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
+    "dependencies": ["ddgs"],
+    "companion_tools": ["fetch_webpage"],
+    "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
+    "supported_states": [
+      "false",
+      "true"
+    ]
+  }
+}

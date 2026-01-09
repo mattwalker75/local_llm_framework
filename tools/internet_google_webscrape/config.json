@@ -1,0 +1,23 @@
+{
+  "name": "search_internet_google",
+  "display_name": "Google Web Scraping Search",
+  "description": "Search the internet using Google via web scraping (free, but may be rate limited). This tool only performs searches and returns URLs/snippets - requires fetch_webpage tool to view actual webpage content.",
+  "type": "llm_invokable",
+  "enabled": true,
+  "directory": "internet_google_webscrape",
+  "created_date": "2026-01-06",
+  "last_modified": "2026-01-07",
+  "metadata": {
+    "category": "internet",
+    "requires_approval": false,
+    "use_case": "Search Google for potentially better results than DuckDuckGo. Returns URLs and snippets only - use fetch_webpage tool to read actual page content.",
+    "dependencies": ["googlesearch-python"],
+    "companion_tools": ["fetch_webpage"],
+    "note": "This tool only searches and returns URLs. Enable fetch_webpage tool to read actual webpage content.",
+    "warning": "May be rate limited by Google - use sparingly",
+    "supported_states": [
+      "false",
+      "true"
+    ]
+  }
+}

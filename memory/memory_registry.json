@@ -7,7 +7,7 @@
       "display_name": "Main Memory",
       "description": "Custom memory instance",
       "directory": "main_memory",
-      "enabled": true,
+      "enabled": false,
       "type": "persistent",
       "created_date": "2026-01-05",
       "last_modified": null,

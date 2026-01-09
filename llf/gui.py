@@ -1,11 +1,56 @@
 """
-GUI interface for Local LLM Framework using Gradio.
+Gradio Web GUI for Local LLM Framework
 
-This module provides a web-based graphical interface for:
-- Chatting with LLMs
-- Managing server (start/stop/status)
-- Managing models (download/list/info)
-- Editing configuration files
+This module provides a browser-based graphical user interface built with Gradio.
+It offers a user-friendly alternative to the CLI for managing and interacting
+with local and external LLM services.
+
+Architecture:
+    - GradioUI class: Main interface managing all GUI components and state
+    - Tab-based layout: Separate tabs for Chat, Server, Models, and Config
+    - Event-driven callbacks: UI updates triggered by user interactions
+    - Threading: Background tool execution to prevent UI blocking
+
+Key Components:
+    1. Chat Tab:
+       - Interactive chat interface with message history
+       - Streaming response support with stop button
+       - Tool execution with visual feedback
+       - Conversation export functionality
+
+    2. Server Tab:
+       - Server control (start/stop/restart)
+       - Real-time status monitoring
+       - Port and host configuration
+       - Model selection for server
+
+    3. Models Tab:
+       - Model download from HuggingFace
+       - Downloaded model list with refresh
+       - Model information viewer
+       - Model deletion capability
+
+    4. Config Tab:
+       - JSON configuration editor for config.json
+       - Separate editor for prompt_config.json
+       - Save/reload functionality
+       - Syntax validation
+
+Design Philosophy:
+    - Simplicity: Intuitive interface for non-technical users
+    - Responsiveness: Async operations don't freeze UI
+    - Feedback: Clear status messages and progress indicators
+    - Safety: Confirmation dialogs for destructive operations
+
+State Management:
+    - UI state stored in Gradio components (gr.State)
+    - Runtime state managed by LLMRuntime, Config, and managers
+    - No persistent GUI state (reconstructed on each launch)
+
+Threading Model:
+    - Main thread: Gradio event loop and UI updates
+    - Background threads: Tool execution (daemon threads)
+    - Thread safety: Managed through Gradio's queuing system
 """
 
 import json
@@ -263,7 +308,7 @@ class LLMFrameworkGUI:
             # Check if tools are available
             tools_available = False
             if self.prompt_config:
-                tools = self.prompt_config.get_memory_tools()
+                tools = self.prompt_config.get_all_tools()
                 tools_available = tools is not None and len(tools) > 0
 
             # Determine execution strategy based on configuration
@@ -402,7 +447,7 @@ class LLMFrameworkGUI:
         try:
             if not self.config.has_local_server_config():
                 return "❌ Cannot start server: Local LLM server not configured\n\n" + \
-                       "Please configure local_llm_server section in config.json"
+                       "Please configure local_llm_servers section in config.json"
 
             if self.runtime.is_server_running():
                 return "ℹ️ Server is already running"
@@ -1782,7 +1827,7 @@ class LLMFrameworkGUI:
             server_name = self.config.default_local_server if self.config.default_local_server else None
 
             if not server_name:
-                # Legacy single-server mode - just restart default server
+                # No default server set - restart default server
                 stop_msg, _ = self.stop_server()
                 time.sleep(2)
                 start_msg, _ = self.start_server()

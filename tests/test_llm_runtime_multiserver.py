@@ -68,6 +68,9 @@ class TestGetRunningServers:
         """Test when no servers are running."""
         runtime = LLMRuntime(multi_server_config, mock_model_manager)
 
+        # Mock _is_server_ready_at_port to return False (no server running on port)
+        runtime._is_server_ready_at_port = Mock(return_value=False)
+
         result = runtime.get_running_servers()
 
         assert result == []
@@ -80,6 +83,9 @@ class TestGetRunningServers:
         mock_process = MagicMock(spec=subprocess.Popen)
         mock_process.poll.return_value = None  # Process is running
         runtime.server_processes['server1'] = mock_process
+
+        # Mock _is_server_ready_at_port to return False for all servers (rely on server_processes)
+        runtime._is_server_ready_at_port = Mock(return_value=False)
 
         result = runtime.get_running_servers()
 
@@ -115,6 +121,9 @@ class TestGetRunningServers:
 
         runtime.server_processes['server1'] = mock_running
         runtime.server_processes['server2'] = mock_dead
+
+        # Mock _is_server_ready_at_port to return False for all servers (rely on server_processes)
+        runtime._is_server_ready_at_port = Mock(return_value=False)
 
         result = runtime.get_running_servers()
 

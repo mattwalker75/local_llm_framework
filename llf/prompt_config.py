@@ -6,11 +6,12 @@ how prompts are structured and formatted when sent to LLMs.
 """
 
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class PromptConfig:
@@ -343,6 +344,65 @@ The following information has been retrieved from attached knowledge bases and m
                 return None
         else:
             return None
+
+    def get_llm_invokable_tools(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get LLM-invokable tools from tools registry.
+
+        Returns:
+            List of tool definitions from enabled llm_invokable tools, None if none available
+        """
+        try:
+            from llf.tools_manager import ToolsManager
+            tools_manager = ToolsManager()
+            enabled_tools = tools_manager.get_enabled_llm_invokable_tools()
+
+            if not enabled_tools:
+                return None
+
+            tool_definitions = []
+            for tool in enabled_tools:
+                tool_name = tool.get('name')
+                try:
+                    # Dynamically load the tool module
+                    module = tools_manager.load_tool_module(tool_name)
+                    if module and hasattr(module, 'TOOL_DEFINITION'):
+                        tool_definitions.append(module.TOOL_DEFINITION)
+                        logger.debug(f"Loaded tool definition for: {tool_name}")
+                    else:
+                        logger.warning(f"Tool module '{tool_name}' missing TOOL_DEFINITION attribute")
+                except Exception as e:
+                    logger.error(f"Failed to load tool '{tool_name}': {e}")
+                    continue
+
+            return tool_definitions if tool_definitions else None
+
+        except Exception as e:
+            logger.error(f"Error loading LLM-invokable tools: {e}")
+            return None
+
+    def get_all_tools(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get all available tools (memory + llm_invokable).
+
+        This method combines tools from both the memory system and the tools registry.
+
+        Returns:
+            Combined list of all tool definitions, None if no tools available
+        """
+        all_tools = []
+
+        # Get memory tools
+        memory_tools = self.get_memory_tools()
+        if memory_tools:
+            all_tools.extend(memory_tools)
+
+        # Get llm_invokable tools
+        llm_invokable_tools = self.get_llm_invokable_tools()
+        if llm_invokable_tools:
+            all_tools.extend(llm_invokable_tools)
+
+        return all_tools if all_tools else None
 
     def to_dict(self) -> Dict[str, Any]:
         """

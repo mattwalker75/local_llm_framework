@@ -27,6 +27,8 @@ def config(temp_dir):
     config.model_name = "test/model"
     # Simulate that local_llm_server was configured for tests
     config._has_local_server_section = True
+    # Ensure legacy mode for tests (no multi-server default)
+    config.default_local_server = None
     return config
 
 
@@ -128,6 +130,7 @@ class TestCLI:
         """Test server auto-start without prompt."""
         config = Config()
         config._has_local_server_section = True  # Simulate local server configured
+        config.default_local_server = None  # Ensure legacy mode for test
         cli = CLI(config, auto_start_server=True)
         cli.runtime.is_server_running = Mock(return_value=False)
         cli.runtime.start_server = Mock()
@@ -141,6 +144,7 @@ class TestCLI:
     def test_start_server_no_server_start(self, mock_print):
         """Test server start with --no-server-start flag."""
         config = Config()
+        config.default_local_server = None  # Ensure legacy mode for test
         cli = CLI(config, no_server_start=True)
         cli.runtime.is_server_running = Mock(return_value=False)
 
@@ -520,6 +524,7 @@ class TestCLICommands:
         mock_manager.list_downloaded_models.return_value = []
 
         args = MagicMock()
+        args.imported = False
         result = list_command(args)
 
         assert result == 0
@@ -538,6 +543,7 @@ class TestCLICommands:
         }
 
         args = MagicMock()
+        args.imported = False
         result = list_command(args)
 
         assert result == 0
@@ -725,22 +731,30 @@ class TestCLICommands:
         """Test server status command when server is running."""
         mock_runtime = MagicMock()
         mock_runtime_class.return_value = mock_runtime
-        mock_runtime.is_server_running.return_value = True
+        mock_runtime.is_server_running_by_name.return_value = True
+
+        # Create mock server config
+        mock_server_config = MagicMock()
+        mock_server_config.server_port = 8000
+        mock_server_config.gguf_file = 'test-model.gguf'
+        mock_server_config.model_dir = None
 
         mock_config_instance = MagicMock()
         mock_config_instance.model_name = 'test/model'
         mock_config_instance.get_server_url.return_value = 'http://127.0.0.1:8000'
         mock_config_instance.has_local_server_config.return_value = True
+        mock_config_instance.servers = {'default': mock_server_config}  # Mock servers dict
+        mock_config_instance.default_local_server = 'default'  # Mock default server
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'status'
-        args.server_name = None  # Legacy mode
+        args.server_name = None  # Show all servers
 
         result = server_command(args)
 
         assert result == 0
-        mock_runtime.is_server_running.assert_called_once()
+        mock_runtime.is_server_running_by_name.assert_called()
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.LLMRuntime')
@@ -750,20 +764,29 @@ class TestCLICommands:
         """Test server status command when server is not running."""
         mock_runtime = MagicMock()
         mock_runtime_class.return_value = mock_runtime
-        mock_runtime.is_server_running.return_value = False
+        mock_runtime.is_server_running_by_name.return_value = False
+
+        # Create mock server config
+        mock_server_config = MagicMock()
+        mock_server_config.server_port = 8000
+        mock_server_config.gguf_file = 'test-model.gguf'
+        mock_server_config.model_dir = None
 
         mock_config_instance = MagicMock()
         mock_config_instance.has_local_server_config.return_value = True
+        mock_config_instance.servers = {'default': mock_server_config}  # Mock servers dict
+        mock_config_instance.default_local_server = 'default'  # Mock default server
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'status'
-        args.server_name = None  # Legacy mode
+        args.server_name = None  # Show all servers
 
         result = server_command(args)
 
-        assert result == 1
-        mock_runtime.is_server_running.assert_called_once()
+        # Status command now returns 0 (success) when showing all servers, even if some are stopped
+        assert result == 0
+        mock_runtime.is_server_running_by_name.assert_called()
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.LLMRuntime')
@@ -962,18 +985,27 @@ class TestCLICommands:
         """Test server command error handling."""
         mock_runtime = MagicMock()
         mock_runtime_class.return_value = mock_runtime
-        mock_runtime.is_server_running.side_effect = Exception("Server error")
+        mock_runtime.is_server_running_by_name.side_effect = Exception("Server error")
+
+        # Create mock server config
+        mock_server_config = MagicMock()
+        mock_server_config.server_port = 8000
+        mock_server_config.gguf_file = 'test-model.gguf'
+        mock_server_config.model_dir = None
 
         mock_config_instance = MagicMock()
         mock_config_instance.has_local_server_config.return_value = True
+        mock_config_instance.servers = {'default': mock_server_config}  # Mock servers dict
+        mock_config_instance.default_local_server = 'default'  # Mock default server
         mock_config.return_value = mock_config_instance
 
         args = MagicMock()
         args.action = 'status'
-        args.server_name = None  # Legacy mode
+        args.server_name = None  # Show all servers
 
         result = server_command(args)
 
+        # Exception is caught by CLI error handler and returns 1
         assert result == 1
 
 

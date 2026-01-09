@@ -163,6 +163,9 @@ class TestLLMRuntime:
         # Mock server ready check - should be False initially, then True after server starts
         runtime.is_server_ready = Mock(side_effect=[False, True])
 
+        # Mock get_running_servers to avoid detecting real servers
+        runtime.get_running_servers = Mock(return_value=[])
+
         # Test
         runtime.start_server()
 
@@ -193,6 +196,9 @@ class TestLLMRuntime:
         # Server never becomes ready
         runtime.is_server_ready = Mock(return_value=False)
 
+        # Mock get_running_servers to avoid detecting real servers
+        runtime.get_running_servers = Mock(return_value=[])
+
         # Use a very short timeout (0.01 seconds) to trigger timeout quickly
         with pytest.raises(RuntimeError, match="failed to become ready"):
             runtime.start_server(timeout=0.01)  # Very short timeout for test
@@ -217,6 +223,9 @@ class TestLLMRuntime:
         mock_process.stderr = MagicMock()
         mock_process.stderr.read.return_value = "Error output"
         mock_popen.return_value = mock_process
+
+        # Mock get_running_servers to avoid detecting real servers
+        runtime.get_running_servers = Mock(return_value=[])
 
         with pytest.raises(RuntimeError, match="terminated unexpectedly"):
             runtime.start_server()
@@ -600,6 +609,9 @@ class TestLLMRuntime:
         # Mock server ready check
         runtime.is_server_ready = Mock(side_effect=[False, True])
 
+        # Mock get_running_servers to avoid detecting real servers
+        runtime.get_running_servers = Mock(return_value=[])
+
         # Test with server_host="0.0.0.0"
         runtime.start_server(server_host="0.0.0.0")
 
@@ -634,6 +646,9 @@ class TestLLMRuntime:
 
         # Mock server ready check
         runtime.is_server_ready = Mock(side_effect=[False, True])
+
+        # Mock get_running_servers to avoid detecting real servers
+        runtime.get_running_servers = Mock(return_value=[])
 
         # Test without server_host parameter (should use default)
         runtime.start_server()

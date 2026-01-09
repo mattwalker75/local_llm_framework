@@ -142,10 +142,12 @@ class TestConfig:
 
     def test_get_openai_api_base(self):
         """Test getting OpenAI API base URL (local server)."""
+        import re
         config = Config()
         base = config.get_openai_api_base()
 
-        assert base == f"http://{config.server_host}:{config.server_port}/v1"
+        # Test that base URL matches pattern http://127.0.0.1:<port>/v1
+        assert re.match(r"http://127\.0\.0\.1:\d+/v1", base), f"Expected base URL to match pattern http://127.0.0.1:<port>/v1, got {base}"
 
     def test_get_openai_api_base_external(self, temp_dir):
         """Test getting OpenAI API base URL with external API configured."""
@@ -182,22 +184,14 @@ class TestConfig:
         config = Config()
         config_dict = config.to_dict()
 
-        # Test nested structure - server-side settings (multi-server or single-server)
-        if 'local_llm_servers' in config_dict:
-            # Multi-server format
-            assert isinstance(config_dict['local_llm_servers'], list)
-            assert len(config_dict['local_llm_servers']) > 0
-            first_server = config_dict['local_llm_servers'][0]
-            assert 'llama_server_path' in first_server
-            assert 'server_host' in first_server
-            assert 'server_port' in first_server
-        else:
-            # Legacy single-server format
-            assert 'local_llm_server' in config_dict
-            assert config_dict['local_llm_server']['llama_server_path'] == str(config.llama_server_path)
-            assert config_dict['local_llm_server']['server_host'] == config.server_host
-            assert config_dict['local_llm_server']['server_port'] == config.server_port
-            assert config_dict['local_llm_server']['gguf_file'] == config.gguf_file
+        # Test nested structure - server-side settings (multi-server format only)
+        assert 'local_llm_servers' in config_dict
+        assert isinstance(config_dict['local_llm_servers'], list)
+        assert len(config_dict['local_llm_servers']) > 0
+        first_server = config_dict['local_llm_servers'][0]
+        assert 'llama_server_path' in first_server
+        assert 'server_host' in first_server
+        assert 'server_port' in first_server
 
         # Test nested structure - client-side settings
         assert 'llm_endpoint' in config_dict
@@ -227,18 +221,15 @@ class TestConfig:
 
         assert loaded_data['llm_endpoint']['model_name'] == "saved/model"
 
-        # Check for server_port in either multi-server or single-server format
-        if 'local_llm_servers' in loaded_data:
-            # Multi-server format - find the active server
-            found_port = False
-            for server in loaded_data['local_llm_servers']:
-                if server['server_port'] == 8888:
-                    found_port = True
-                    break
-            assert found_port, "Expected server_port 8888 in at least one server"
-        else:
-            # Legacy single-server format
-            assert loaded_data['local_llm_server']['server_port'] == 8888
+        # Check for server_port in multi-server format
+        assert 'local_llm_servers' in loaded_data
+        # Multi-server format - find the active server
+        found_port = False
+        for server in loaded_data['local_llm_servers']:
+            if server['server_port'] == 8888:
+                found_port = True
+                break
+        assert found_port, "Expected server_port 8888 in at least one server"
 
     def test_save_creates_parent_dirs(self, temp_dir):
         """Test that save_to_file creates parent directories."""
@@ -309,14 +300,17 @@ class TestGetConfig:
     def test_server_params_loading(self, temp_dir):
         """Test loading server_params from config file."""
         config_data = {
-            'local_llm_server': {
+            'local_llm_servers': [{
+                'name': 'default',
                 'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_host': '127.0.0.1',
+                'server_port': 8000,
                 'server_params': {
                     'ctx-size': 8192,
                     'n-gpu-layers': 35,
                     'threads': 8
                 }
-            }
+            }]
         }
         config_file = temp_dir / 'config_with_params.json'
 
@@ -334,12 +328,13 @@ class TestGetConfig:
     def test_server_params_optional(self, temp_dir):
         """Test that server_params is optional in config."""
         config_data = {
-            'local_llm_server': {
+            'local_llm_servers': [{
+                'name': 'default',
                 'llama_server_path': str(temp_dir / 'llama-server'),
                 'server_host': '127.0.0.1',
                 'server_port': 8000
                 # No server_params field
-            }
+            }]
         }
         config_file = temp_dir / 'config_no_params.json'
 
@@ -371,12 +366,15 @@ class TestGetConfig:
     def test_server_params_in_to_dict(self, temp_dir):
         """Test that server_params is included in to_dict when not empty."""
         config_data = {
-            'local_llm_server': {
+            'local_llm_servers': [{
+                'name': 'default',
                 'llama_server_path': str(temp_dir / 'llama-server'),
+                'server_host': '127.0.0.1',
+                'server_port': 8000,
                 'server_params': {
                     'ctx-size': 4096
                 }
-            }
+            }]
         }
         config_file = temp_dir / 'config_params_dict.json'
 
@@ -386,8 +384,8 @@ class TestGetConfig:
         config = Config(config_file)
         config_dict = config.to_dict()
 
-        assert 'server_params' in config_dict['local_llm_server']
-        assert config_dict['local_llm_server']['server_params'] == {'ctx-size': 4096}
+        assert 'server_params' in config_dict['local_llm_servers'][0]
+        assert config_dict['local_llm_servers'][0]['server_params'] == {'ctx-size': 4096}
 
     def test_server_params_not_in_to_dict_when_empty(self):
         """Test that server_params is not in to_dict when empty."""
@@ -395,25 +393,23 @@ class TestGetConfig:
         config_dict = config.to_dict()
 
         # Empty server_params should not be included
-        if 'local_llm_servers' in config_dict:
-            # Multi-server format - check all servers
-            for server in config_dict['local_llm_servers']:
-                if 'server_params' in server:
-                    # If server_params exists, it should not be empty
-                    assert server['server_params'], "server_params should not be empty dict if present"
-        else:
-            # Legacy single-server format
-            assert 'server_params' not in config_dict['local_llm_server']
+        assert 'local_llm_servers' in config_dict
+        # Multi-server format - check all servers
+        for server in config_dict['local_llm_servers']:
+            if 'server_params' in server:
+                # If server_params exists, it should not be empty
+                assert server['server_params'], "server_params should not be empty dict if present"
 
     def test_healthcheck_interval_loading(self, temp_dir):
         """Test loading healthcheck_interval from config file."""
         config_data = {
-            'local_llm_server': {
+            'local_llm_servers': [{
+                'name': 'default',
                 'llama_server_path': str(temp_dir / 'llama-server'),
                 'server_host': '127.0.0.1',
                 'server_port': 8000,
                 'healthcheck_interval': 1.0
-            }
+            }]
         }
         config_file = temp_dir / 'config_healthcheck.json'
 

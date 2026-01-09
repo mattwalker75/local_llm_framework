@@ -1,0 +1,21 @@
+{
+  "name": "fetch_webpage",
+  "display_name": "Webpage Fetcher",
+  "description": "Fetch and extract clean text content from web pages. Converts HTML to readable text and extracts main content. Required companion tool for internet search tools.",
+  "type": "llm_invokable",
+  "enabled": true,
+  "directory": "webpage_fetcher",
+  "created_date": "2026-01-07",
+  "last_modified": "2026-01-07",
+  "metadata": {
+    "category": "internet",
+    "requires_approval": false,
+    "use_case": "Retrieve and read actual webpage content from URLs. Use with search tools to get detailed information from search results.",
+    "dependencies": ["requests", "beautifulsoup4"],
+    "companion_tools": ["search_internet_duckduckgo", "search_internet_google", "search_internet_google_api"],
+    "supported_states": [
+      "false",
+      "true"
+    ]
+  }
+}

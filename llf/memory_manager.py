@@ -13,14 +13,14 @@ License: MIT
 """
 
 import json
-import logging
-import os
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime, UTC
 import uuid
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class MemoryManager:

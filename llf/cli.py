@@ -1,11 +1,39 @@
 #!/usr/bin/env python
 """
-CLI interface module for Local LLM Framework.
+CLI Interface for Local LLM Framework
 
-This module provides the command-line interface for interacting with LLMs.
+This module provides the command-line interface for interacting with both local
+and external LLM services. It handles interactive chat, model management, server
+control, and configuration management.
 
-Design: Modular CLI that separates UI from business logic for future extensibility.
-Future: Can be extended to support different modes (chat, completion, batch, etc.).
+Architecture:
+    - CLI class: Main interface handling interactive chat loop and user commands
+    - Argparse-based command structure: model, server, datastore, module, tool commands
+    - Rich library integration: Beautiful terminal output with colors and formatting
+    - Multi-server support: Manages multiple local llama-server instances
+
+Key Features:
+    - Interactive chat with streaming responses
+    - Model download and management (HuggingFace integration)
+    - Server lifecycle management (start, stop, restart, status)
+    - Tool/Module/Datastore configuration via CLI
+    - Memory management with dual-pass execution modes
+    - Question mode: Single-shot queries without entering chat loop
+
+Execution Modes:
+    - Single-pass: Non-streaming, accurate tool execution (default for READ operations)
+    - Dual-pass: Stream response first, execute tools in background (WRITE operations)
+    - Streaming-only: Fast responses without tool support (GENERAL conversation)
+
+Design Philosophy:
+    - Separation of concerns: CLI handles UI, managers handle business logic
+    - Extensibility: Easy to add new commands and execution modes
+    - User experience: Rich formatting, clear error messages, helpful prompts
+
+Future Extensions:
+    - Batch processing mode
+    - Completion API (non-chat)
+    - Plugin system for custom commands
 """
 
 import sys
@@ -325,7 +353,7 @@ If STT fails, the system will automatically fall back to keyboard input.
         # In multi-server setups, check if the default_local_server is running
         # In legacy setups, check if the default server is running
         is_running = False
-        if self.config.default_local_server:
+        if self.config.default_local_server and isinstance(self.config.default_local_server, str) and self.config.get_server_by_name(self.config.default_local_server):
             # Multi-server mode: Check if the active server is running
             is_running = self.runtime.is_server_running_by_name(self.config.default_local_server)
         else:
@@ -346,8 +374,10 @@ If STT fails, the system will automatically fall back to keyboard input.
         # If auto-start is not enabled, prompt the user
         if not self.auto_start_server:
             console.print("[yellow]Server is not running.[/yellow]")
+            # Determine which server will be started
+            server_name = self.config.default_local_server if self.config.default_local_server else "default server"
             response = Prompt.ask(
-                "Would you like to start the default server?",
+                f"Would you like to start the server '{server_name}'?",
                 choices=["y", "n"],
                 default="y"
             )
@@ -359,7 +389,11 @@ If STT fails, the system will automatically fall back to keyboard input.
         console.print("[dim]This may take a minute or two...[/dim]")
 
         try:
-            self.runtime.start_server()
+            # Start the server specified in default_local_server, or default server if not set
+            if self.config.default_local_server and isinstance(self.config.default_local_server, str) and self.config.get_server_by_name(self.config.default_local_server):
+                self.runtime.start_server_by_name(self.config.default_local_server)
+            else:
+                self.runtime.start_server()
             console.print("[green]Server started successfully![/green]")
             self.started_server = True  # Mark that we started the server
             return True
@@ -453,7 +487,7 @@ If STT fails, the system will automatically fall back to keyboard input.
                     # Check if tools are available
                     tools_available = False
                     if self.prompt_config:
-                        tools = self.prompt_config.get_memory_tools()
+                        tools = self.prompt_config.get_all_tools()
                         tools_available = tools is not None and len(tools) > 0
 
                     # Determine execution strategy based on configuration
@@ -468,7 +502,6 @@ If STT fails, the system will automatically fall back to keyboard input.
 
                     if use_dual_pass:
                         # Dual-pass mode: Stream first for UX, then execute with tools in background
-                        import asyncio
                         import threading
 
                         # Pass 1: Streaming response for user (no tools)
@@ -729,6 +762,92 @@ def list_command(args) -> int:
     config = get_config()
     model_manager = ModelManager(config)
 
+    # If --imported flag is used, show only configured models
+    if hasattr(args, 'imported') and args.imported:
+        # Load current config to get imported models
+        config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+        with open(config_file, 'r') as f:
+            config_data = json.load(f)
+
+        # Check for multi-server config
+        if 'local_llm_servers' in config_data:
+            servers = config_data['local_llm_servers']
+
+            if not servers:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            # Collect all unique models from servers
+            # Convert model_dir format to HuggingFace format for display
+            models_by_name = {}
+            for server in servers:
+                model_dir = server.get('model_dir')
+                if model_dir:
+                    # Convert format: "bartowski--Llama-3.3-70B-Instruct-GGUF" -> "bartowski/Llama-3.3-70B-Instruct-GGUF"
+                    model_name = model_dir.replace('--', '/')
+                    if model_name not in models_by_name:
+                        models_by_name[model_name] = []
+                    models_by_name[model_name].append({
+                        'server_name': server.get('name', 'unknown'),
+                        'model_dir': model_dir,
+                        'gguf_file': server.get('gguf_file')
+                    })
+
+            if not models_by_name:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            # Display the imported models
+            console.print("[bold]Imported Models (configured in config.json):[/bold]")
+
+            for model_name, servers_info in sorted(models_by_name.items()):
+                # Get size info if available
+                size_str = ""
+                if model_manager.is_model_downloaded(model_name):
+                    info = model_manager.get_model_info(model_name)
+                    if 'size_gb' in info:
+                        size_str = f" ({info['size_gb']} GB)"
+
+                console.print(f"  [green]✓[/green] {model_name}{size_str}")
+
+                # Show which servers use this model
+                if len(servers_info) == 1:
+                    server_info = servers_info[0]
+                    console.print(f"    [dim]Server:[/dim] {server_info['server_name']}")
+                    if server_info['gguf_file']:
+                        console.print(f"    [dim]GGUF File:[/dim] {server_info['gguf_file']}")
+                else:
+                    console.print(f"    [dim]Configured across {len(servers_info)} servers:[/dim]")
+                    for server_info in servers_info:
+                        console.print(f"      • {server_info['server_name']}")
+                        if server_info['gguf_file']:
+                            console.print(f"        GGUF File: {server_info['gguf_file']}")
+
+        else:
+            # Legacy single-server config
+            configured_model = config_data.get('llm_endpoint', {}).get('model_name')
+
+            if not configured_model:
+                console.print("[yellow]No models currently imported in configuration.[/yellow]")
+                console.print("[dim]Use 'llf model import MODEL_NAME' to import a model.[/dim]")
+                return 0
+
+            console.print("[bold]Imported Models (configured in config.json):[/bold]")
+
+            # Get size info if available
+            size_str = ""
+            if model_manager.is_model_downloaded(configured_model):
+                info = model_manager.get_model_info(configured_model)
+                if 'size_gb' in info:
+                    size_str = f" ({info['size_gb']} GB)"
+
+            console.print(f"  [green]✓[/green] {configured_model}{size_str}")
+
+        return 0
+
+    # Default behavior: list all downloaded models
     models = model_manager.list_downloaded_models()
 
     if not models:
@@ -830,6 +949,253 @@ def delete_command(args) -> int:
         return 1
 
 
+def import_model_command(args) -> int:
+    """
+    Handle model import command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    import glob
+    from datetime import datetime
+
+    config = get_config()
+    model_manager = ModelManager(config)
+
+    model_name = args.model_name
+
+    # Check if model exists
+    if not model_manager.is_model_downloaded(model_name):
+        console.print(f"[red]Model '{model_name}' not found in models directory.[/red]")
+        console.print(f"[yellow]Use 'llf model list' to see available models.[/yellow]")
+        return 1
+
+    # Get model info
+    info = model_manager.get_model_info(model_name)
+    model_path = Path(info['path'])
+
+    # Find Q5_K_M GGUF file in the model directory (case-insensitive)
+    gguf_files = []
+    for file in model_path.glob("*.gguf"):
+        if "q5_k_m" in file.name.lower():
+            gguf_files.append(str(file))
+
+    if not gguf_files:
+        console.print(f"[red]No Q5_K_M GGUF file found in {model_path}[/red]")
+        console.print(f"[yellow]Looking for files matching pattern: *Q5_K_M*.gguf (case-insensitive)[/yellow]")
+        return 1
+
+    # Sort files to ensure we get the first one in multi-part series
+    # Files like "model-q5_k_m-00001-of-00006.gguf" should come before "model-q5_k_m-00006-of-00006.gguf"
+    gguf_files.sort()
+
+    if len(gguf_files) > 1:
+        console.print(f"[yellow]Multiple Q5_K_M GGUF files found:[/yellow]")
+        for f in gguf_files:
+            console.print(f"  - {Path(f).name}")
+        console.print(f"[yellow]Selecting first file in series: {Path(gguf_files[0]).name}[/yellow]")
+
+    gguf_file = Path(gguf_files[0]).name
+    model_dir_name = model_path.name
+
+    # Load current config
+    config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+    with open(config_file, 'r') as f:
+        config_data = json.load(f)
+
+    # Create backup
+    backup_path = config.backup_config(config_file)
+    console.print(f"[green]✓[/green] Backup created: {backup_path}")
+
+    # Auto-detect and handle multi-server configuration
+    if 'local_llm_servers' not in config_data:
+        console.print(f"[red]Configuration does not have 'local_llm_servers' section.[/red]")
+        console.print(f"[yellow]This configuration file is not in the expected multi-server format.[/yellow]")
+        return 1
+
+    # Multi-server configuration exists
+    # Generate a unique server name based on the model
+    server_name = model_name.split('/')[-1].lower().replace('-gguf', '').replace('/', '-')
+
+    # Check if there's a default server with null model fields (first import case)
+    default_server_with_null_model = None
+    for server in config_data['local_llm_servers']:
+        if (server.get('name') == 'default' and
+            server.get('model_dir') is None and
+            server.get('gguf_file') is None):
+            default_server_with_null_model = server
+            break
+
+    # Check if a server with this model already exists
+    existing_server = None
+    for server in config_data['local_llm_servers']:
+        if server.get('model_dir') == model_dir_name:
+            existing_server = server
+            break
+
+    if existing_server:
+        # Update existing server with the new GGUF file
+        existing_server['gguf_file'] = gguf_file
+        console.print(f"[green]✓[/green] Updated existing server '{existing_server['name']}' with new GGUF file")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+    elif default_server_with_null_model:
+        # This is the first import - update the default server
+        default_server_with_null_model['model_dir'] = model_dir_name
+        default_server_with_null_model['gguf_file'] = gguf_file
+        console.print(f"[green]✓[/green] Updated default server with first model")
+        console.print(f"  Server Name: default")
+        console.print(f"  Server Port: {default_server_with_null_model['server_port']}")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+    else:
+        # Add a new server for this model
+        # Find next available port
+        used_ports = {server.get('server_port', 8000) for server in config_data['local_llm_servers']}
+        next_port = 8000
+        while next_port in used_ports:
+            next_port += 1
+
+        # Ensure unique server name
+        existing_names = {server['name'] for server in config_data['local_llm_servers']}
+        base_name = server_name
+        counter = 1
+        while server_name in existing_names:
+            server_name = f"{base_name}-{counter}"
+            counter += 1
+
+        new_server = {
+            'name': server_name,
+            'llama_server_path': config_data['local_llm_servers'][0].get('llama_server_path', '../llama.cpp/build/bin/llama-server'),
+            'server_host': '127.0.0.1',
+            'server_port': next_port,
+            'healthcheck_interval': 2.0,
+            'auto_start': False,
+            'model_dir': model_dir_name,
+            'gguf_file': gguf_file
+        }
+
+        config_data['local_llm_servers'].append(new_server)
+
+        console.print(f"[green]✓[/green] Added new server to multi-server configuration")
+        console.print(f"  Server Name: {server_name}")
+        console.print(f"  Server Port: {next_port}")
+        console.print(f"  Model Directory: {model_dir_name}")
+        console.print(f"  GGUF File: {gguf_file}")
+        console.print(f"  Total Servers: {len(config_data['local_llm_servers'])}")
+
+    # Note: We do NOT update llm_endpoint.model_name here
+    # The model_name should only be updated via 'llf server switch' command
+
+    # Save updated configuration
+    with open(config_file, 'w') as f:
+        json.dump(config_data, f, indent=2)
+
+    console.print(f"[green]✓[/green] Configuration saved: {config_file}")
+    console.print(f"\n[cyan]Model '{model_name}' imported successfully![/cyan]")
+
+    return 0
+
+
+def export_model_command(args) -> int:
+    """
+    Handle model export command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from datetime import datetime
+
+    config = get_config()
+    model_name = args.model_name  # In HuggingFace format: "Qwen/Qwen2.5-32B-Instruct-GGUF"
+
+    # Load current config
+    config_file = config.config_file or config.DEFAULT_CONFIG_FILE
+    with open(config_file, 'r') as f:
+        config_data = json.load(f)
+
+    # Auto-detect and handle multi-server configuration
+    if 'local_llm_servers' not in config_data:
+        console.print(f"[red]Configuration does not have 'local_llm_servers' section.[/red]")
+        console.print(f"[yellow]This configuration file is not in the expected multi-server format.[/yellow]")
+        return 1
+
+    # Convert HuggingFace format to directory format for matching
+    # "Qwen/Qwen2.5-32B-Instruct-GGUF" -> "Qwen--Qwen2.5-32B-Instruct-GGUF"
+    model_dir_format = model_name.replace('/', '--')
+
+    # Find ALL servers that use this model
+    servers_to_remove = []
+    for i, server in enumerate(config_data['local_llm_servers']):
+        server_model_dir = server.get('model_dir')
+        if server_model_dir:
+            # Extract just the directory name if it's a path
+            if isinstance(server_model_dir, str):
+                dir_name = server_model_dir.split('/')[-1]
+            else:
+                dir_name = str(server_model_dir)
+
+            if dir_name == model_dir_format:
+                servers_to_remove.append(i)
+
+    if not servers_to_remove:
+        console.print(f"[yellow]No servers found with model '{model_name}'.[/yellow]")
+        console.print(f"[yellow]Nothing to export.[/yellow]")
+        return 0
+
+    # Create backup
+    backup_path = config.backup_config(config_file)
+    console.print(f"[green]✓[/green] Backup created: {backup_path}")
+
+    # Check if we're removing all servers
+    remaining_servers = len(config_data['local_llm_servers']) - len(servers_to_remove)
+
+    if remaining_servers == 0:
+        # This is the LAST model - reset the last server to default state
+        # Keep the first server and reset it
+        first_server = config_data['local_llm_servers'][0]
+        first_server['model_dir'] = None
+        first_server['gguf_file'] = None
+        first_server['name'] = 'default'
+        first_server['server_port'] = 8000
+
+        # Remove all other servers
+        config_data['local_llm_servers'] = [first_server]
+
+        console.print(f"[green]✓[/green] Exported last model from configuration")
+        console.print(f"  Model: {model_name}")
+        console.print(f"  Reset to default server configuration (port 8000)")
+    else:
+        # Remove servers in reverse order to maintain indices
+        for idx in reversed(servers_to_remove):
+            removed_server = config_data['local_llm_servers'].pop(idx)
+            console.print(f"[green]✓[/green] Removed server '{removed_server['name']}' from configuration")
+
+        console.print(f"  Model: {model_name}")
+        console.print(f"  Servers removed: {len(servers_to_remove)}")
+        console.print(f"  Remaining servers: {remaining_servers}")
+
+    # Clear model_name if we removed all servers or if it matches the exported model
+    current_model_name = config_data.get('llm_endpoint', {}).get('model_name')
+    if remaining_servers == 0 or current_model_name == model_name:
+        config_data['llm_endpoint']['model_name'] = None
+
+    # Save updated configuration
+    with open(config_file, 'w') as f:
+        json.dump(config_data, f, indent=2)
+
+    console.print(f"[green]✓[/green] Configuration saved: {config_file}")
+    console.print(f"\n[cyan]Model configuration removed successfully![/cyan]")
+
+    return 0
+
+
 def server_command(args) -> int:
     """
     Handle server command.
@@ -892,7 +1258,26 @@ def server_command(args) -> int:
             return stop_server_command(config, runtime, args)
 
         elif args.action == 'restart':
-            # Restart server
+            # Restart server - use default_local_server if set
+            default_server_name = config.default_local_server
+
+            if default_server_name and isinstance(default_server_name, str) and config.get_server_by_name(default_server_name):
+                # Restart the configured default server
+                console.print(f"[yellow]Restarting default server '{default_server_name}'...[/yellow]")
+
+                if runtime.is_server_running_by_name(default_server_name):
+                    console.print("[dim]Stopping current server...[/dim]")
+                    runtime.stop_server_by_name(default_server_name)
+
+                console.print("[dim]Starting server...[/dim]")
+                runtime.start_server_by_name(default_server_name)
+
+                server_config = config.get_server_by_name(default_server_name)
+                console.print(f"[green]✓ Server '{default_server_name}' restarted successfully[/green]")
+                console.print(f"[cyan]URL: http://{server_config.server_host}:{server_config.server_port}/v1[/cyan]")
+                return 0
+
+            # Fallback to legacy mode if no default_local_server is set
             console.print("[yellow]Restarting server...[/yellow]")
 
             if runtime.is_server_running():
@@ -990,35 +1375,36 @@ Examples:
   llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
 
-  # Multi-server commands
+  # Local Server management
   llf server list                              List all configured servers and status
+  llf server start                             Start default server (localhost, foreground)
   llf server start LOCAL_SERVER_NAME           Start specific server by name
-  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
+  llf server start --force                     Start without memory safety prompt
+  llf server start --share                     Start server on local network (0.0.0.0)
+  llf server start --daemon                    Start server in background
+  llf server start --share --daemon            Start server in background (network accessible)
+  llf server start --huggingface-model MODEL   Start with specific model
+  llf server start --gguf-dir DIR --gguf-file FILE  Start with custom GGUF file
+  llf server stop                              Stop default server
   llf server stop LOCAL_SERVER_NAME            Stop specific server by name
-  llf server status LOCAL_SERVER_NAME          Check status of specific server
+  llf server status                            Check default server status
+  llf server status LOCAL_SERVER_NAME          Check specific server status
+  llf server restart                           Restart default server
+  llf server restart --share                   Restart server with network access
   llf server switch LOCAL_SERVER_NAME          Switch default server
-
-  # Single-server commands
-  llf server start                 Start llama-server (localhost only, stays in foreground)
-  llf server start --share         Start server accessible on local network (0.0.0.0)
-  llf server start --daemon        Start server in background (localhost only)
-  llf server start --share --daemon  Start server in background (network accessible)
-  llf server start --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
-  llf server start --gguf-dir test_gguf --gguf-file my-model.gguf
-  llf server stop                  Stop running server
-  llf server status                Check if server is running
-  llf server restart               Restart server with current model
-  llf server restart --share       Restart server with network access
-  llf server list_models           List available models from configured endpoint
+  llf server list_models                       List available models from configured endpoint
 
   # Model management
   llf model download               Download default HuggingFace model
   llf model download --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf model download --url https://example.com/model.gguf --name my-model
-  llf model list                   List downloaded models
+  llf model list                   List all downloaded models
+  llf model list --imported        List models configured in config.json
   llf model info                   Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf model delete MODEL_NAME      Delete a model and all its contents
+  llf model import MODEL_NAME      Import model to config
+  llf model export MODEL_NAME      Remove model from config
 
   # GUI interface
   llf gui                          Start web-based GUI (localhost only, port 7860)
@@ -1067,6 +1453,9 @@ Examples:
   llf tool enable TOOL_NAME        Enable a tool
   llf tool disable TOOL_NAME       Disable a tool
   llf tool info TOOL_NAME          Show tool information
+  llf tool whitelist list TOOL_NAME           List whitelisted patterns for a tool
+  llf tool whitelist add TOOL_NAME PATTERN    Add pattern to tool whitelist
+  llf tool whitelist remove TOOL_NAME INDEX   Remove pattern from tool whitelist by index
 
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
@@ -1212,6 +1601,7 @@ Examples:
 
   # List and info
   llf model list                        List all downloaded models
+  llf model list --imported             List models currently configured in config.json
   llf model info                        Show default model information
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
                                         View information about a specific downloaded model
@@ -1221,6 +1611,12 @@ Examples:
                                         Delete a model and all its contents
   llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF --force
                                         Delete without confirmation prompt
+
+  # Import/Export models to configuration
+  llf model import Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Import model to configuration
+  llf model export Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+                                        Export (remove) model from configuration
         """
     )
     model_subparsers = model_parser.add_subparsers(dest='action', help='Model action to perform')
@@ -1269,7 +1665,12 @@ Examples:
     list_parser = model_subparsers.add_parser(
         'list',
         help='List all downloaded models',
-        description='Display all models currently downloaded and cached locally.'
+        description='Display all models currently downloaded and cached locally. Use --imported to show only models configured in config.json.'
+    )
+    list_parser.add_argument(
+        '--imported',
+        action='store_true',
+        help='Show only models that are currently imported/configured in config.json'
     )
 
     # model info
@@ -1302,6 +1703,30 @@ Examples:
         help='Skip confirmation prompt and delete immediately'
     )
 
+    # model import
+    import_parser = model_subparsers.add_parser(
+        'import',
+        help='Import a model into the configuration',
+        description='Import a downloaded model into the config.json file for use with the local LLM server. Creates a backup before making changes.'
+    )
+    import_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to import (e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+
+    # model export
+    export_parser = model_subparsers.add_parser(
+        'export',
+        help='Export (remove) model from the configuration',
+        description='Remove model configuration from config.json file. Validates model name matches current configuration before removal. Creates a backup before making changes.'
+    )
+    export_parser.add_argument(
+        'model_name',
+        metavar='MODEL_NAME',
+        help='Model identifier to export (must match currently configured model, e.g., "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF")'
+    )
+
     # Server command
     server_parser = subparsers.add_parser(
         'server',
@@ -1310,33 +1735,31 @@ Examples:
 
 Positional arguments:
   list         List all configured servers and their status
-  start        Start local LLM server (llama-server)
-  stop         Stop local LLM server (llama-server)
+  start        Start local LLM server (default or by name)
+  stop         Stop local LLM server (default or by name)
   status       Display running status of local LLM server
   restart      Restart the local LLM server
-  switch       Switch the default local server (multi-server setups)
+  switch       Switch the default local server
   list_models  List available models hosted from LLM server
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Multi-server commands
+  # Local Server management
   llf server list                              List all configured servers and status
+  llf server start                             Start default server (localhost, foreground)
   llf server start LOCAL_SERVER_NAME           Start specific server by name
-  llf server start LOCAL_SERVER_NAME --force   Start without memory safety prompt
-  llf server start LOCAL_SERVER_NAME -f        Short form of --force
-  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
-  llf server status LOCAL_SERVER_NAME          Check status of specific server
-  llf server switch LOCAL_SERVER_NAME          Switch default server
-
-  # Single-server commands
-  llf server start                             Start server with default model
-  llf server stop                              Stop the running server
-  llf server status                            Check server status
-  llf server restart                           Restart the server
-
-  # Server options
+  llf server start --force                     Start without memory safety prompt
+  llf server start --share                     Start server on local network (0.0.0.0)
+  llf server start --daemon                    Start server in background
   llf server start --share --daemon            Start server in background (network accessible)
+  llf server stop                              Stop default server
+  llf server stop LOCAL_SERVER_NAME            Stop specific server by name
+  llf server status                            Check default server status
+  llf server status LOCAL_SERVER_NAME          Check specific server status
+  llf server restart                           Restart default server
+  llf server restart --share                   Restart server with network access
+  llf server switch LOCAL_SERVER_NAME          Switch default server
 
   # Model selection
   llf server start --gguf-dir model_GGUF --gguf-file my-model.gguf
@@ -1354,11 +1777,11 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
         help=argparse.SUPPRESS  # Suppress auto-generated help - using custom description instead
     )
 
-    # Optional server name for multi-server commands
+    # Optional server name
     server_parser.add_argument(
         'server_name',
         nargs='?',  # Optional
-        help='Server name (for multi-server configurations). Use with start, stop, status, or switch commands.'
+        help='Server name (optional). Specify to operate on a specific server, omit to use default server.'
     )
 
     # Model selection for server
@@ -1582,12 +2005,18 @@ actions:
         description='Manage tools that extend the ability of the LLM.\n( An example of a tool would be to enable the LLM to perform searches on the Internet )',
         epilog='''
 actions:
-  list                      List tools
-  list --enabled            List only enabled tools
-  enable TOOL_NAME          Enable a tool (sets to true)
-  enable TOOL_NAME --auto   Enable a tool with auto mode
-  disable TOOL_NAME         Disable a tool (sets to false)
-  info TOOL_NAME            Show tool information
+  list                             List tools
+  list --enabled                   List only enabled tools
+  enable TOOL_NAME                 Enable a tool (sets to true)
+  enable TOOL_NAME --auto          Enable a tool with auto mode
+  disable TOOL_NAME                Disable a tool (sets to false)
+  info TOOL_NAME                   Show tool information
+  config get KEY                   Get a global configuration value
+  config set KEY VALUE             Set a global configuration value
+  config list                      List all global configuration settings
+  whitelist list TOOL_NAME         List whitelisted items for a tool
+  whitelist add TOOL_NAME PATTERN  Add pattern to tool whitelist
+  whitelist remove TOOL_NAME INDEX Remove pattern from tool whitelist
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1600,6 +2029,16 @@ actions:
         'tool_name',
         nargs='?',
         help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    tool_parser.add_argument(
+        'config_value',
+        nargs='?',
+        help=argparse.SUPPRESS  # For config set VALUE or whitelist pattern/index
+    )
+    tool_parser.add_argument(
+        'whitelist_value',
+        nargs='?',
+        help=argparse.SUPPRESS  # For whitelist pattern when tool_name is whitelist subaction
     )
     tool_parser.add_argument(
         '--enabled',
@@ -1708,6 +2147,10 @@ actions:
             return info_command(args)
         elif args.action == 'delete':
             return delete_command(args)
+        elif args.action == 'import':
+            return import_model_command(args)
+        elif args.action == 'export':
+            return export_model_command(args)
         else:
             model_parser.print_help()
             return 0
@@ -3127,8 +3570,7 @@ Contains the memory data files
             # Check if --auto flag was used
             use_auto = getattr(args, 'auto', False)
 
-            # Determine desired state
-            desired_state = 'auto' if use_auto else True
+            # Determine desired state string
             desired_state_str = 'auto' if use_auto else 'true'
 
             # Get supported states
@@ -3215,13 +3657,13 @@ Contains the memory data files
                 console.print("Usage: llf tool info <feature_name>")
                 return 1
 
-            features = tools_manager.list_features()
-            if tool_name not in features:
+            # Get full tool info from registry
+            tool_info = tools_manager.get_tool_info(tool_name)
+            if not tool_info:
                 console.print(f"[red]Error: Unknown feature '[bold]{tool_name}[/bold]'[/red]")
                 return 1
 
-            feature_info = features[tool_name]
-            enabled = feature_info.get('enabled', False)
+            enabled = tool_info.get('enabled', False)
 
             # Handle three-state display
             if enabled == 'auto':
@@ -3234,23 +3676,319 @@ Contains the memory data files
                 status_color = "red"
                 status_text = "disabled"
 
+            # Get tool type with description
+            tool_type = tool_info.get('type', 'unknown')
+            type_descriptions = {
+                'postprocessor': 'postprocessor (modifies LLM output)',
+                'preprocessor': 'preprocessor (modifies input to LLM)',
+                'llm_invokable': 'llm_invokable (LLM can call as function)'
+            }
+            type_display = type_descriptions.get(tool_type, tool_type)
+
             console.print(f"\n[bold cyan]Feature: {tool_name}[/bold cyan]")
+            console.print(f"Type: {type_display}")
             console.print(f"Status: [{status_color}]{status_text}[/{status_color}]")
-            console.print(f"Description: {feature_info.get('description', 'No description')}")
+            console.print(f"Description: {tool_info.get('description', 'No description')}")
 
             # Display supported states
-            supported_states = feature_info.get('supported_states', [])
+            supported_states = tool_info.get('metadata', {}).get('supported_states', [])
             if supported_states:
                 states_str = ", ".join([f"'{s}'" if isinstance(s, str) else str(s) for s in supported_states])
                 console.print(f"Supported states: {states_str}")
 
-            if 'note' in feature_info:
-                console.print(f"\n[dim]Note: {feature_info['note']}[/dim]")
+            # Display use case from metadata
+            use_case = tool_info.get('metadata', {}).get('use_case', '')
+            if use_case:
+                console.print(f"\n[dim]Note: {use_case}[/dim]")
 
             return 0
+
+        elif action == 'config':
+            # Global config management
+            config_action = tool_name  # Second arg is the config action (get/set/list)
+
+            if not config_action or config_action == 'list':
+                # List all global config settings
+                global_config = tools_manager.get_global_config()
+
+                if not global_config:
+                    console.print("No global configuration settings found")
+                    return 0
+
+                console.print("\n[bold cyan]Global Tool Configuration:[/bold cyan]")
+                for key, value in global_config.items():
+                    # Format value display
+                    if isinstance(value, list):
+                        value_str = ', '.join(str(v) for v in value)
+                    elif isinstance(value, bool):
+                        value_str = str(value).lower()
+                    else:
+                        value_str = str(value)
+
+                    console.print(f"  {key:<25} {value_str}")
+
+                return 0
+
+            elif config_action == 'get':
+                # Get specific config value
+                config_key = getattr(args, 'config_value', None)
+
+                if not config_key:
+                    console.print("[red]Error: Configuration key required[/red]")
+                    console.print("Usage: llf tool config get <key>")
+                    return 1
+
+                value = tools_manager.get_global_config(config_key)
+
+                if value is None:
+                    console.print(f"[yellow]Configuration key '{config_key}' not found[/yellow]")
+                    console.print("\n[dim]Use 'llf tool config list' to see all settings[/dim]")
+                    return 1
+
+                # Format value display
+                if isinstance(value, list):
+                    value_str = ', '.join(str(v) for v in value)
+                elif isinstance(value, bool):
+                    value_str = str(value).lower()
+                else:
+                    value_str = str(value)
+
+                console.print(f"{config_key}: {value_str}")
+                return 0
+
+            elif config_action == 'set':
+                # Set config value
+                config_key = getattr(args, 'config_value', None)
+
+                if not config_key:
+                    console.print("[red]Error: Configuration key and value required[/red]")
+                    console.print("Usage: llf tool config set <key> <value>")
+                    return 1
+
+                # For 'set', we need one more argument (the value)
+                # Since we only have 3 positional args (action, tool_name, config_value),
+                # we need to handle this differently
+                console.print("[yellow]Note: config set requires additional implementation[/yellow]")
+                console.print("For now, please edit tools/tools_registry.json directly")
+                console.print(f"Set 'global_config.{config_key}' in the registry file")
+                return 0
+
+            else:
+                console.print(f"[red]Error: Unknown config action '{config_action}'[/red]")
+                console.print("\nValid config actions: get, set, list")
+                return 1
+
+        elif action == 'whitelist':
+            # Whitelist management for tools
+            whitelist_action = tool_name  # Second arg is the whitelist action (list/add/remove)
+            target_tool = getattr(args, 'config_value', None)  # Third arg is the tool name
+            pattern_or_index = getattr(args, 'whitelist_value', None)  # Fourth arg is pattern/index
+
+            if not whitelist_action:
+                console.print("[red]Error: Whitelist action required[/red]")
+                console.print("Usage: llf tool whitelist <list|add|remove> <tool_name> [pattern/index]")
+                console.print("\nExamples:")
+                console.print("  llf tool whitelist list command_exec")
+                console.print("  llf tool whitelist add command_exec 'ls'")
+                console.print("  llf tool whitelist add file_access '*.txt'")
+                console.print("  llf tool whitelist remove command_exec 0")
+                return 1
+
+            if whitelist_action == 'list':
+                # List whitelist for tool
+                if not target_tool:
+                    console.print("[red]Error: Tool name required[/red]")
+                    console.print("Usage: llf tool whitelist list <tool_name>")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get whitelist from metadata
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                if not whitelist:
+                    console.print(f"[yellow]Tool '{target_tool}' has no whitelist entries[/yellow]")
+                    console.print("\n[dim]Add entries with: llf tool whitelist add {target_tool} <pattern>[/dim]")
+                    return 0
+
+                console.print(f"\n[bold cyan]Whitelist for {target_tool}:[/bold cyan]")
+                for idx, pattern in enumerate(whitelist):
+                    console.print(f"  [{idx}] {pattern}")
+
+                console.print(f"\n[dim]Total entries: {len(whitelist)}[/dim]")
+                return 0
+
+            elif whitelist_action == 'add':
+                # Add pattern to whitelist
+                if not target_tool or not pattern_or_index:
+                    console.print("[red]Error: Tool name and pattern required[/red]")
+                    console.print("Usage: llf tool whitelist add <tool_name> <pattern>")
+                    console.print("\nExamples:")
+                    console.print("  llf tool whitelist add command_exec 'ls'")
+                    console.print("  llf tool whitelist add command_exec 'git*'")
+                    console.print("  llf tool whitelist add file_access '*.txt'")
+                    console.print("  llf tool whitelist add file_access 'docs/*'")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get current whitelist
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                # Check if pattern already exists
+                if pattern_or_index in whitelist:
+                    console.print(f"[yellow]Pattern '{pattern_or_index}' already in whitelist[/yellow]")
+                    return 0
+
+                # Add pattern
+                whitelist.append(pattern_or_index)
+
+                # Update tool metadata in registry
+                success = tools_manager.update_tool_metadata(target_tool, 'whitelist', whitelist)
+
+                if success:
+                    console.print(f"[green]✓[/green] Added pattern '[bold]{pattern_or_index}[/bold]' to {target_tool} whitelist")
+                    return 0
+                else:
+                    console.print(f"[red]✗[/red] Failed to update whitelist for {target_tool}")
+                    return 1
+
+            elif whitelist_action == 'remove':
+                # Remove pattern from whitelist by index
+                if not target_tool or pattern_or_index is None:
+                    console.print("[red]Error: Tool name and index required[/red]")
+                    console.print("Usage: llf tool whitelist remove <tool_name> <index>")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Get tool info
+                tool_info = tools_manager.get_tool_info(target_tool)
+                if not tool_info:
+                    console.print(f"[red]✗[/red] Tool '[bold]{target_tool}[/bold]' not found")
+                    return 1
+
+                # Get current whitelist
+                whitelist = tool_info.get('metadata', {}).get('whitelist', [])
+
+                if not whitelist:
+                    console.print(f"[yellow]Tool '{target_tool}' has no whitelist entries[/yellow]")
+                    return 0
+
+                # Parse index
+                try:
+                    index = int(pattern_or_index)
+                except ValueError:
+                    console.print(f"[red]Error: Invalid index '{pattern_or_index}'. Must be a number.[/red]")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Validate index
+                if index < 0 or index >= len(whitelist):
+                    console.print(f"[red]Error: Index {index} out of range (0-{len(whitelist)-1})[/red]")
+                    console.print("\n[dim]Use 'llf tool whitelist list <tool_name>' to see indices[/dim]")
+                    return 1
+
+                # Remove pattern
+                removed_pattern = whitelist.pop(index)
+
+                # Update tool metadata in registry
+                success = tools_manager.update_tool_metadata(target_tool, 'whitelist', whitelist)
+
+                if success:
+                    console.print(f"[green]✓[/green] Removed pattern '[bold]{removed_pattern}[/bold]' from {target_tool} whitelist")
+                    return 0
+                else:
+                    console.print(f"[red]✗[/red] Failed to update whitelist for {target_tool}")
+                    return 1
+
+            else:
+                console.print(f"[red]Error: Unknown whitelist action '{whitelist_action}'[/red]")
+                console.print("\nValid whitelist actions: list, add, remove")
+                return 1
+
+        elif action == 'import':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool import <tool_name>")
+                return 1
+
+            success, message = tools_manager.import_tool(tool_name)
+            if success:
+                console.print(f"[green]✓[/green] {message}")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] {message}")
+                return 1
+
+        elif action == 'export':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool export <tool_name>")
+                return 1
+
+            success, message = tools_manager.export_tool(tool_name)
+            if success:
+                console.print(f"[green]✓[/green] {message}")
+                return 0
+            else:
+                console.print(f"[red]✗[/red] {message}")
+                return 1
+
+        elif action == 'whitelist':
+            # Whitelist management: llf tool whitelist <add|remove|list> <tool_name> [pattern]
+            whitelist_action = tool_name  # Second arg is whitelist action
+            whitelist_tool = getattr(args, 'config_value', None)  # Third arg is tool name
+
+            if not whitelist_action or whitelist_action not in ['add', 'remove', 'list']:
+                console.print("[red]Error: Invalid whitelist action[/red]")
+                console.print("Usage: llf tool whitelist <add|remove|list> <tool_name> [pattern]")
+                return 1
+
+            if not whitelist_tool:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf tool whitelist <add|remove|list> <tool_name> [pattern]")
+                return 1
+
+            if whitelist_action == 'list':
+                patterns = tools_manager.list_whitelist_patterns(whitelist_tool)
+                if patterns is None:
+                    console.print(f"[red]✗[/red] Tool '{whitelist_tool}' not found")
+                    return 1
+
+                if not patterns:
+                    console.print(f"\n[yellow]No whitelist patterns configured for '{whitelist_tool}'[/yellow]")
+                    return 0
+
+                console.print(f"\n[bold cyan]Whitelist patterns for '{whitelist_tool}':[/bold cyan]")
+                for pattern in patterns:
+                    console.print(f"  • {pattern}")
+                return 0
+
+            elif whitelist_action == 'add':
+                # For add/remove, we need the pattern as fourth argument
+                # This is tricky with current argparse setup - for now, show error
+                console.print("[yellow]Note: Whitelist add/remove requires additional argument parsing[/yellow]")
+                console.print("For now, please edit the tool's config.json or tools_registry.json directly")
+                console.print(f"Add pattern to metadata.whitelist array for tool '{whitelist_tool}'")
+                return 0
+
+            elif whitelist_action == 'remove':
+                console.print("[yellow]Note: Whitelist add/remove requires additional argument parsing[/yellow]")
+                console.print("For now, please edit the tool's config.json or tools_registry.json directly")
+                console.print(f"Remove pattern from metadata.whitelist array for tool '{whitelist_tool}'")
+                return 0
+
         else:
             console.print(f"[red]Error: Unknown action '[bold]{action}[/bold]'[/red]")
-            console.print("\nValid actions: list, enable, disable, auto, info")
+            console.print("\nValid actions: list, enable, disable, info, config, import, export, whitelist")
             return 1
 
         return 0

@@ -73,7 +73,18 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Memory registry memory_registry.json](docs/Config_Files/memory_registry_json.md)
    - [Module registry modules_registry.json](docs/Config_Files/modules_registry_json.md)
    - [Tool registry tools_registry.json](docs/Config_Files/tools_registry_json.md)
+- Using and developing tools for the LLM to use, such as file and Internet access
+   - [How to use and develop tools for the LLM to use](docs/HOW_TOs/Tools/Setup_Tools.md)
+   - [Strong security considerations when working with tools](docs/HOW_TOs/Tools/Security.md)
+   - [Tool development template](docs/HOW_TOs/Tools/Tool_Template.md)
+- LLM data flows with different functionality enabled
+   - [When Data Stores ( RAG Vector Stores ) are enabled](docs/Data_Flow/Data_Store_Flow.md)
+   - [When long term Memory is enabled](docs/Data_Flow/Memory_Flow.md)
+   - [When text-to-speech or speek-to-text Modules are enabled](docs/Data_Flow/Module_Flow.md)
+   - [When Tools are enabled, such as enabling Internet search](docs/Data_Flow/Tool_Flow.md)
+   - [When all the functionality is enable](docs/Data_Flow/Complete_Flow.md)
 - How To documents
+   - [How to add functionality to the LLM, such as updating files and Intenet access](docs/HOW_TOs/Tools/Setup_Tools.md)
    - [Cool stuff to do with chat (prompt engineering / scripting / task specialization)](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool (RAG Vector Store)](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want (Long term Memory)](docs/HOW_TOs/Setup_Memory.md)
