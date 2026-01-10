@@ -10,6 +10,7 @@
   "metadata": {
     "category": "command_execution",
     "requires_approval": false,
+    "dependencies": [],
     "use_case": "Allow LLM to execute whitelisted shell commands with parameters",
     "whitelist": [],
     "permissions": {

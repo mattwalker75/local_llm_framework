@@ -40,7 +40,7 @@ import sys
 import os
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import signal
 from datetime import datetime, UTC
 import json
@@ -63,6 +63,19 @@ from .server_commands import (
     status_server_command,
     switch_server_command
 )
+from .prompt_commands import (
+    list_templates_command,
+    info_template_command,
+    load_template_command,
+    import_template_command,
+    export_template_command,
+    enable_template_command,
+    disable_template_command,
+    backup_templates_command,
+    delete_template_command,
+    create_template_command,
+    show_active_template_command
+)
 
 logger = get_logger(__name__)
 console = Console()
@@ -75,7 +88,7 @@ class CLI:
     Provides interactive prompt loop and command handling.
     """
 
-    def __init__(self, config: Config, prompt_config: Optional[PromptConfig] = None, auto_start_server: bool = False, no_server_start: bool = False):
+    def __init__(self, config: Config, prompt_config: Optional[PromptConfig] = None, auto_start_server: bool = False, no_server_start: bool = False, save_history: bool = True, imported_session: Optional[Dict[str, Any]] = None):
         """
         Initialize CLI.
 
@@ -84,6 +97,8 @@ class CLI:
             prompt_config: Optional prompt configuration for formatting LLM messages.
             auto_start_server: Automatically start server if not running.
             no_server_start: Do not start server if not running (exit with error).
+            save_history: Save chat conversations to history (default: True).
+            imported_session: Optional session data to import and continue.
         """
         self.config = config
         self.prompt_config = prompt_config
@@ -93,6 +108,13 @@ class CLI:
         self.auto_start_server = auto_start_server
         self.no_server_start = no_server_start
         self.started_server = False  # Track if this instance started the server
+        self.save_history = save_history
+        self.imported_session = imported_session
+
+        # Initialize chat history manager
+        from llf.chat_history import ChatHistory
+        history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+        self.chat_history = ChatHistory(history_dir)
 
         # Load module registry and initialize text-to-speech and speech-to-text if enabled
         self.tts = None
@@ -405,7 +427,17 @@ If STT fails, the system will automatically fall back to keyboard input.
     def interactive_loop(self) -> None:
         """Run interactive chat loop."""
         self.running = True
-        conversation_history = []
+
+        # Initialize conversation history from imported session if provided
+        if self.imported_session and 'messages' in self.imported_session:
+            conversation_history = self.imported_session['messages'].copy()
+            console.print(f"[cyan]✓ Imported {len(conversation_history)} messages from previous session[/cyan]")
+            if self.imported_session.get('metadata', {}).get('model'):
+                console.print(f"[dim]Previous model: {self.imported_session['metadata']['model']}[/dim]")
+            console.print(f"[dim]Current model: {self.config.model_name}[/dim]")
+            console.print()
+        else:
+            conversation_history = []
 
         # Print initial separator before first user input
         console.print("[dim]" + "─" * 60 + "[/dim]")
@@ -584,6 +616,27 @@ If STT fails, the system will automatically fall back to keyboard input.
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
                 logger.error(f"Interactive loop error: {e}")
+
+        # Save conversation history after loop ends
+        if self.save_history and conversation_history and len(conversation_history) > 0:
+            try:
+                # Add timestamps to messages
+                for msg in conversation_history:
+                    if 'timestamp' not in msg:
+                        msg['timestamp'] = datetime.now().isoformat()
+
+                # Prepare metadata
+                metadata = {
+                    'model': self.config.model_name,
+                    'timestamp': datetime.now().isoformat(),
+                    'server_url': self.config.api_base_url
+                }
+
+                # Save to history
+                filepath = self.chat_history.save_session(conversation_history, metadata)
+                console.print(f"[dim]Conversation saved to: {filepath.name}[/dim]")
+            except Exception as e:
+                logger.warning(f"Failed to save chat history: {e}")
 
     def cli_question(self, question: str) -> int:
         """
@@ -1353,6 +1406,221 @@ def server_command(args) -> int:
         return 1
 
 
+def prompt_command(args) -> int:
+    """
+    Handle prompt template command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    config = get_config()
+
+    # Default to 'list' if no action provided
+    action = args.action if args.action else 'list'
+
+    # Route to appropriate command handler
+    if action == 'list':
+        return list_templates_command(config, args)
+    elif action == 'info':
+        return info_template_command(config, args)
+    elif action == 'load':
+        return load_template_command(config, args)
+    elif action == 'import':
+        return import_template_command(config, args)
+    elif action == 'export':
+        return export_template_command(config, args)
+    elif action == 'enable':
+        return enable_template_command(config, args)
+    elif action == 'disable':
+        return disable_template_command(config, args)
+    elif action == 'backup':
+        return backup_templates_command(config, args)
+    elif action == 'delete':
+        return delete_template_command(config, args)
+    elif action == 'create':
+        return create_template_command(config, args)
+    elif action == 'active':
+        return show_active_template_command(config, args)
+    else:
+        console.print(f"[red]Error:[/red] Unknown action '{action}'")
+        console.print("[dim]Available actions: list, info, load, import, export, enable, disable, backup, delete, create, active[/dim]")
+        return 1
+
+
+def chat_history_list_command(config: Config, args) -> int:
+    """
+    List saved chat sessions.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+    from rich.table import Table
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get filter options
+    days = getattr(args, 'days', None)
+    limit = getattr(args, 'limit', None)
+
+    # List sessions
+    sessions = chat_history.list_sessions(limit=limit, days=days)
+
+    if not sessions:
+        console.print("[yellow]No chat sessions found[/yellow]")
+        if days:
+            console.print(f"[dim]No sessions in the last {days} days[/dim]")
+        return 0
+
+    # Create table
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("SESSION ID", style="green")
+    table.add_column("DATE", style="cyan")
+    table.add_column("MESSAGES", style="yellow")
+    table.add_column("MODEL", style="dim")
+
+    for session in sessions:
+        # Parse timestamp
+        timestamp = datetime.fromisoformat(session['timestamp'])
+        date_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Get model name
+        model_name = session['metadata'].get('model', 'Unknown')
+
+        table.add_row(
+            session['session_id'],
+            date_str,
+            str(session['message_count']),
+            model_name
+        )
+
+    console.print(table)
+
+    # Show total size
+    total_size = chat_history.get_total_size()
+    size_mb = total_size / (1024 * 1024)
+    console.print(f"\n[dim]Total history size: {size_mb:.2f} MB[/dim]")
+    console.print(f"[dim]History directory: {history_dir}[/dim]")
+
+    return 0
+
+
+def chat_history_purge_command(config: Config, args) -> int:
+    """
+    Purge old chat sessions.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get options
+    days = args.days
+    dry_run = getattr(args, 'dry_run', False)
+
+    # Confirm if not dry run
+    if not dry_run:
+        console.print(f"[yellow]This will delete all chat sessions older than {days} days.[/yellow]")
+        response = input("Are you sure? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            console.print("[dim]Cancelled[/dim]")
+            return 0
+
+    # Purge sessions
+    deleted_count = chat_history.purge_old_sessions(days=days, dry_run=dry_run)
+
+    if dry_run:
+        console.print(f"\n[cyan]Dry run complete: {deleted_count} sessions would be deleted[/cyan]")
+    else:
+        console.print(f"\n[green]✓ Purged {deleted_count} sessions[/green]")
+
+    return 0
+
+
+def chat_export_command(config: Config, args) -> int:
+    """
+    Export a chat session to a file.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+    from llf.chat_exporters import get_exporter
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get session
+    session_id = args.session_id
+    session_data = chat_history.load_session(session_id)
+
+    if not session_data:
+        console.print(f"[red]Session '{session_id}' not found[/red]")
+        console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+        return 1
+
+    # Get export options
+    export_format = args.format
+    output_path = args.output
+    include_timestamps = not getattr(args, 'no_timestamps', False)
+    include_system = not getattr(args, 'no_system', False)
+
+    # Generate default output filename if not specified
+    if not output_path:
+        extension_map = {
+            'markdown': 'md',
+            'md': 'md',
+            'json': 'json',
+            'txt': 'txt',
+            'text': 'txt',
+            'pdf': 'pdf'
+        }
+        ext = extension_map.get(export_format, 'txt')
+        output_path = f"chat_{session_id}.{ext}"
+
+    output_path = Path(output_path)
+
+    try:
+        # Get exporter and export
+        exporter = get_exporter(export_format, include_timestamps=include_timestamps, include_system=include_system)
+        exporter.export(session_data, output_path)
+
+        console.print(f"[green]✓ Exported session to: {output_path}[/green]")
+        console.print(f"[dim]Format: {export_format}[/dim]")
+        return 0
+
+    except ImportError as e:
+        console.print(f"[red]Export failed: {e}[/red]")
+        if 'reportlab' in str(e):
+            console.print("[yellow]Install reportlab for PDF export: pip install reportlab[/yellow]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Export failed: {e}[/red]")
+        return 1
+
+
 def main():
     """Main entry point for CLI application."""
     parser = argparse.ArgumentParser(
@@ -1366,6 +1634,7 @@ Examples:
   llf chat                         Start interactive chat (prompts to start server if not running)
   llf chat --auto-start-server     Auto-start server if not running (no prompt)
   llf chat --no-server-start       Exit with error if server not running
+  llf chat --no-history            Start chat without saving conversation history
   llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf chat --gguf-dir test_gguf --gguf-file my-model.gguf
 
@@ -1374,6 +1643,26 @@ Examples:
   llf chat --cli "Explain Python" --auto-start-server
   llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
+
+  # Chat import (resume conversations)
+  llf chat --import-session SESSION_ID             Continue from a saved session
+  llf chat --import-session path/to/exported.json  Import external session file
+  llf chat --import-session SESSION_ID --no-history  Resume without saving new history
+
+  # Chat history management
+  llf chat history list                            List all saved chat sessions
+  llf chat history list --days 7                   List sessions from last 7 days
+  llf chat history list --limit 10                 List last 10 sessions
+  llf chat history purge --days 30                 Delete sessions older than 30 days
+  llf chat history purge --days 30 --dry-run       Preview what would be deleted
+
+  # Chat export
+  llf chat export SESSION_ID                       Export session to Markdown
+  llf chat export SESSION_ID --format json         Export as JSON
+  llf chat export SESSION_ID --format pdf          Export as PDF
+  llf chat export SESSION_ID --output chat.md      Export to specific file
+  llf chat export SESSION_ID --no-timestamps       Export without timestamps
+  llf chat export SESSION_ID --no-system           Export without system messages
 
   # Local Server management
   llf server list                              List all configured servers and status
@@ -1457,6 +1746,17 @@ Examples:
   llf tool whitelist add TOOL_NAME PATTERN    Add pattern to tool whitelist
   llf tool whitelist remove TOOL_NAME INDEX   Remove pattern from tool whitelist by index
 
+  # Prompt Template management
+  llf prompt list                             List all prompt templates
+  llf prompt list --category development      List templates by category
+  llf prompt list --enabled                   List only enabled templates
+  llf prompt info coding_assistant            Show detailed template information
+  llf prompt load coding_assistant            Load and apply template to active config
+  llf prompt load socratic_tutor --var topic=Python   Load with variable substitution
+  llf prompt create                           Create new template interactively
+  llf prompt backup                           Backup all templates before changes
+  llf prompt active                           Show currently active template
+
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
   llf --log-level DEBUG --log-file debug.log chat      Log chat session to file
@@ -1522,8 +1822,8 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     # Chat command (default)
     chat_parser = subparsers.add_parser(
         'chat',
-        help='Start interactive chat with LLM',
-        description='Start an interactive chat session with an LLM either locally running or remote.',
+        help='Start interactive chat with LLM or manage chat history',
+        description='Start an interactive chat session with an LLM either locally running or remote, or manage chat history.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1531,10 +1831,27 @@ Examples:
   llf chat                                     Start interactive chat session
   llf chat --auto-start-server                 Auto-start server if not running
   llf chat --no-server-start                   Exit with error if server not running
+  llf chat --no-history                        Disable saving conversation history
 
   # CLI mode (non-interactive, for scripting)
   llf chat --cli "What is 2+2?"                Ask a single question and exit
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
+
+  # Import/Resume conversations
+  llf chat --import-session SESSION_ID         Continue from a saved session
+  llf chat --import-session path/to/chat.json  Import external session file
+
+  # Chat history management
+  llf chat history list                        List saved chat sessions
+  llf chat history list --days 7               List sessions from last 7 days
+  llf chat history purge --days 30             Delete sessions older than 30 days
+  llf chat history purge --days 30 --dry-run   Preview what would be deleted
+
+  # Export conversations
+  llf chat export SESSION_ID                   Export session to markdown (default)
+  llf chat export SESSION_ID --format json     Export to JSON format
+  llf chat export SESSION_ID --format pdf --output chat.pdf
+  llf chat export SESSION_ID --no-timestamps   Export without timestamps
 
   # Model selection
   llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
@@ -1574,9 +1891,105 @@ Examples:
         help='Do not start server if not running (exit with error instead)'
     )
     chat_parser.add_argument(
+        '--no-history',
+        action='store_true',
+        help='Disable saving conversation history for this session'
+    )
+    chat_parser.add_argument(
+        '--import-session',
+        metavar='PATH',
+        help='Import and continue a previous conversation from a session file (JSON format)'
+    )
+    chat_parser.add_argument(
         '--cli',
         metavar='QUESTION',
         help='Non-interactive mode: ask a single question and exit (for scripting)'
+    )
+
+    # Chat subcommands for history and export management
+    chat_subparsers = chat_parser.add_subparsers(
+        dest='chat_action',
+        metavar='ACTION',
+        help='Chat management actions (history, export)'
+    )
+
+    # chat history command
+    history_parser = chat_subparsers.add_parser(
+        'history',
+        help='Manage chat history',
+        description='List, view, and purge saved chat sessions'
+    )
+    history_subparsers = history_parser.add_subparsers(
+        dest='history_action',
+        required=True,
+        metavar='ACTION',
+        help='History actions'
+    )
+
+    # history list
+    list_history_parser = history_subparsers.add_parser(
+        'list',
+        help='List saved chat sessions'
+    )
+    list_history_parser.add_argument(
+        '--days',
+        type=int,
+        help='Only show sessions from last N days'
+    )
+    list_history_parser.add_argument(
+        '--limit',
+        type=int,
+        help='Maximum number of sessions to show'
+    )
+
+    # history purge
+    purge_history_parser = history_subparsers.add_parser(
+        'purge',
+        help='Delete old chat sessions'
+    )
+    purge_history_parser.add_argument(
+        '--days',
+        type=int,
+        required=True,
+        help='Delete sessions older than N days'
+    )
+    purge_history_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be deleted without actually deleting'
+    )
+
+    # chat export command
+    export_parser = chat_subparsers.add_parser(
+        'export',
+        help='Export chat session to file',
+        description='Export a saved chat session to various formats (markdown, json, txt, pdf)'
+    )
+    export_parser.add_argument(
+        'session_id',
+        metavar='SESSION_ID',
+        help='Session ID or filename to export (e.g., "20250109_143022" or "chat_20250109_143022.json")'
+    )
+    export_parser.add_argument(
+        '--format',
+        choices=['markdown', 'md', 'json', 'txt', 'text', 'pdf'],
+        default='markdown',
+        help='Export format (default: markdown)'
+    )
+    export_parser.add_argument(
+        '--output',
+        metavar='FILE',
+        help='Output file path (default: auto-generated based on session ID and format)'
+    )
+    export_parser.add_argument(
+        '--no-timestamps',
+        action='store_true',
+        help='Exclude timestamps from export'
+    )
+    export_parser.add_argument(
+        '--no-system',
+        action='store_true',
+        help='Exclude system messages from export'
     )
 
     # Model command (with subcommands: download, list, info)
@@ -2011,6 +2424,8 @@ actions:
   enable TOOL_NAME --auto          Enable a tool with auto mode
   disable TOOL_NAME                Disable a tool (sets to false)
   info TOOL_NAME                   Show tool information
+  import TOOL_NAME                 Import a tool from directory to registry
+  export TOOL_NAME                 Export a tool from registry (keeps files)
   config get KEY                   Get a global configuration value
   config set KEY VALUE             Set a global configuration value
   config list                      List all global configuration settings
@@ -2049,6 +2464,123 @@ actions:
         '--auto',
         action='store_true',
         help='Enable tool with auto mode (use with enable action)'
+    )
+
+    # Prompt command
+    prompt_parser = subparsers.add_parser(
+        'prompt',
+        help='Prompt Template Management',
+        description='Manage prompt templates for different conversation contexts and tasks.',
+        epilog='''
+actions:
+  list                             List all prompt templates
+  list --category CATEGORY         List templates by category
+  list --enabled                   List only enabled templates
+  info TEMPLATE_NAME               Show detailed template information
+  load TEMPLATE_NAME               Load and apply template to active config
+  load TEMPLATE_NAME --var key=value  Load template with variable substitution
+  import FILE_PATH                 Import external template file
+  export TEMPLATE_NAME             Export template to file
+  enable TEMPLATE_NAME             Enable a template
+  disable TEMPLATE_NAME            Disable a template
+  backup                           Create backup of all templates
+  delete TEMPLATE_NAME             Delete a template (with confirmation)
+  create                           Create a new template interactively
+  active                           Show currently active template
+
+Examples:
+  llf prompt list                  List all available templates
+  llf prompt list --category development
+  llf prompt info coding_assistant
+  llf prompt load coding_assistant
+  llf prompt load socratic_tutor --var topic=Python
+  llf prompt create                Start interactive template creation
+  llf prompt backup                Create backup before making changes
+  llf prompt active                Show which template is currently active
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    prompt_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    prompt_parser.add_argument(
+        'template_name',
+        nargs='?',
+        help=argparse.SUPPRESS  # Template name or file path for various actions
+    )
+    prompt_parser.add_argument(
+        '--category',
+        type=str,
+        help='Filter templates by category (use with list action)'
+    )
+    prompt_parser.add_argument(
+        '--enabled',
+        action='store_true',
+        help='List only enabled templates (use with list action)'
+    )
+    prompt_parser.add_argument(
+        '--var',
+        action='append',
+        help='Variable substitution in format key=value (use with load action)'
+    )
+    prompt_parser.add_argument(
+        '--name',
+        type=str,
+        help='Custom name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--display-name',
+        type=str,
+        help='Display name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--description',
+        type=str,
+        help='Description for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--author',
+        type=str,
+        help='Author name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--tags',
+        type=str,
+        help='Comma-separated tags for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--output',
+        type=str,
+        help='Output file path for exported template (use with export action)'
+    )
+
+    # Dev command (for tool development)
+    dev_parser = subparsers.add_parser(
+        'dev',
+        help='Development Tools',
+        description='Developer tools for creating and validating custom tools.',
+        epilog='''
+actions:
+  create-tool                      Create a new tool with interactive wizard
+  validate-tool TOOL_NAME          Validate tool structure and configuration
+
+Examples:
+  llf dev create-tool              Start interactive tool creation wizard
+  llf dev validate-tool my_tool    Validate 'my_tool' structure
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    dev_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    dev_parser.add_argument(
+        'tool_name',
+        nargs='?',
+        help=argparse.SUPPRESS  # Tool name for validate-tool action
     )
 
     # Parse arguments
@@ -3993,7 +4525,57 @@ Contains the memory data files
 
         return 0
 
+    elif args.command == 'prompt':
+        return prompt_command(args)
+
+    elif args.command == 'dev':
+        # Development Tools
+        from llf.dev_commands import DevCommands
+
+        # Get tools directory
+        tools_dir = Path(__file__).parent.parent / 'tools'
+        dev_commands = DevCommands(tools_dir)
+
+        action = getattr(args, 'action', None)
+        tool_name = getattr(args, 'tool_name', None)
+
+        if not action or action == 'create-tool':
+            # Interactive tool creation wizard
+            return dev_commands.create_tool_interactive()
+
+        elif action == 'validate-tool':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf dev validate-tool <tool_name>")
+                return 1
+
+            return dev_commands.validate_tool(tool_name)
+
+        else:
+            console.print(f"[red]Unknown dev action: {action}[/red]")
+            console.print("\nValid actions: create-tool, validate-tool")
+            return 1
+
     elif args.command == 'chat' or args.command is None:
+        # Check if this is a chat subcommand (history or export)
+        chat_action = getattr(args, 'chat_action', None)
+
+        if chat_action == 'history':
+            # Handle chat history subcommands
+            history_action = getattr(args, 'history_action', None)
+            if history_action == 'list':
+                return chat_history_list_command(config, args)
+            elif history_action == 'purge':
+                return chat_history_purge_command(config, args)
+            else:
+                console.print("[red]Unknown history action[/red]")
+                return 1
+
+        elif chat_action == 'export':
+            # Handle chat export command
+            return chat_export_command(config, args)
+
+        # No subcommand - start interactive chat
         # Override model settings if specified via CLI flags
         if hasattr(args, 'huggingface_model') and args.huggingface_model:
             config.model_name = args.huggingface_model
@@ -4007,11 +4589,40 @@ Contains the memory data files
         auto_start = getattr(args, 'auto_start_server', False)
         no_start = getattr(args, 'no_server_start', False)
 
+        # Get history flag (default is True, disabled with --no-history)
+        save_history = not getattr(args, 'no_history', False)
+
         # Get CLI question if provided
         cli_question = getattr(args, 'cli', None)
 
+        # Handle session import
+        imported_session = None
+        import_session_path = getattr(args, 'import_session', None)
+        if import_session_path:
+            from llf.chat_history import ChatHistory
+            history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+            chat_history_manager = ChatHistory(history_dir)
+
+            # Try to import from the specified path
+            import_path = Path(import_session_path)
+            if not import_path.exists():
+                # Maybe it's a session ID, try to load from history directory
+                session_data = chat_history_manager.load_session(import_session_path)
+                if session_data:
+                    imported_session = session_data
+                else:
+                    console.print(f"[red]Could not find session: {import_session_path}[/red]")
+                    console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+                    return 1
+            else:
+                # It's a file path, import it
+                imported_session = chat_history_manager.import_session(import_path)
+                if not imported_session:
+                    console.print(f"[red]Failed to import session from: {import_session_path}[/red]")
+                    return 1
+
         # Default to chat
-        cli = CLI(config, prompt_config=prompt_config, auto_start_server=auto_start, no_server_start=no_start)
+        cli = CLI(config, prompt_config=prompt_config, auto_start_server=auto_start, no_server_start=no_start, save_history=save_history, imported_session=imported_session)
         return cli.run(cli_question=cli_question)
     else:
         parser.print_help()

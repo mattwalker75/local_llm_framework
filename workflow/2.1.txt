@@ -1,0 +1,409 @@
+
+
+2.1 Add Tool Development Scaffolding Command
+What it is: A CLI command llf dev create-tool <tool_name> that automatically generates a complete, working tool skeleton with all required files (config.json, execute.py, tool_definition.json, README.md, tests). Detailed Explanation: Currently, developers must:
+Read TOOL_TEMPLATE.md (1146 lines)
+Manually create 4-5 files
+Copy boilerplate code
+Remember all required fields
+Create tests manually
+This is error-prone and time-consuming. This enhancement adds an interactive wizard that:
+Prompts for tool name, description, category
+Asks about parameters (name, type, required/optional, description)
+Generates all files with proper structure
+Creates sample tests
+Adds tool to registry automatically
+Validates generated code
+Benefits:
+Faster Development: Create tool in 2 minutes vs 30 minutes
+Fewer Errors: Generated code follows best practices
+Better Testing: Tests created automatically
+Consistency: All tools follow same structure
+Lower Barrier: New developers can create tools easily
+Files to Update:
+llf/cli.py - Add dev subcommand with create-tool (new section around line 1100)
+New file: llf/dev_tools.py - Tool scaffolding generator
+docs/TOOL_DEVELOPMENT.md - Update with scaffolding instructions
+tests/test_dev_tools.py - Tests for scaffolding
+Implementation Guide:
+
+# Create new file: llf/dev_tools.py
+
+"""
+Developer Tools for LLF Extension Development
+
+Provides scaffolding and utilities for creating custom tools, modules, and plugins.
+"""
+
+from pathlib import Path
+from typing import Dict, List, Optional
+import json
+from rich.console import Console
+from rich.prompt import Prompt, Confirm
+
+console = Console()
+
+
+class ToolScaffolder:
+    """Generate scaffolding for new tools."""
+    
+    def __init__(self, tools_dir: Path):
+        """
+        Initialize scaffolder.
+        
+        Args:
+            tools_dir: Path to tools directory
+        """
+        self.tools_dir = tools_dir
+    
+    def create_tool(self, tool_name: str, interactive: bool = True) -> bool:
+        """
+        Create a new tool with all required files.
+        
+        Args:
+            tool_name: Name of tool to create
+            interactive: If True, prompt for details
+        
+        Returns:
+            True if successful
+        """
+        # Validate tool name
+        if not tool_name.replace('_', '').isalnum():
+            console.print("[red]Tool name must be alphanumeric with underscores[/red]")
+            return False
+        
+        tool_dir = self.tools_dir / tool_name
+        if tool_dir.exists():
+            console.print(f"[red]Tool directory already exists: {tool_dir}[/red]")
+            return False
+        
+        # Gather tool details
+        if interactive:
+            details = self._interactive_details(tool_name)
+        else:
+            details = self._default_details(tool_name)
+        
+        # Create directory
+        tool_dir.mkdir(parents=True)
+        
+        # Generate files
+        self._create_config(tool_dir, details)
+        self._create_tool_definition(tool_dir, details)
+        self._create_execute_py(tool_dir, details)
+        self._create_readme(tool_dir, details)
+        self._create_tests(tool_dir, details)
+        
+        console.print(f"\n[green]✓[/green] Tool '{tool_name}' created successfully!")
+        console.print(f"\n[cyan]Next steps:[/cyan]")
+        console.print(f"  1. Edit {tool_dir}/execute.py to implement tool logic")
+        console.print(f"  2. Test: llf tool import {tool_name}")
+        console.print(f"  3. Enable: llf tool enable {tool_name}")
+        console.print(f"  4. Run tests: pytest {tool_dir}/tests/")
+        
+        return True
+    
+    def _interactive_details(self, tool_name: str) -> Dict:
+        """Interactively gather tool details."""
+        console.print(f"\n[bold cyan]Creating tool: {tool_name}[/bold cyan]\n")
+        
+        details = {
+            'name': tool_name,
+            'display_name': Prompt.ask(
+                "Display name",
+                default=tool_name.replace('_', ' ').title()
+            ),
+            'description': Prompt.ask(
+                "Short description",
+                default=f"Tool for {tool_name.replace('_', ' ')}"
+            ),
+            'category': Prompt.ask(
+                "Category",
+                choices=["data", "file", "internet", "system", "utility"],
+                default="utility"
+            ),
+            'author': Prompt.ask("Author name", default="Local LLM Framework"),
+            'version': Prompt.ask("Version", default="1.0.0"),
+            'parameters': []
+        }
+        
+        # Parameters
+        console.print("\n[bold]Define parameters:[/bold] (press Enter with empty name to finish)")
+        
+        while True:
+            param_name = Prompt.ask("\nParameter name", default="")
+            if not param_name:
+                break
+            
+            param = {
+                'name': param_name,
+                'type': Prompt.ask(
+                    "  Type",
+                    choices=["string", "number", "boolean", "array", "object"],
+                    default="string"
+                ),
+                'description': Prompt.ask("  Description"),
+                'required': Confirm.ask("  Required?", default=True)
+            }
+            
+            if param['type'] == "string":
+                has_enum = Confirm.ask("  Has fixed choices (enum)?", default=False)
+                if has_enum:
+                    enum_str = Prompt.ask("  Enter choices (comma-separated)")
+                    param['enum'] = [c.strip() for c in enum_str.split(',')]
+            
+            details['parameters'].append(param)
+        
+        return details
+    
+    def _default_details(self, tool_name: str) -> Dict:
+        """Generate default tool details."""
+        return {
+            'name': tool_name,
+            'display_name': tool_name.replace('_', ' ').title(),
+            'description': f"Tool for {tool_name.replace('_', ' ')}",
+            'category': "utility",
+            'author': "Local LLM Framework",
+            'version': "1.0.0",
+            'parameters': [
+                {
+                    'name': 'input',
+                    'type': 'string',
+                    'description': 'Input parameter',
+                    'required': True
+                }
+            ]
+        }
+    
+    def _create_config(self, tool_dir: Path, details: Dict):
+        """Create config.json."""
+        config = {
+            "name": details['name'],
+            "type": "llm_invokable",
+            "directory": details['name'],
+            "description": details['description'],
+            "version": details['version'],
+            "author": details['author'],
+            "metadata": {
+                "category": details['category'],
+                "enabled": False,
+                "requires_approval": False,
+                "timeout": 60
+            }
+        }
+        
+        with open(tool_dir / "config.json", 'w') as f:
+            json.dump(config, f, indent=2)
+    
+    def _create_tool_definition(self, tool_dir: Path, details: Dict):
+        """Create tool_definition.json."""
+        properties = {}
+        required = []
+        
+        for param in details['parameters']:
+            prop = {
+                "type": param['type'],
+                "description": param['description']
+            }
+            
+            if 'enum' in param:
+                prop['enum'] = param['enum']
+            
+            properties[param['name']] = prop
+            
+            if param['required']:
+                required.append(param['name'])
+        
+        definition = {
+            "type": "function",
+            "function": {
+                "name": details['name'],
+                "description": details['description'],
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required
+                }
+            }
+        }
+        
+        with open(tool_dir / "tool_definition.json", 'w') as f:
+            json.dump(definition, f, indent=2)
+    
+    def _create_execute_py(self, tool_dir: Path, details: Dict):
+        """Create execute.py."""
+        params_code = "\n    ".join([
+            f"{p['name']} = params.get('{p['name']}')"
+            for p in details['parameters']
+        ])
+        
+        validation_code = "\n    ".join([
+            f"if not {p['name']}:\n        return {{'success': False, 'error': 'Missing required parameter: {p['name']}'}}"
+            for p in details['parameters']
+            if p['required']
+        ])
+        
+        code = f'''"""
+{details['display_name']} Tool
+
+{details['description']}
+
+Author: {details['author']}
+Version: {details['version']}
+"""
+
+from typing import Dict, Any
+
+
+def execute(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute {details['display_name']} tool.
+    
+    Args:
+        params: Tool parameters
+            - {chr(10).join([f"{p['name']} ({p['type']}): {p['description']}" for p in details['parameters']])}
+    
+    Returns:
+        Dict with 'success' (bool) and result data or 'error' message
+    """
+    # Extract parameters
+    {params_code}
+    
+    # Validate required parameters
+    {validation_code}
+    
+    try:
+        # TODO: Implement tool logic here
+        result = f"Processed {{}} successfully"
+        
+        return {{
+            'success': True,
+            'result': result
+        }}
+    
+    except Exception as e:
+        return {{
+            'success': False,
+            'error': f"Tool execution failed: {{e}}"
+        }}
+'''
+        
+        with open(tool_dir / "execute.py", 'w') as f:
+            f.write(code)
+    
+    def _create_readme(self, tool_dir: Path, details: Dict):
+        """Create README.md."""
+        params_table = "\n".join([
+            f"| `{p['name']}` | {p['type']} | {'Required' if p['required'] else 'Optional'} | {p['description']} |"
+            for p in details['parameters']
+        ])
+        
+        readme = f'''# {details['display_name']}
+
+{details['description']}
+
+## Overview
+
+- **Category**: {details['category']}
+- **Author**: {details['author']}
+- **Version**: {details['version']}
+
+## Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+{params_table}
+
+## Usage Example
+
+```python
+result = execute({{
+{chr(10).join([f"    '{p['name']}': 'example_value'," for p in details['parameters']])}
+}})
+
+if result['success']:
+    print(result['result'])
+else:
+    print(f"Error: {{result['error']}}")
+Configuration
+Enable the tool:
+
+llf tool import {details['name']}
+llf tool enable {details['name']}
+Development
+Run tests:
+
+pytest tools/{details['name']}/tests/
+License
+MIT License '''
+
+    with open(tool_dir / "README.md", 'w') as f:
+        f.write(readme)
+
+def _create_tests(self, tool_dir: Path, details: Dict):
+    """Create test file."""
+    tests_dir = tool_dir / "tests"
+    tests_dir.mkdir()
+    
+    (tests_dir / "__init__.py").touch()
+    
+    test_code = f'''"""
+Tests for {details['display_name']} Tool """ import pytest import sys from pathlib import Path
+Add tool to path
+tool_dir = Path(file).parent.parent sys.path.insert(0, str(tool_dir)) from execute import execute class Test{details['name'].title().replace('_', '')}: """Test suite for {details['display_name']} tool."""
+
+def test_execute_success(self):
+    """Test successful execution."""
+    params = {{
+{chr(10).join([f" '{p['name']}': 'test_value'," for p in details['parameters']])} }}
+
+    result = execute(params)
+    
+    assert result['success'] is True
+    assert 'result' in result
+
+def test_execute_missing_required_param(self):
+    """Test execution with missing required parameter."""
+    params = {{}}
+    
+    result = execute(params)
+    
+    assert result['success'] is False
+    assert 'error' in result
+
+def test_execute_with_invalid_input(self):
+    """Test execution with invalid input."""
+    params = {{
+{chr(10).join([f" '{p['name']}': None," for p in details['parameters']])} }}
+
+    result = execute(params)
+    
+    # Should handle gracefully
+    assert 'success' in result
+'''
+
+    with open(tests_dir / f"test_{details['name']}.py", 'w') as f:
+        f.write(test_code)
+In llf/cli.py, add dev subcommand (around line 1100)
+Add dev subparser
+dev_parser = subparsers.add_parser( 'dev', help='Developer tools for extension development', description='Utilities for creating custom tools, modules, and plugins' ) dev_subparsers = dev_parser.add_subparsers( dest='dev_command', help='Development operations' )
+dev create-tool
+create_tool_parser = dev_subparsers.add_parser( 'create-tool', help='Create a new tool with scaffolding', description='Interactive wizard to generate tool skeleton with all required files' ) create_tool_parser.add_argument( 'tool_name', help='Name of tool to create (use underscores for spaces)' ) create_tool_parser.add_argument( '--no-interactive', action='store_true', help='Skip interactive prompts, use defaults' )
+In main command handler (around line 3450)
+elif args.command == 'dev': if args.dev_command == 'create-tool': from .dev_tools import ToolScaffolder
+
+    tools_dir = Path('tools')
+    if not tools_dir.exists():
+        console.print("[red]Error: 'tools' directory not found[/red]")
+        console.print("Run this command from project root")
+        return 1
+    
+    scaffolder = ToolScaffolder(tools_dir)
+    success = scaffolder.create_tool(
+        args.tool_name,
+        interactive=not args.no_interactive
+    )
+    
+    return 0 if success else 1
+
+
+

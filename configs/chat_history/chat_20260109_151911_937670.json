@@ -1,0 +1,22 @@
+{
+  "session_id": "20260109_151911_937670",
+  "timestamp": "2026-01-09T15:19:11.937670",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line 1 of multiline content\nLine 2 of multiline content\nLine 3 of multiline content",
+      "timestamp": "2026-01-09T15:19:11.937665"
+    },
+    {
+      "role": "assistant",
+      "content": "Got your multiline input!",
+      "timestamp": "2026-01-09T15:19:11.937667"
+    }
+  ],
+  "metadata": {
+    "model": "test/model",
+    "timestamp": "2026-01-09T15:19:11.937668",
+    "server_url": "http://127.0.0.1:8000/v1"
+  },
+  "message_count": 2
+}

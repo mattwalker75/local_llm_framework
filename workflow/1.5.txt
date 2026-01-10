@@ -1,0 +1,435 @@
+
+
+1.5 Implement Soft-Delete with Trash System
+What it is: Instead of permanently deleting models, memories, and datastores, move them to a .trash/ directory where they can be restored within 30 days before permanent deletion. Detailed Explanation: Currently, delete operations are permanent and irreversible:
+llf model delete - Model gone forever
+Memory deletion - Cannot be undone
+Datastore deletion - Lost permanently
+This creates anxiety for users who might accidentally delete important data. This enhancement adds:
+.trash/ directory in project root
+Soft-delete: Move files to trash with timestamp
+llf trash list - Show deleted items
+llf trash restore <id> - Restore item
+llf trash empty - Permanently delete all
+Auto-cleanup: Items older than 30 days removed automatically
+GUI: Trash icon and restore buttons
+Benefits:
+Safety Net: Accidental deletions can be recovered
+User Confidence: Less fear of delete operations
+Compliance: Meet data retention policies
+Audit Trail: Can see what was deleted and when
+Files to Update:
+llf/model_manager.py - Modify delete_model to use trash (line 340)
+llf/memory_manager.py - Modify delete_memory to use trash (line 522)
+New file: llf/trash_manager.py - Trash system implementation
+llf/cli.py - Add trash commands (new subparser)
+llf/config.py - Add TRASH_DIR constant
+Implementation Guide:
+
+# Create new file: llf/trash_manager.py
+
+"""
+Trash Management System
+
+Implements soft-delete functionality for models, memories, and datastores.
+Items moved to trash can be restored within retention period (default 30 days).
+"""
+
+import json
+import shutil
+from pathlib import Path
+from typing import List, Dict, Optional
+from datetime import datetime, timedelta, UTC
+import uuid
+
+
+class TrashManager:
+    """Manage soft-deleted items with restore capability."""
+    
+    def __init__(self, trash_dir: Optional[Path] = None):
+        """
+        Initialize trash manager.
+        
+        Args:
+            trash_dir: Path to trash directory (default: .trash/)
+        """
+        if trash_dir is None:
+            from .config import get_config
+            config = get_config()
+            trash_dir = config.PROJECT_ROOT / ".trash"
+        
+        self.trash_dir = trash_dir
+        self.trash_dir.mkdir(exist_ok=True)
+        
+        # Trash registry tracks all deleted items
+        self.registry_path = self.trash_dir / "trash_registry.json"
+        self.registry = self._load_registry()
+        
+        # Auto-cleanup old items
+        self._auto_cleanup()
+    
+    def _load_registry(self) -> Dict:
+        """Load trash registry from disk."""
+        if self.registry_path.exists():
+            try:
+                with open(self.registry_path, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                return {"items": []}
+        return {"items": []}
+    
+    def _save_registry(self):
+        """Save trash registry to disk."""
+        with open(self.registry_path, 'w') as f:
+            json.dump(self.registry, f, indent=2)
+    
+    def _auto_cleanup(self, retention_days: int = 30):
+        """
+        Automatically remove items older than retention period.
+        
+        Args:
+            retention_days: Days to keep items before permanent deletion
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        items_to_remove = []
+        for item in self.registry["items"]:
+            deleted_at = datetime.fromisoformat(item["deleted_at"])
+            if deleted_at < cutoff:
+                items_to_remove.append(item)
+        
+        for item in items_to_remove:
+            # Permanently delete
+            item_dir = self.trash_dir / item["trash_id"]
+            if item_dir.exists():
+                shutil.rmtree(item_dir)
+            
+            self.registry["items"].remove(item)
+        
+        if items_to_remove:
+            self._save_registry()
+    
+    def delete_item(
+        self,
+        item_type: str,
+        item_name: str,
+        source_path: Path,
+        metadata: Optional[Dict] = None
+    ) -> tuple:
+        """
+        Soft-delete an item by moving to trash.
+        
+        Args:
+            item_type: Type of item ("model", "memory", "datastore")
+            item_name: Name/identifier of item
+            source_path: Current path to item
+            metadata: Additional metadata to store
+        
+        Returns:
+            (success: bool, trash_id: str or error message)
+        """
+        if not source_path.exists():
+            return False, f"Source path does not exist: {source_path}"
+        
+        # Generate unique trash ID
+        trash_id = str(uuid.uuid4())
+        trash_path = self.trash_dir / trash_id
+        
+        try:
+            # Move to trash
+            if source_path.is_dir():
+                shutil.copytree(source_path, trash_path)
+                shutil.rmtree(source_path)
+            else:
+                shutil.copy2(source_path, trash_path)
+                source_path.unlink()
+            
+            # Record in registry
+            item_record = {
+                "trash_id": trash_id,
+                "item_type": item_type,
+                "item_name": item_name,
+                "original_path": str(source_path),
+                "deleted_at": datetime.now(UTC).isoformat(),
+                "metadata": metadata or {}
+            }
+            
+            self.registry["items"].append(item_record)
+            self._save_registry()
+            
+            return True, trash_id
+        
+        except Exception as e:
+            return False, f"Failed to move to trash: {e}"
+    
+    def restore_item(self, trash_id: str) -> tuple:
+        """
+        Restore item from trash to original location.
+        
+        Args:
+            trash_id: ID of trashed item
+        
+        Returns:
+            (success: bool, message: str)
+        """
+        # Find item in registry
+        item = None
+        for i in self.registry["items"]:
+            if i["trash_id"] == trash_id:
+                item = i
+                break
+        
+        if not item:
+            return False, f"Item not found in trash: {trash_id}"
+        
+        trash_path = self.trash_dir / trash_id
+        if not trash_path.exists():
+            return False, f"Trash item missing: {trash_id}"
+        
+        original_path = Path(item["original_path"])
+        
+        # Check if original location is available
+        if original_path.exists():
+            return False, f"Original location already occupied: {original_path}"
+        
+        try:
+            # Restore from trash
+            if trash_path.is_dir():
+                shutil.copytree(trash_path, original_path)
+                shutil.rmtree(trash_path)
+            else:
+                shutil.copy2(trash_path, original_path)
+                trash_path.unlink()
+            
+            # Remove from registry
+            self.registry["items"].remove(item)
+            self._save_registry()
+            
+            return True, f"Restored {item['item_name']} to {original_path}"
+        
+        except Exception as e:
+            return False, f"Failed to restore: {e}"
+    
+    def list_items(
+        self,
+        item_type: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        List all items in trash.
+        
+        Args:
+            item_type: Filter by type ("model", "memory", "datastore")
+        
+        Returns:
+            List of trash item records
+        """
+        items = self.registry["items"]
+        
+        if item_type:
+            items = [i for i in items if i["item_type"] == item_type]
+        
+        return items
+    
+    def empty_trash(self, item_type: Optional[str] = None) -> tuple:
+        """
+        Permanently delete all items in trash.
+        
+        Args:
+            item_type: Only delete items of this type (None = all)
+        
+        Returns:
+            (count: int, message: str)
+        """
+        items_to_delete = self.list_items(item_type)
+        count = 0
+        
+        for item in items_to_delete:
+            trash_path = self.trash_dir / item["trash_id"]
+            
+            if trash_path.exists():
+                if trash_path.is_dir():
+                    shutil.rmtree(trash_path)
+                else:
+                    trash_path.unlink()
+            
+            self.registry["items"].remove(item)
+            count += 1
+        
+        self._save_registry()
+        
+        return count, f"Permanently deleted {count} items"
+
+# In llf/model_manager.py, modify delete_model (around line 340)
+
+def delete_model(self, model_name: Optional[str] = None, force: bool = False) -> tuple:
+    """
+    Delete (soft-delete) a model.
+    
+    Args:
+        model_name: Model to delete (None = config default)
+        force: If True, permanently delete (skip trash)
+    
+    Returns:
+        (success: bool, message: str)
+    """
+    model_name = model_name or self.config.model_name
+    if not model_name:
+        return False, "No model name specified"
+    
+    model_path = self.get_model_path(model_name)
+    
+    if not model_path.exists():
+        return False, f"Model not found: {model_name}"
+    
+    try:
+        if force:
+            # Permanent deletion
+            shutil.rmtree(model_path)
+            return True, f"Permanently deleted model: {model_name}"
+        else:
+            # Soft-delete to trash
+            from .trash_manager import TrashManager
+            trash = TrashManager()
+            
+            success, result = trash.delete_item(
+                item_type="model",
+                item_name=model_name,
+                source_path=model_path,
+                metadata={"size": self._get_dir_size(model_path)}
+            )
+            
+            if success:
+                return True, f"Moved model to trash: {model_name} (ID: {result})"
+            else:
+                return False, result
+    
+    except Exception as e:
+        return False, f"Failed to delete model: {e}"
+
+def _get_dir_size(self, path: Path) -> int:
+    """Calculate total size of directory."""
+    total = 0
+    for f in path.rglob('*'):
+        if f.is_file():
+            total += f.stat().st_size
+    return total
+
+# In llf/cli.py, add trash commands (around line 1200)
+
+# Add trash subparser
+trash_parser = subparsers.add_parser(
+    'trash',
+    help='Manage deleted items (soft-delete trash)',
+    description='View and restore deleted models, memories, and datastores'
+)
+trash_subparsers = trash_parser.add_subparsers(
+    dest='trash_command',
+    help='Trash operations'
+)
+
+# trash list
+trash_list_parser = trash_subparsers.add_parser(
+    'list',
+    help='List items in trash'
+)
+trash_list_parser.add_argument(
+    '--type',
+    choices=['model', 'memory', 'datastore'],
+    help='Filter by item type'
+)
+
+# trash restore
+trash_restore_parser = trash_subparsers.add_parser(
+    'restore',
+    help='Restore item from trash'
+)
+trash_restore_parser.add_argument(
+    'trash_id',
+    help='ID of item to restore'
+)
+
+# trash empty
+trash_empty_parser = trash_subparsers.add_parser(
+    'empty',
+    help='Permanently delete all trash items'
+)
+trash_empty_parser.add_argument(
+    '--type',
+    choices=['model', 'memory', 'datastore'],
+    help='Only empty items of this type'
+)
+trash_empty_parser.add_argument(
+    '--force',
+    action='store_true',
+    help='Skip confirmation prompt'
+)
+
+# In main command handler (around line 3450)
+elif args.command == 'trash':
+    if args.trash_command == 'list':
+        # List trash items
+        from .trash_manager import TrashManager
+        trash = TrashManager()
+        items = trash.list_items(args.type)
+        
+        if not items:
+            console.print("[dim]Trash is empty[/dim]")
+            return 0
+        
+        table = Table(title="Trash Items")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="magenta")
+        table.add_column("Name")
+        table.add_column("Deleted", style="dim")
+        table.add_column("Size", justify="right")
+        
+        for item in items:
+            deleted_at = datetime.fromisoformat(item["deleted_at"])
+            size = item.get("metadata", {}).get("size", 0)
+            size_str = f"{size / 1024 / 1024:.1f} MB" if size else "-"
+            
+            table.add_row(
+                item["trash_id"][:8],
+                item["item_type"],
+                item["item_name"],
+                deleted_at.strftime("%Y-%m-%d %H:%M"),
+                size_str
+            )
+        
+        console.print(table)
+        return 0
+    
+    elif args.trash_command == 'restore':
+        from .trash_manager import TrashManager
+        trash = TrashManager()
+        success, message = trash.restore_item(args.trash_id)
+        
+        if success:
+            console.print(f"[green]✓[/green] {message}")
+            return 0
+        else:
+            console.print(f"[red]✗[/red] {message}")
+            return 1
+    
+    elif args.trash_command == 'empty':
+        if not args.force:
+            confirm = Prompt.ask(
+                "[yellow]Permanently delete all trash items? This cannot be undone.[/yellow]",
+                choices=["y", "n"],
+                default="n"
+            )
+            if confirm != "y":
+                console.print("Cancelled")
+                return 0
+        
+        from .trash_manager import TrashManager
+        trash = TrashManager()
+        count, message = trash.empty_trash(args.type)
+        
+        console.print(f"[green]✓[/green] {message}")
+        return 0
+
+
+
+
+

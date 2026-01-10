@@ -5,9 +5,12 @@
   "type": "postprocessor",
   "enabled": "auto",
   "directory": "xml_format",
-  "created_date": null,
+  "created_date": "2026-01-06",
   "last_modified": "2026-01-06",
   "metadata": {
+    "category": "formatting",
+    "requires_approval": false,
+    "dependencies": [],
     "input_format": "XML",
     "output_format": "JSON",
     "use_case": "Model outputs XML instead of JSON tool calls",

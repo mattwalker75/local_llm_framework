@@ -1,0 +1,112 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-01-09T09:55:59.342727",
+  "active_template": null,
+  "templates": [
+    {
+      "name": "coding_assistant",
+      "display_name": "Coding Assistant",
+      "description": "Expert software engineer for code review, debugging, and best practices",
+      "category": "development",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "code",
+        "programming",
+        "software",
+        "engineering"
+      ],
+      "enabled": true,
+      "directory": "coding_assistant",
+      "created_date": "2026-01-09T09:47:59.829176",
+      "last_modified": "2026-01-09T09:47:59.829182"
+    },
+    {
+      "name": "creative_writer",
+      "display_name": "Creative Writer",
+      "description": "Creative writing assistant for stories, poems, and imaginative content",
+      "category": "writing",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "creative",
+        "writing",
+        "stories",
+        "fiction"
+      ],
+      "enabled": true,
+      "directory": "creative_writer",
+      "created_date": "2026-01-09T09:47:59.829687",
+      "last_modified": "2026-01-09T09:47:59.829695"
+    },
+    {
+      "name": "helpful_assistant",
+      "display_name": "Helpful Assistant",
+      "description": "General purpose helpful and friendly assistant",
+      "category": "general",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "general",
+        "helpful",
+        "friendly"
+      ],
+      "enabled": true,
+      "directory": "helpful_assistant",
+      "created_date": "2026-01-09T09:47:59.830252",
+      "last_modified": "2026-01-09T09:47:59.830255"
+    },
+    {
+      "name": "minimal",
+      "display_name": "Minimal Prompt",
+      "description": "Minimal configuration with no system prompts",
+      "category": "general",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "minimal",
+        "basic",
+        "simple"
+      ],
+      "enabled": true,
+      "directory": "minimal",
+      "created_date": "2026-01-09T09:47:59.830697",
+      "last_modified": "2026-01-09T09:47:59.830699"
+    },
+    {
+      "name": "socratic_tutor",
+      "display_name": "Socratic Tutor",
+      "description": "Educational tutor using Socratic method to guide learning",
+      "category": "education",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "education",
+        "tutoring",
+        "learning",
+        "socratic"
+      ],
+      "enabled": true,
+      "directory": "socratic_tutor",
+      "created_date": "2026-01-09T09:47:59.831107",
+      "last_modified": "2026-01-09T09:47:59.831109"
+    },
+    {
+      "name": "structured_conversation",
+      "display_name": "Structured Conversation",
+      "description": "Structured conversation with prefix and suffix messages",
+      "category": "general",
+      "author": "system",
+      "version": "1.0",
+      "tags": [
+        "structured",
+        "conversation",
+        "format"
+      ],
+      "enabled": true,
+      "directory": "structured_conversation",
+      "created_date": "2026-01-09T09:47:59.831510",
+      "last_modified": "2026-01-09T09:47:59.831514"
+    }
+  ]
+}

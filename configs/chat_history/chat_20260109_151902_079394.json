@@ -1,0 +1,22 @@
+{
+  "session_id": "20260109_151902_079394",
+  "timestamp": "2026-01-09T15:19:02.079394",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Some content",
+      "timestamp": "2026-01-09T15:19:02.079389"
+    },
+    {
+      "role": "assistant",
+      "content": "Response",
+      "timestamp": "2026-01-09T15:19:02.079392"
+    }
+  ],
+  "metadata": {
+    "model": "test/model",
+    "timestamp": "2026-01-09T15:19:02.079393",
+    "server_url": "http://127.0.0.1:8000/v1"
+  },
+  "message_count": 2
+}

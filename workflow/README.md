@@ -435,7 +435,27 @@ with which prompts I passed to the AI.
            - Lets add this
 
 #### Testing all the functionality to verify everything seems to work as expected
+1.  Add the following functionality:
+      Category 1: User Experience Enhancements
+      4. Add Conversation Export with Multiple Formats
+          - This would go hand in hand with 5.2 ( Conversation Export and Import )
+      5. Implement Soft-Delete with Trash System
+          - I like this for the memories and datastores
+          - Models are too big to do with with
 
+      Category 2: Developer Experience Improvements
+      1. Add Tool Development Scaffolding System
+          - I like this.  Creates framework to build additional tools
+
+      Category 5: Feature Additions
+      2. Add Conversation Export and Import
+          - This would go hand in hand with 1.4 ( Conversation Export with Multiple Formats )
+      4. Add Prompt Templates and Management
+          - I like this a lot
+
+       - Pull the descriptions from:  14_Input_From_AI.txt
+2.  Work on adding the above functionality and unit tests
+3.  
 
 
 

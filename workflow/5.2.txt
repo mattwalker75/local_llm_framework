@@ -1,0 +1,495 @@
+
+
+5.2 Add Conversation Export and Import
+What: Enable exporting conversations to various formats and importing them back. Explanation: Users need to:
+Save conversations for later reference
+Share conversations with others
+Import conversations from other tools
+Archive conversations for compliance
+Support formats: JSON, Markdown, HTML, PDF. Benefits:
+Data portability
+Conversation archiving
+Sharing and collaboration
+Compliance and auditing
+Files to Update:
+llf/conversation_export.py (new file)
+llf/cli.py
+llf/gui.py
+Implementation Guide:
+Step 1: Create Export Manager
+Create new file llf/conversation_export.py:
+
+"""
+Conversation export and import functionality.
+"""
+
+import json
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+from datetime import datetime
+from enum import Enum
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ExportFormat(str, Enum):
+    """Supported export formats."""
+    JSON = "json"
+    MARKDOWN = "markdown"
+    HTML = "html"
+    TEXT = "text"
+
+
+class ConversationExporter:
+    """Handles conversation export/import."""
+    
+    @staticmethod
+    def export_to_json(
+        messages: List[Dict[str, str]],
+        metadata: Optional[Dict[str, Any]] = None,
+        output_path: Optional[Path] = None
+    ) -> str:
+        """
+        Export conversation to JSON.
+        
+        Args:
+            messages: Conversation messages
+            metadata: Optional metadata (model, timestamp, etc.)
+            output_path: Output file path (if None, returns string)
+        
+        Returns:
+            JSON string or path written
+        """
+        export_data = {
+            'version': '1.0',
+            'exported_at': datetime.utcnow().isoformat(),
+            'metadata': metadata or {},
+            'messages': messages
+        }
+        
+        json_str = json.dumps(export_data, indent=2)
+        
+        if output_path:
+            output_path.write_text(json_str)
+            return str(output_path)
+        else:
+            return json_str
+    
+    @staticmethod
+    def export_to_markdown(
+        messages: List[Dict[str, str]],
+        metadata: Optional[Dict[str, Any]] = None,
+        output_path: Optional[Path] = None
+    ) -> str:
+        """
+        Export conversation to Markdown.
+        
+        Args:
+            messages: Conversation messages
+            metadata: Optional metadata
+            output_path: Output file path
+        
+        Returns:
+            Markdown string or path written
+        """
+        lines = []
+        
+        # Header
+        lines.append("# Conversation Export\n")
+        
+        # Metadata
+        if metadata:
+            lines.append("## Metadata\n")
+            for key, value in metadata.items():
+                lines.append(f"- **{key}**: {value}")
+            lines.append("\n---\n")
+        
+        # Messages
+        lines.append("## Conversation\n")
+        
+        for msg in messages:
+            role = msg['role'].capitalize()
+            content = msg['content']
+            
+            lines.append(f"### {role}\n")
+            lines.append(f"{content}\n")
+            
+            # Tool calls if present
+            if 'tool_calls' in msg:
+                lines.append("\n**Tool Calls:**\n")
+                for tool_call in msg['tool_calls']:
+                    lines.append(f"- {tool_call.get('function', {}).get('name', 'unknown')}")
+                lines.append("")
+            
+            lines.append("---\n")
+        
+        markdown = "\n".join(lines)
+        
+        if output_path:
+            output_path.write_text(markdown)
+            return str(output_path)
+        else:
+            return markdown
+    
+    @staticmethod
+    def export_to_html(
+        messages: List[Dict[str, str]],
+        metadata: Optional[Dict[str, Any]] = None,
+        output_path: Optional[Path] = None
+    ) -> str:
+        """
+        Export conversation to HTML.
+        
+        Args:
+            messages: Conversation messages
+            metadata: Optional metadata
+            output_path: Output file path
+        
+        Returns:
+            HTML string or path written
+        """
+        html_parts = []
+        
+        # HTML header
+        html_parts.append("""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Conversation Export</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .user {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .assistant {
+            background-color: #f5f5f5;
+            border-left: 4px solid #4caf50;
+        }
+        .tool {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+            font-size: 0.9em;
+        }
+        .role {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .metadata {
+            background-color: #fafafa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Conversation Export</h1>
+""")
+        
+        # Metadata
+        if metadata:
+            html_parts.append('<div class="metadata">')
+            html_parts.append('<h2>Metadata</h2>')
+            html_parts.append('<ul>')
+            for key, value in metadata.items():
+                html_parts.append(f'<li><strong>{key}:</strong> {value}</li>')
+            html_parts.append('</ul>')
+            html_parts.append('</div>')
+        
+        # Messages
+        for msg in messages:
+            role = msg['role']
+            content = msg['content'].replace('\n', '<br>')
+            
+            html_parts.append(f'<div class="message {role}">')
+            html_parts.append(f'<div class="role">{role.capitalize()}</div>')
+            html_parts.append(f'<div class="content">{content}</div>')
+            
+            # Tool calls
+            if 'tool_calls' in msg:
+                html_parts.append('<div class="tool-calls">')
+                html_parts.append('<strong>Tool Calls:</strong>')
+                html_parts.append('<ul>')
+                for tool_call in msg['tool_calls']:
+                    tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                    html_parts.append(f'<li>{tool_name}</li>')
+                html_parts.append('</ul>')
+                html_parts.append('</div>')
+            
+            html_parts.append('</div>')
+        
+        # HTML footer
+        html_parts.append("""
+</body>
+</html>
+""")
+        
+        html = "\n".join(html_parts)
+        
+        if output_path:
+            output_path.write_text(html)
+            return str(output_path)
+        else:
+            return html
+    
+    @staticmethod
+    def export_to_text(
+        messages: List[Dict[str, str]],
+        metadata: Optional[Dict[str, Any]] = None,
+        output_path: Optional[Path] = None
+    ) -> str:
+        """
+        Export conversation to plain text.
+        
+        Args:
+            messages: Conversation messages
+            metadata: Optional metadata
+            output_path: Output file path
+        
+        Returns:
+            Text string or path written
+        """
+        lines = []
+        
+        # Header
+        lines.append("=" * 60)
+        lines.append("CONVERSATION EXPORT")
+        lines.append("=" * 60)
+        lines.append("")
+        
+        # Metadata
+        if metadata:
+            lines.append("METADATA:")
+            for key, value in metadata.items():
+                lines.append(f"  {key}: {value}")
+            lines.append("")
+            lines.append("-" * 60)
+            lines.append("")
+        
+        # Messages
+        for i, msg in enumerate(messages, 1):
+            role = msg['role'].upper()
+            content = msg['content']
+            
+            lines.append(f"[{i}] {role}:")
+            lines.append(content)
+            lines.append("")
+            
+            # Tool calls
+            if 'tool_calls' in msg:
+                lines.append("  Tool Calls:")
+                for tool_call in msg['tool_calls']:
+                    tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                    lines.append(f"    - {tool_name}")
+                lines.append("")
+            
+            lines.append("-" * 60)
+            lines.append("")
+        
+        text = "\n".join(lines)
+        
+        if output_path:
+            output_path.write_text(text)
+            return str(output_path)
+        else:
+            return text
+    
+    @staticmethod
+    def import_from_json(file_path: Path) -> Dict[str, Any]:
+        """
+        Import conversation from JSON.
+        
+        Args:
+            file_path: Path to JSON file
+        
+        Returns:
+            Dict with messages and metadata
+        """
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        return {
+            'messages': data.get('messages', []),
+            'metadata': data.get('metadata', {}),
+            'version': data.get('version', 'unknown')
+        }
+    
+    @staticmethod
+    def export(
+        messages: List[Dict[str, str]],
+        format: ExportFormat,
+        output_path: Path,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Export conversation to specified format.
+        
+        Args:
+            messages: Conversation messages
+            format: Export format
+            output_path: Output file path
+            metadata: Optional metadata
+        
+        Returns:
+            Path to exported file
+        """
+        if format == ExportFormat.JSON:
+            return ConversationExporter.export_to_json(messages, metadata, output_path)
+        elif format == ExportFormat.MARKDOWN:
+            return ConversationExporter.export_to_markdown(messages, metadata, output_path)
+        elif format == ExportFormat.HTML:
+            return ConversationExporter.export_to_html(messages, metadata, output_path)
+        elif format == ExportFormat.TEXT:
+            return ConversationExporter.export_to_text(messages, metadata, output_path)
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+Step 2: Add CLI Commands
+In llf/cli.py, add export commands:
+
+def cmd_conversation_export(args):
+    """Export conversation to file."""
+    from llf.conversation_export import ConversationExporter, ExportFormat
+    
+    # Load conversation from session or file
+    if args.session_file:
+        session_path = Path(args.session_file)
+        with open(session_path, 'r') as f:
+            session_data = json.load(f)
+        messages = session_data.get('messages', [])
+        metadata = session_data.get('metadata', {})
+    else:
+        print("Error: --session-file required")
+        return
+    
+    # Export
+    format = ExportFormat(args.format)
+    output_path = Path(args.output)
+    
+    exporter = ConversationExporter()
+    result_path = exporter.export(
+        messages=messages,
+        format=format,
+        output_path=output_path,
+        metadata=metadata
+    )
+    
+    print(f"Conversation exported to: {result_path}")
+
+def cmd_conversation_import(args):
+    """Import conversation from file."""
+    from llf.conversation_export import ConversationExporter
+    
+    file_path = Path(args.file)
+    
+    if not file_path.exists():
+        print(f"Error: File not found: {file_path}")
+        return
+    
+    # Import
+    exporter = ConversationExporter()
+    data = exporter.import_from_json(file_path)
+    
+    print(f"Imported conversation:")
+    print(f"  Messages: {len(data['messages'])}")
+    print(f"  Version: {data['version']}")
+    print(f"  Metadata: {data['metadata']}")
+    
+    # Optionally continue conversation
+    if args.continue_chat:
+        print("\nContinuing conversation...")
+        # Load into chat session
+        # ... implementation ...
+
+# Add to argparse
+conv_parser = subparsers.add_parser('conversation', help='Conversation operations')
+conv_subparsers = conv_parser.add_subparsers(dest='conv_command')
+
+export_parser = conv_subparsers.add_parser('export', help='Export conversation')
+export_parser.add_argument('--session-file', required=True, help='Session file path')
+export_parser.add_argument('--format', default='json', choices=['json', 'markdown', 'html', 'text'])
+export_parser.add_argument('--output', required=True, help='Output file path')
+
+import_parser = conv_subparsers.add_parser('import', help='Import conversation')
+import_parser.add_argument('--file', required=True, help='File to import')
+import_parser.add_argument('--continue-chat', action='store_true', help='Continue conversation')
+Step 3: Add to GUI
+In llf/gui.py, add export button:
+
+def create_chat_interface_with_export():
+    """Create chat interface with export functionality."""
+    
+    def chat_and_track(message, history):
+        """Chat and track conversation."""
+        # ... existing chat code ...
+        
+        # Store messages in session state
+        if not hasattr(chat_and_track, 'messages'):
+            chat_and_track.messages = []
+        
+        chat_and_track.messages.append({'role': 'user', 'content': message})
+        chat_and_track.messages.append({'role': 'assistant', 'content': response})
+        
+        return response
+    
+    def export_conversation(format_choice):
+        """Export current conversation."""
+        from llf.conversation_export import ConversationExporter, ExportFormat
+        
+        if not hasattr(chat_and_track, 'messages'):
+            return "No conversation to export"
+        
+        # Create export
+        format = ExportFormat(format_choice.lower())
+        output_path = Path(f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_choice.lower()}")
+        
+        exporter = ConversationExporter()
+        result_path = exporter.export(
+            messages=chat_and_track.messages,
+            format=format,
+            output_path=output_path,
+            metadata={'exported_at': datetime.utcnow().isoformat()}
+        )
+        
+        return f"Exported to: {result_path}"
+    
+    with gr.Blocks() as interface:
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox(label="Message")
+        send = gr.Button("Send")
+        
+        with gr.Row():
+            format_choice = gr.Dropdown(
+                choices=["JSON", "Markdown", "HTML", "Text"],
+                value="JSON",
+                label="Export Format"
+            )
+            export_btn = gr.Button("Export Conversation")
+        
+        export_output = gr.Textbox(label="Export Status")
+        
+        send.click(chat_and_track, inputs=[msg, chatbot], outputs=chatbot)
+        export_btn.click(export_conversation, inputs=format_choice, outputs=export_output)
+    
+    return interface
+
