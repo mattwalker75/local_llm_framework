@@ -182,12 +182,38 @@ class ChatHistory:
         """
         Import a chat session from an external file.
 
+        Supports multiple formats:
+        - JSON (.json): Full session data with metadata
+        - Markdown (.md): Human-readable format with role headers
+        - Text (.txt): Plain text format with role markers
+
         Args:
             session_path: Path to the session file to import.
 
         Returns:
             Session data dictionary or None if import failed.
         """
+        try:
+            session_path = Path(session_path)
+            file_extension = session_path.suffix.lower()
+
+            if file_extension == '.json':
+                return self._import_json(session_path)
+            elif file_extension in ['.md', '.markdown']:
+                return self._import_markdown(session_path)
+            elif file_extension == '.txt':
+                return self._import_txt(session_path)
+            else:
+                console.print(f"[red]Unsupported file format: {file_extension}[/red]")
+                console.print("[yellow]Supported formats: .json, .md, .txt[/yellow]")
+                return None
+
+        except Exception as e:
+            console.print(f"[red]Error importing session: {e}[/red]")
+            return None
+
+    def _import_json(self, session_path: Path) -> Optional[Dict[str, Any]]:
+        """Import session from JSON format."""
         try:
             with open(session_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -205,8 +231,146 @@ class ChatHistory:
             return data
 
         except json.JSONDecodeError as e:
-            console.print(f"[red]Error parsing session file: {e}[/red]")
+            console.print(f"[red]Error parsing JSON file: {e}[/red]")
             return None
+
+    def _import_markdown(self, session_path: Path) -> Optional[Dict[str, Any]]:
+        """Import session from Markdown format."""
+        import re
+
+        try:
+            with open(session_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            messages = []
+
+            # Split by role headers (### 👤 User, ### 🤖 Assistant, ### ⚙️ System)
+            # Pattern matches: ### emoji Role OR ### Role
+            pattern = r'###\s*(?:👤|🤖|⚙️)?\s*(User|Assistant|System)'
+
+            parts = re.split(pattern, content, flags=re.IGNORECASE)
+
+            # parts[0] is the header before first message (skip it)
+            # Then alternates: role, content, role, content...
+            for i in range(1, len(parts), 2):
+                if i + 1 < len(parts):
+                    role = parts[i].strip().lower()
+                    message_content = parts[i + 1].strip()
+
+                    # Remove timestamp line if present (format: *YYYY-MM-DD HH:MM:SS*)
+                    lines = message_content.split('\n')
+                    cleaned_lines = []
+                    for line in lines:
+                        # Skip timestamp lines and footer
+                        if line.startswith('*') and line.endswith('*'):
+                            continue
+                        if line.startswith('---'):
+                            break
+                        cleaned_lines.append(line)
+
+                    message_content = '\n'.join(cleaned_lines).strip()
+
+                    if message_content:
+                        messages.append({
+                            'role': role,
+                            'content': message_content
+                        })
+
+            if not messages:
+                console.print(f"[red]No messages found in markdown file[/red]")
+                return None
+
+            return {
+                'messages': messages,
+                'metadata': {
+                    'imported_from': str(session_path),
+                    'import_format': 'markdown',
+                    'imported_at': datetime.now().isoformat()
+                }
+            }
+
         except Exception as e:
-            console.print(f"[red]Error importing session: {e}[/red]")
+            console.print(f"[red]Error parsing markdown file: {e}[/red]")
+            return None
+
+    def _import_txt(self, session_path: Path) -> Optional[Dict[str, Any]]:
+        """Import session from plain text format."""
+        try:
+            with open(session_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            messages = []
+
+            # Split by role markers (lines of dashes followed by role in uppercase)
+            lines = content.split('\n')
+
+            current_role = None
+            current_content = []
+            in_message = False
+
+            for line in lines:
+                # Check for role marker (line of dashes)
+                if line.strip() == '-' * 80:
+                    # If we were collecting a message, save it
+                    if in_message and current_role and current_content:
+                        message_text = '\n'.join(current_content).strip()
+                        if message_text:
+                            messages.append({
+                                'role': current_role.lower(),
+                                'content': message_text
+                            })
+                        current_content = []
+                        in_message = False
+                    continue
+
+                # Check for role line (USER, ASSISTANT, SYSTEM)
+                if line.strip() in ['USER', 'ASSISTANT', 'SYSTEM']:
+                    current_role = line.strip()
+                    in_message = True
+                    continue
+
+                # Check for timestamp line
+                if line.startswith('Time: '):
+                    continue
+
+                # Check for header/footer separators
+                if line.strip() == '=' * 80:
+                    continue
+
+                # Skip header lines
+                if line.strip() in ['CHAT CONVERSATION', ''] and not in_message:
+                    continue
+
+                # Check for footer
+                if line.startswith('Exported on '):
+                    break
+
+                # Collect message content
+                if in_message:
+                    current_content.append(line)
+
+            # Save last message if exists
+            if current_role and current_content:
+                message_text = '\n'.join(current_content).strip()
+                if message_text:
+                    messages.append({
+                        'role': current_role.lower(),
+                        'content': message_text
+                    })
+
+            if not messages:
+                console.print(f"[red]No messages found in text file[/red]")
+                return None
+
+            return {
+                'messages': messages,
+                'metadata': {
+                    'imported_from': str(session_path),
+                    'import_format': 'text',
+                    'imported_at': datetime.now().isoformat()
+                }
+            }
+
+        except Exception as e:
+            console.print(f"[red]Error parsing text file: {e}[/red]")
             return None

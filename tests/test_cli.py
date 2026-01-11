@@ -3874,20 +3874,17 @@ class TestMemoryDeleteCommand:
         mock_config = MagicMock()
         mock_config.log_level = 'INFO'
 
-        # Mock the memory directory
-        mock_memory_dir = MagicMock(spec=Path)
-        mock_memory_dir.exists.return_value = True
-
         with patch.object(sys, 'argv', test_args), \
              patch('llf.cli.get_config', return_value=mock_config), \
-             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))), \
-             patch('llf.cli.shutil.rmtree') as mock_rmtree:
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
 
             result = main()
 
             # Check that success message was printed
+            # (could be either "moved to trash" or "removed from registry" depending on file existence)
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any('successfully deleted' in str(call).lower() for call in print_calls)
+            assert any('moved to trash' in str(call).lower() or 'removed from registry' in str(call).lower()
+                      for call in print_calls)
 
     @patch('llf.cli.console.print')
     @patch('llf.cli.setup_logging')

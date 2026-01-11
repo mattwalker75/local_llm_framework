@@ -286,3 +286,111 @@ class TestChatHistory:
 
         imported = chat_history.import_session(nonexistent)
         assert imported is None
+
+    def test_import_session_markdown(self, chat_history, temp_history_dir):
+        """Test importing a session from Markdown format."""
+        # Create a markdown file in the format exported by MarkdownExporter
+        markdown_content = """# Chat Conversation
+
+## Session Information
+
+**Model:** test-model
+**Session ID:** test_session
+
+## Conversation
+
+### 👤 User
+
+Hello, how are you?
+
+### 🤖 Assistant
+
+I'm doing well, thank you! How can I help you today?
+
+### 👤 User
+
+Can you explain Python?
+
+### 🤖 Assistant
+
+Python is a high-level programming language known for its readability and versatility.
+
+---
+*Exported on 2026-01-10 10:00:00*
+"""
+
+        md_file = temp_history_dir / "chat.md"
+        md_file.write_text(markdown_content)
+
+        # Import the session
+        imported = chat_history.import_session(md_file)
+
+        assert imported is not None
+        assert 'messages' in imported
+        assert len(imported['messages']) == 4
+
+        # Check first message
+        assert imported['messages'][0]['role'] == 'user'
+        assert 'Hello, how are you?' in imported['messages'][0]['content']
+
+        # Check second message
+        assert imported['messages'][1]['role'] == 'assistant'
+        assert "I'm doing well" in imported['messages'][1]['content']
+
+    def test_import_session_txt(self, chat_history, temp_history_dir):
+        """Test importing a session from plain text format."""
+        # Create a text file in the format exported by TXTExporter
+        txt_content = """================================================================================
+CHAT CONVERSATION
+================================================================================
+
+Model: test-model
+Session ID: test_session
+
+--------------------------------------------------------------------------------
+USER
+--------------------------------------------------------------------------------
+What is Python?
+
+--------------------------------------------------------------------------------
+ASSISTANT
+--------------------------------------------------------------------------------
+Python is a programming language.
+
+--------------------------------------------------------------------------------
+USER
+--------------------------------------------------------------------------------
+Thanks!
+
+================================================================================
+Exported on 2026-01-10 10:00:00
+================================================================================
+"""
+
+        txt_file = temp_history_dir / "chat.txt"
+        txt_file.write_text(txt_content)
+
+        # Import the session
+        imported = chat_history.import_session(txt_file)
+
+        assert imported is not None
+        assert 'messages' in imported
+        assert len(imported['messages']) == 3
+
+        # Check messages
+        assert imported['messages'][0]['role'] == 'user'
+        assert 'What is Python?' in imported['messages'][0]['content']
+
+        assert imported['messages'][1]['role'] == 'assistant'
+        assert 'Python is a programming language' in imported['messages'][1]['content']
+
+        assert imported['messages'][2]['role'] == 'user'
+        assert 'Thanks!' in imported['messages'][2]['content']
+
+    def test_import_session_unsupported_format(self, chat_history, temp_history_dir):
+        """Test importing from an unsupported file format."""
+        pdf_file = temp_history_dir / "chat.pdf"
+        pdf_file.write_text("fake pdf content")
+
+        imported = chat_history.import_session(pdf_file)
+        assert imported is None

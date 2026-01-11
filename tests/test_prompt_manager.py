@@ -305,11 +305,12 @@ class TestPromptManager:
         }
         self._add_template_to_registry(prompt_manager, metadata)
 
-        # Delete it
-        result = prompt_manager.delete_template(sample_template)
-        assert result is True
+        # Delete it (now returns tuple)
+        success, trash_id = prompt_manager.delete_template(sample_template)
+        assert success is True
+        assert trash_id is not None  # Should have trash ID
 
-        # Verify it's gone
+        # Verify it's gone from registry
         template = prompt_manager.get_template(sample_template)
         assert template is None
 

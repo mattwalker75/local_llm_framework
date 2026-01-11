@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from rich.console import Console
+from llf.trash_manager import TrashManager
 
 console = Console()
 
@@ -377,29 +378,57 @@ class PromptManager:
             console.print(f"[red]Error creating backup: {e}[/red]")
             return None
 
-    def delete_template(self, name: str) -> bool:
+    def delete_template(self, name: str) -> tuple[bool, Optional[str]]:
         """
-        Delete a template.
+        Delete a template (move to trash with 30-day recovery).
 
         Args:
             name: Template name.
 
         Returns:
-            True if successful, False otherwise.
+            Tuple of (success, trash_id_or_error_message).
         """
         template = self.get_template(name)
         if not template:
             console.print(f"[red]Template '{name}' not found[/red]")
-            return False
+            return (False, None)
 
-        # Remove directory
+        # Get template directory
         template_dir = self.templates_dir / template["directory"]
-        if template_dir.exists():
-            try:
-                shutil.rmtree(template_dir)
-            except Exception as e:
-                console.print(f"[red]Error deleting template directory: {e}[/red]")
-                return False
+
+        if not template_dir.exists():
+            console.print(f"[yellow]Warning:[/yellow] Template directory not found: {template_dir}")
+            console.print(f"[yellow]Removing from registry only[/yellow]")
+
+            # Remove from registry
+            self.registry["templates"] = [
+                t for t in self.registry["templates"]
+                if t["name"] != name
+            ]
+
+            # Clear active template if this was active
+            if self.registry.get("active_template") == name:
+                self.registry["active_template"] = None
+
+            self._save_registry()
+            return (True, None)
+
+        # Initialize trash manager
+        project_root = self.templates_dir.parent
+        trash_dir = project_root / 'trash'
+        trash_manager = TrashManager(trash_dir)
+
+        # Move to trash
+        success, trash_id = trash_manager.move_to_trash(
+            item_type='template',
+            item_name=name,
+            paths=[template_dir],
+            original_metadata=template
+        )
+
+        if not success:
+            console.print(f"[red]Error:[/red] Failed to move template to trash: {trash_id}")
+            return (False, trash_id)
 
         # Remove from registry
         self.registry["templates"] = [
@@ -412,4 +441,4 @@ class PromptManager:
             self.registry["active_template"] = None
 
         self._save_registry()
-        return True
+        return (True, trash_id)

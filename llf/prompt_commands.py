@@ -391,14 +391,26 @@ def delete_template_command(config: Config, args) -> int:
         return 1
 
     # Confirm deletion
-    console.print(f"[yellow]⚠ This will permanently delete template '{template['display_name']}'[/yellow]")
+    console.print(f"[yellow]⚠ This will move template '{template['display_name']}' to trash (30-day recovery)[/yellow]")
 
     if not Confirm.ask("Are you sure?", default=False):
         console.print("[dim]Cancelled[/dim]")
         return 0
 
-    if manager.delete_template(template_name):
-        console.print(f"[green]✓ Template '{template_name}' deleted[/green]")
+    success, trash_id = manager.delete_template(template_name)
+    if success:
+        if trash_id:
+            console.print(f"[green]✓ Template '{template_name}' moved to trash[/green]")
+            console.print()
+            console.print(f"[bold]Trash ID:[/bold] {trash_id}")
+            console.print()
+            console.print("[bold]Recovery Options:[/bold]")
+            console.print(f"  - View trash: [cyan]llf trash list[/cyan]")
+            console.print(f"  - Restore: [cyan]llf trash restore {trash_id}[/cyan]")
+            console.print()
+            console.print("[dim]Items in trash are automatically deleted after 30 days[/dim]")
+        else:
+            console.print(f"[green]✓ Template '{template_name}' removed from registry[/green]")
         return 0
     else:
         return 1
