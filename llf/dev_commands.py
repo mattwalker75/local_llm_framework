@@ -4,7 +4,7 @@ Development commands for tool creation and validation.
 
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.table import Table

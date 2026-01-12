@@ -7,7 +7,6 @@ This module provides command handlers for prompt template management.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
