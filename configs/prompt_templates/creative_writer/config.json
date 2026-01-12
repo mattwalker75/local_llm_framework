@@ -1,0 +1,16 @@
+{
+  "name": "creative_writer",
+  "display_name": "Creative Writer",
+  "description": "Creative writing assistant for stories, poems, and imaginative content",
+  "category": "writing",
+  "author": "system",
+  "version": "1.0",
+  "tags": [
+    "creative",
+    "writing",
+    "stories",
+    "fiction"
+  ],
+  "created_date": "2026-01-09T09:47:59.829687",
+  "last_modified": "2026-01-09T09:47:59.829695"
+}

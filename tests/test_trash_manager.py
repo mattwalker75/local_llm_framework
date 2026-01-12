@@ -70,7 +70,9 @@ class TestTrashManager:
         )
 
         assert success is True
-        assert trash_id.endswith('_test_datastore')
+        # Trash ID should be in format YYYYMMDD_HHMMSS
+        assert len(trash_id) == 15  # 8 digits + underscore + 6 digits
+        assert '_' in trash_id
         assert not original_path.exists()
 
         # Verify metadata was created
@@ -393,9 +395,9 @@ class TestTrashManager:
             [sample_file]
         )
 
-        # Should be in format: YYYYMMDD_HHMMSS_itemname
+        # Should be in format: YYYYMMDD_HHMMSS
         parts = trash_id.split('_')
-        assert len(parts) >= 3
+        assert len(parts) == 2
 
         # First part should be date
         date_part = parts[0]
@@ -406,9 +408,6 @@ class TestTrashManager:
         time_part = parts[1]
         assert len(time_part) == 6
         assert time_part.isdigit()
-
-        # Rest should be item name
-        assert '_'.join(parts[2:]) == 'test_memory'
 
     def test_multiple_files_in_single_trash_item(self, trash_manager, tmp_path):
         """Test trashing multiple files as a single item."""

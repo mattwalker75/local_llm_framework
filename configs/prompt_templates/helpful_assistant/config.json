@@ -1,0 +1,15 @@
+{
+  "name": "helpful_assistant",
+  "display_name": "Helpful Assistant",
+  "description": "General purpose helpful and friendly assistant",
+  "category": "general",
+  "author": "system",
+  "version": "1.0",
+  "tags": [
+    "general",
+    "helpful",
+    "friendly"
+  ],
+  "created_date": "2026-01-09T09:47:59.830252",
+  "last_modified": "2026-01-09T09:47:59.830255"
+}

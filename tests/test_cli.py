@@ -3874,16 +3874,19 @@ class TestMemoryDeleteCommand:
         mock_config = MagicMock()
         mock_config.log_level = 'INFO'
 
+        # Mock Path.exists() to return False so directory doesn't exist
+        # This tests the "removed from registry only" code path
         with patch.object(sys, 'argv', test_args), \
              patch('llf.cli.get_config', return_value=mock_config), \
-             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))):
+             patch('builtins.open', mock_open(read_data=json.dumps(registry_data))), \
+             patch('pathlib.Path.exists', return_value=False):
 
             result = main()
 
             # Check that success message was printed
-            # (could be either "moved to trash" or "removed from registry" depending on file existence)
+            # (should be "removed from registry" since directory doesn't exist)
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any('moved to trash' in str(call).lower() or 'removed from registry' in str(call).lower()
+            assert any('removed from registry' in str(call).lower()
                       for call in print_calls)
 
     @patch('llf.cli.console.print')

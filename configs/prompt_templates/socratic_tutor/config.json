@@ -1,0 +1,17 @@
+{
+  "name": "socratic_tutor",
+  "display_name": "Socratic Tutor",
+  "description": "Educational tutor using Socratic method to guide learning",
+  "category": "education",
+  "author": "system",
+  "version": "1.0",
+  "tags": [
+    "education",
+    "tutoring",
+    "learning",
+    "socratic"
+  ],
+  "enabled": true,
+  "created_date": "2026-01-09T09:47:59.831107",
+  "last_modified": "2026-01-09T09:47:59.831109"
+}

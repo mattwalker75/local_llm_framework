@@ -68,7 +68,6 @@ from .server_commands import (
 from .prompt_commands import (
     list_templates_command,
     info_template_command,
-    load_template_command,
     import_template_command,
     export_template_command,
     enable_template_command,
@@ -76,7 +75,7 @@ from .prompt_commands import (
     backup_templates_command,
     delete_template_command,
     create_template_command,
-    show_active_template_command
+    show_enabled_command
 )
 
 logger = get_logger(__name__)
@@ -1428,27 +1427,25 @@ def prompt_command(args) -> int:
         return list_templates_command(config, args)
     elif action == 'info':
         return info_template_command(config, args)
-    elif action == 'load':
-        return load_template_command(config, args)
-    elif action == 'import':
-        return import_template_command(config, args)
-    elif action == 'export':
-        return export_template_command(config, args)
     elif action == 'enable':
         return enable_template_command(config, args)
     elif action == 'disable':
         return disable_template_command(config, args)
+    elif action == 'import':
+        return import_template_command(config, args)
+    elif action == 'export':
+        return export_template_command(config, args)
     elif action == 'backup':
         return backup_templates_command(config, args)
     elif action == 'delete':
         return delete_template_command(config, args)
     elif action == 'create':
         return create_template_command(config, args)
-    elif action == 'active':
-        return show_active_template_command(config, args)
+    elif action == 'show_enabled':
+        return show_enabled_command(config, args)
     else:
         console.print(f"[red]Error:[/red] Unknown action '{action}'")
-        console.print("[dim]Available actions: list, info, load, import, export, enable, disable, backup, delete, create, active[/dim]")
+        console.print("[dim]Available actions: list, info, enable, disable, import, export, backup, delete, create, show_enabled[/dim]")
         return 1
 
 
@@ -1679,8 +1676,8 @@ def chat_history_delete_command(config: Config, args) -> int:
         console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
         return 1
 
-    # Get session file path
-    session_file = history_dir / f"{session_id}.json"
+    # Get session file path (with chat_ prefix)
+    session_file = history_dir / f"chat_{session_id}.json"
 
     if not session_file.exists():
         console.print(f"[red]Session file not found: {session_file}[/red]")
@@ -1891,8 +1888,10 @@ Examples:
   llf memory create MEMORY_NAME           Create a new memory instance
   llf memory enable MEMORY_NAME           Enable a memory instance
   llf memory disable MEMORY_NAME          Disable a memory instance
-  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
   llf memory info MEMORY_NAME             Show memory instance information
+  llf memory import MEMORY_NAME           Import memory from memory/ directory
+  llf memory export MEMORY_NAME           Export memory (remove from registry, keep files)
+  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
 
   # Module management
   llf module list                  List modules
@@ -1916,13 +1915,30 @@ Examples:
   # Prompt Template management
   llf prompt list                             List all prompt templates
   llf prompt list --category development      List templates by category
-  llf prompt list --enabled                   List only enabled templates
   llf prompt info coding_assistant            Show detailed template information
-  llf prompt load coding_assistant            Load and apply template to active config
-  llf prompt load socratic_tutor --var topic=Python   Load with variable substitution
+  llf prompt enable coding_assistant          Enable a template (makes it active)
+  llf prompt enable socratic_tutor --var topic=Python   Enable with variable substitution
+  llf prompt disable                          Disable currently enabled template (reset to blank)
+  llf prompt show_enabled                     Show currently enabled template
+  llf prompt import my_template               Import template from directory to registry
+  llf prompt export my_template               Export template from registry (saves config.json, keeps files)
   llf prompt create                           Create new template interactively
   llf prompt backup                           Backup all templates before changes
-  llf prompt active                           Show currently active template
+
+  # Trash management (30-day recovery)
+  llf trash list                              List all items in trash
+  llf trash list --type memory                List only memory items in trash
+  llf trash list --older-than 30              List items older than 30 days
+  llf trash info TRASH_ID                     Show detailed information about a trashed item
+  llf trash restore TRASH_ID                  Restore an item from trash to original location
+  llf trash empty                             Delete items older than 30 days (with confirmation)
+  llf trash empty --all                       Delete all items in trash (with confirmation)
+  llf trash empty --force                     Skip confirmation prompt
+  llf trash empty --dry-run                   Preview what would be deleted
+
+  # Developer tools
+  llf dev create-tool                         Create a new tool with interactive wizard
+  llf dev validate-tool TOOL_NAME             Validate tool structure and configuration
 
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
@@ -2587,8 +2603,10 @@ actions:
   create MEMORY_NAME        Create a new memory instance
   enable MEMORY_NAME        Enable a memory instance
   disable MEMORY_NAME       Disable a memory instance
-  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
   info MEMORY_NAME          Show memory instance information
+  import MEMORY_NAME        Import a memory instance from the memory directory
+  export MEMORY_NAME        Export a memory instance (removes from registry, keeps files)
+  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -2672,28 +2690,29 @@ actions:
 actions:
   list                             List all prompt templates
   list --category CATEGORY         List templates by category
-  list --enabled                   List only enabled templates
   info TEMPLATE_NAME               Show detailed template information
-  load TEMPLATE_NAME               Load and apply template to active config
-  load TEMPLATE_NAME --var key=value  Load template with variable substitution
-  import FILE_PATH                 Import external template file
-  export TEMPLATE_NAME             Export template to file
-  enable TEMPLATE_NAME             Enable a template
-  disable TEMPLATE_NAME            Disable a template
+  enable TEMPLATE_NAME             Enable a template (makes it active)
+  enable TEMPLATE_NAME --var key=value  Enable template with variable substitution
+  disable                          Disable currently enabled template (reset to blank)
+  show_enabled                     Show currently enabled template
+  import DIRECTORY_NAME            Import template from directory to registry
+  export TEMPLATE_NAME             Export template from registry (saves config.json, keeps files)
   backup                           Create backup of all templates
   delete TEMPLATE_NAME             Delete a template (with confirmation)
   create                           Create a new template interactively
-  active                           Show currently active template
 
 Examples:
   llf prompt list                  List all available templates
   llf prompt list --category development
   llf prompt info coding_assistant
-  llf prompt load coding_assistant
-  llf prompt load socratic_tutor --var topic=Python
+  llf prompt enable coding_assistant
+  llf prompt enable socratic_tutor --var topic=Python
+  llf prompt disable               Disable current template and reset to blank config
+  llf prompt show_enabled          Show which template is currently enabled
+  llf prompt import my_template    Import template from configs/prompt_templates/my_template/
+  llf prompt export my_template    Export template (removes from registry, saves config.json)
   llf prompt create                Start interactive template creation
   llf prompt backup                Create backup before making changes
-  llf prompt active                Show which template is currently active
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -2713,14 +2732,9 @@ Examples:
         help='Filter templates by category (use with list action)'
     )
     prompt_parser.add_argument(
-        '--enabled',
-        action='store_true',
-        help='List only enabled templates (use with list action)'
-    )
-    prompt_parser.add_argument(
         '--var',
         action='append',
-        help='Variable substitution in format key=value (use with load action)'
+        help='Variable substitution in format key=value (use with enable action)'
     )
     prompt_parser.add_argument(
         '--name',
@@ -2774,8 +2788,8 @@ actions:
 Examples:
   llf trash list                   View all trashed items
   llf trash list --type datastore  View only deleted datastores
-  llf trash info 20260110_143022_my_memory
-  llf trash restore 20260110_143022_my_memory
+  llf trash info 20260110_143022
+  llf trash restore 20260110_143022
   llf trash empty --older-than 60  Delete items older than 60 days
   llf trash empty --all --dry-run  Preview deleting all trash
 
@@ -4087,6 +4101,196 @@ Contains the memory data files
             console.print(f"Memory location: memory/{memory_name}/")
             console.print()
 
+        elif action == 'export':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for export command")
+                console.print("[dim]Usage: llf memory export MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory_to_remove = None
+                for m in memories:
+                    if m.get('name') == memory_name or m.get('display_name') == memory_name:
+                        memory_to_remove = m
+                        break
+
+                if not memory_to_remove:
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' not found in registry")
+                    return 1
+
+                # Get the actual name and directory path
+                actual_name = memory_to_remove.get('name')
+                directory = memory_to_remove.get('directory', actual_name)
+                memory_path = f'memory/{directory}'
+
+                # Remove from registry
+                memories.remove(memory_to_remove)
+                registry['memories'] = memories
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                registry['last_updated'] = current_date
+
+                # Save updated registry
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully exported memory '{memory_name}'")
+                console.print()
+                console.print("The memory has been removed from the registry.")
+                console.print()
+                console.print(f"[bold]Data Location:[/bold]")
+                console.print(f"  The memory data is still located at:")
+                console.print(f"  [cyan]{memory_path}[/cyan]")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - You can manually delete the directory if no longer needed")
+                console.print(f"  - Or move it to another location for use elsewhere")
+                console.print(f"  - To re-import later, use: [dim]llf memory import {actual_name}[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to export memory: {e}")
+                return 1
+
+        elif action == 'import':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for import command")
+                console.print("[dim]Usage: llf memory import MEMORY_NAME[/dim]")
+                return 1
+
+            directory_name = args.memory_name
+            project_root = Path(__file__).parent.parent
+            memory_base_dir = project_root / 'memory'
+            memory_dir = memory_base_dir / directory_name
+
+            # Verify directory exists
+            if not memory_dir.exists():
+                console.print(f"[red]Error:[/red] Directory '{directory_name}' not found in memory/ directory")
+                console.print()
+                console.print("The directory must exist in the [cyan]memory/[/cyan] folder before importing.")
+                console.print()
+                console.print("[bold]Available directories:[/bold]")
+                if memory_base_dir.exists():
+                    dirs = [d.name for d in memory_base_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+                    if dirs:
+                        for d in sorted(dirs):
+                            console.print(f"  - {d}")
+                    else:
+                        console.print("  [dim](no directories found)[/dim]")
+                console.print()
+                return 1
+
+            # Check for required files
+            metadata_file = memory_dir / 'metadata.json'
+            memory_file = memory_dir / 'memory.jsonl'
+            index_file = memory_dir / 'index.json'
+
+            missing_files = []
+            if not metadata_file.exists():
+                missing_files.append('metadata.json')
+            if not memory_file.exists():
+                missing_files.append('memory.jsonl')
+            if not index_file.exists():
+                missing_files.append('index.json')
+
+            if missing_files:
+                console.print(f"[red]Error:[/red] Memory directory is missing required files:")
+                for mf in missing_files:
+                    console.print(f"  - {mf}")
+                console.print()
+                console.print("A valid memory instance requires: metadata.json, memory.jsonl, and index.json")
+                return 1
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Check if memory already exists in registry
+                for memory in memories:
+                    if memory.get('name') == directory_name:
+                        console.print(f"[red]Error:[/red] Memory '{directory_name}' already exists in registry")
+                        console.print(f"[yellow]Export it first if you want to re-import it[/yellow]")
+                        return 1
+
+                # Read metadata from memory directory
+                try:
+                    with open(metadata_file, 'r') as f:
+                        memory_metadata = json.load(f)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error:[/red] Invalid JSON in metadata.json: {e}")
+                    return 1
+
+                # Create display name from directory name
+                display_name = directory_name.replace('_', ' ').replace('-', ' ').title()
+                current_date = datetime.now().strftime('%Y-%m-%d')
+
+                # Create registry entry with defaults
+                new_entry = {
+                    "name": directory_name,
+                    "display_name": display_name,
+                    "description": "Imported memory instance",
+                    "directory": directory_name,
+                    "enabled": False,
+                    "type": "persistent",
+                    "created_date": memory_metadata.get('created_date', current_date),
+                    "last_modified": memory_metadata.get('last_updated', None),
+                    "metadata": {
+                        "storage_type": "json",
+                        "max_entries": 10000,
+                        "compression": False
+                    }
+                }
+
+                # Add to registry
+                memories.append(new_entry)
+                registry['memories'] = memories
+                registry['last_updated'] = current_date
+
+                # Save registry
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully imported memory '{directory_name}'")
+                console.print()
+                console.print("The memory has been added to the registry with default settings:")
+                console.print(f"  - enabled: false")
+                console.print(f"  - display_name: {display_name}")
+                console.print(f"  - description: Imported memory instance")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - Review and edit the registry entry in memory/memory_registry.json if needed")
+                console.print(f"  - Enable the memory: [cyan]llf memory enable {directory_name}[/cyan]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to import memory: {e}")
+                return 1
+
         elif action == 'delete':
             if not args.memory_name:
                 console.print("[red]Error:[/red] Memory name required for delete command")
@@ -4194,7 +4398,7 @@ Contains the memory data files
 
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, enable, disable, info, create, delete[/dim]")
+            console.print("[dim]Available actions: list, enable, disable, info, create, import, export, delete[/dim]")
             return 1
 
         return 0
@@ -4948,9 +5152,9 @@ Contains the memory data files
 
             from rich.table import Table
             table = Table(show_header=True)
-            table.add_column("Trash ID", style="cyan", width=30)
+            table.add_column("Trash ID", style="cyan", width=17)
             table.add_column("Type", style="green", width=12)
-            table.add_column("Name", style="white", width=25)
+            table.add_column("Name", style="white", width=30)
             table.add_column("Age (days)", style="yellow", width=12, justify="right")
 
             for item in items:

@@ -1,0 +1,17 @@
+{
+  "name": "coding_assistant",
+  "display_name": "Coding Assistant",
+  "description": "Expert software engineer for code review, debugging, and best practices",
+  "category": "development",
+  "author": "system",
+  "version": "1.0",
+  "tags": [
+    "code",
+    "programming",
+    "software",
+    "engineering"
+  ],
+  "enabled": null,
+  "created_date": "2026-01-09T09:47:59.829176",
+  "last_modified": "2026-01-09T09:47:59.829182"
+}

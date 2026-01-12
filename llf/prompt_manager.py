@@ -95,13 +95,12 @@ class PromptManager:
         except Exception as e:
             console.print(f"[red]Error saving registry: {e}[/red]")
 
-    def list_templates(self, category: Optional[str] = None, enabled_only: bool = False) -> List[Dict[str, Any]]:
+    def list_templates(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         List all templates.
 
         Args:
             category: Filter by category.
-            enabled_only: Only show enabled templates.
 
         Returns:
             List of template metadata dictionaries.
@@ -110,9 +109,6 @@ class PromptManager:
 
         if category:
             templates = [t for t in templates if t.get("category") == category]
-
-        if enabled_only:
-            templates = [t for t in templates if t.get("enabled", True)]
 
         return templates
 
@@ -294,7 +290,6 @@ class PromptManager:
             "author": author,
             "version": "1.0",
             "tags": tags or [],
-            "enabled": True,
             "directory": name,
             "created_date": datetime.now().isoformat(),
             "last_modified": datetime.now().isoformat()
@@ -328,25 +323,34 @@ class PromptManager:
             console.print(f"[red]Error exporting template: {e}[/red]")
             return False
 
-    def enable_template(self, name: str) -> bool:
-        """Enable a template."""
-        template = self.get_template(name)
-        if not template:
+    def disable_template(self) -> bool:
+        """
+        Disable the currently active template by resetting config_prompt.json to blank.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        blank_config = {
+            "system_prompt": None,
+            "master_prompt": None,
+            "assistant_prompt": None,
+            "conversation_format": "standard",
+            "prefix_messages": [],
+            "suffix_messages": []
+        }
+
+        try:
+            with open(self.active_prompt_file, 'w', encoding='utf-8') as f:
+                json.dump(blank_config, f, indent=2, ensure_ascii=False)
+
+            # Clear active template in registry
+            self.registry["active_template"] = None
+            self._save_registry()
+
+            return True
+        except Exception as e:
+            console.print(f"[red]Error disabling template: {e}[/red]")
             return False
-
-        template["enabled"] = True
-        self._save_registry()
-        return True
-
-    def disable_template(self, name: str) -> bool:
-        """Disable a template."""
-        template = self.get_template(name)
-        if not template:
-            return False
-
-        template["enabled"] = False
-        self._save_registry()
-        return True
 
     def backup_templates(self) -> Optional[Path]:
         """

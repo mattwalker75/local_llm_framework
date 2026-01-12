@@ -180,8 +180,8 @@ class TestPromptManager:
         result = prompt_manager.substitute_variables(None, {})
         assert result is None
 
-    def test_enable_template(self, prompt_manager, sample_template):
-        """Test enabling a template."""
+    def test_enable_template(self, prompt_manager, sample_template, active_prompt_file):
+        """Test enabling a template (applying it)."""
         # Add template
         metadata = {
             "name": sample_template,
@@ -191,21 +191,22 @@ class TestPromptManager:
             "author": "test",
             "version": "1.0",
             "tags": [],
-            "enabled": False,
             "directory": sample_template
         }
         self._add_template_to_registry(prompt_manager, metadata)
 
-        # Enable it
-        result = prompt_manager.enable_template(sample_template)
+        # Enable it (which applies it)
+        result = prompt_manager.apply_template(sample_template)
         assert result is True
 
-        # Verify it's enabled
-        template = prompt_manager.get_template(sample_template)
-        assert template["enabled"] is True
+        # Verify it's set as active
+        assert prompt_manager.get_active_template() == sample_template
 
-    def test_disable_template(self, prompt_manager, sample_template):
-        """Test disabling a template."""
+        # Verify config file was created
+        assert active_prompt_file.exists()
+
+    def test_disable_template(self, prompt_manager, sample_template, active_prompt_file):
+        """Test disabling the active template."""
         # Add template
         metadata = {
             "name": sample_template,
@@ -215,18 +216,26 @@ class TestPromptManager:
             "author": "test",
             "version": "1.0",
             "tags": [],
-            "enabled": True,
             "directory": sample_template
         }
         self._add_template_to_registry(prompt_manager, metadata)
+
+        # Enable it first
+        prompt_manager.apply_template(sample_template)
+        assert prompt_manager.get_active_template() == sample_template
 
         # Disable it
-        result = prompt_manager.disable_template(sample_template)
+        result = prompt_manager.disable_template()
         assert result is True
 
-        # Verify it's disabled
-        template = prompt_manager.get_template(sample_template)
-        assert template["enabled"] is False
+        # Verify no template is active
+        assert prompt_manager.get_active_template() is None
+
+        # Verify config was reset to blank
+        with open(active_prompt_file, 'r') as f:
+            config = json.load(f)
+        assert config["system_prompt"] is None
+        assert config["master_prompt"] is None
 
     def test_apply_template(self, prompt_manager, sample_template, active_prompt_file):
         """Test applying a template to active config."""
@@ -239,7 +248,6 @@ class TestPromptManager:
             "author": "test",
             "version": "1.0",
             "tags": [],
-            "enabled": True,
             "directory": sample_template
         }
         self._add_template_to_registry(prompt_manager, metadata)
@@ -273,7 +281,6 @@ class TestPromptManager:
             "author": "test",
             "version": "1.0",
             "tags": [],
-            "enabled": True,
             "directory": sample_template
         }
         self._add_template_to_registry(prompt_manager, metadata)
@@ -398,12 +405,13 @@ class TestPromptManager:
         assert (backup_path / sample_template / "prompt.json").exists()
 
     def test_list_templates_with_filters(self, prompt_manager, sample_template):
-        """Test listing templates with category and enabled filters."""
+        """Test listing templates with category filter."""
         # Add multiple templates
-        for i, (name, category, enabled) in enumerate([
-            ("template1", "development", True),
-            ("template2", "writing", False),
-            ("template3", "development", True),
+        for i, (name, category) in enumerate([
+            ("template1", "development"),
+            ("template2", "writing"),
+            ("template3", "development"),
+            ("template4", "writing"),
         ]):
             # Create template directory
             template_dir = prompt_manager.templates_dir / name
@@ -427,19 +435,18 @@ class TestPromptManager:
                 "author": "test",
                 "version": "1.0",
                 "tags": [],
-                "enabled": enabled,
                 "directory": name
             }
             self._add_template_to_registry(prompt_manager, metadata)
 
-        # Test category filter
+        # Test category filter for development
         dev_templates = prompt_manager.list_templates(category="development")
         assert len(dev_templates) == 2
 
-        # Test enabled filter
-        enabled_templates = prompt_manager.list_templates(enabled_only=True)
-        assert len(enabled_templates) == 2
+        # Test category filter for writing
+        writing_templates = prompt_manager.list_templates(category="writing")
+        assert len(writing_templates) == 2
 
-        # Test combined filters
-        dev_enabled = prompt_manager.list_templates(category="development", enabled_only=True)
-        assert len(dev_enabled) == 2
+        # Test listing all templates
+        all_templates = prompt_manager.list_templates()
+        assert len(all_templates) == 4

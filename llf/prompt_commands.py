@@ -5,6 +5,7 @@ This module provides command handlers for prompt template management.
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -51,9 +52,8 @@ def list_templates_command(config: Config, args) -> int:
 
     # Get filter options
     category = getattr(args, 'category', None)
-    enabled_only = getattr(args, 'enabled', False)
 
-    templates = manager.list_templates(category=category, enabled_only=enabled_only)
+    templates = manager.list_templates(category=category)
 
     if not templates:
         console.print("[yellow]No templates found[/yellow]")
@@ -76,11 +76,9 @@ def list_templates_command(config: Config, args) -> int:
     for template in templates:
         status = ""
         if template["name"] == active_template:
-            status = "[bold magenta]● ACTIVE[/bold magenta]"
-        elif not template.get("enabled", True):
-            status = "[dim]○ Disabled[/dim]"
+            status = "enabled"
         else:
-            status = "[green]✓ Enabled[/green]"
+            status = ""
 
         table.add_row(
             template["name"],
@@ -130,7 +128,7 @@ def info_template_command(config: Config, args) -> int:
 [yellow]Category:[/yellow] {template['category']}
 [yellow]Version:[/yellow] {template.get('version', '1.0')}
 [yellow]Author:[/yellow] {template.get('author', 'unknown')}
-[yellow]Status:[/yellow] {'[green]Enabled[/green]' if template.get('enabled', True) else '[dim]Disabled[/dim]'}
+[yellow]Status:[/yellow] {'[green]Enabled (Active)[/green]' if template['name'] == manager.get_active_template() else '[dim]Available[/dim]'}
 [yellow]Tags:[/yellow] {', '.join(template.get('tags', []))}
 
 [yellow]Created:[/yellow] {template.get('created_date', 'unknown')}
@@ -171,9 +169,9 @@ def info_template_command(config: Config, args) -> int:
     return 0
 
 
-def load_template_command(config: Config, args) -> int:
+def enable_template_command(config: Config, args) -> int:
     """
-    Load a template and apply it to the active prompt configuration.
+    Enable a template by applying it to the active prompt configuration.
 
     Args:
         config: Configuration instance.
@@ -204,10 +202,10 @@ def load_template_command(config: Config, args) -> int:
                 console.print(f"[yellow]Warning: Invalid variable format '{var_assignment}' (expected key=value)[/yellow]")
 
     # Apply template
-    console.print(f"[yellow]Loading template '{template['display_name']}'...[/yellow]")
+    console.print(f"[yellow]Enabling template '{template['display_name']}'...[/yellow]")
 
     if manager.apply_template(template_name, variables):
-        console.print(f"[green]✓ Template '{template['display_name']}' loaded successfully[/green]")
+        console.print(f"[green]✓ Template '{template['display_name']}' enabled successfully[/green]")
         console.print(f"[dim]Active prompt config: {manager.active_prompt_file}[/dim]")
 
         if variables:
@@ -217,13 +215,14 @@ def load_template_command(config: Config, args) -> int:
 
         return 0
     else:
-        console.print(f"[red]Failed to load template '{template_name}'[/red]")
+        console.print(f"[red]Failed to enable template '{template_name}'[/red]")
         return 1
 
 
 def import_template_command(config: Config, args) -> int:
     """
-    Import a new template from an external file.
+    Import a template from its directory into the registry.
+    Reads config.json from configs/prompt_templates/<directory_name>/ and adds to registry.
 
     Args:
         config: Configuration instance.
@@ -233,81 +232,95 @@ def import_template_command(config: Config, args) -> int:
         Exit code.
     """
     manager = get_prompt_manager(config)
+    directory_name = args.template_name
 
-    source_path = Path(args.template_name)
-    name = getattr(args, 'name', None)
-    display_name = getattr(args, 'display_name', None)
-    description = getattr(args, 'description', None)
-    category = getattr(args, 'category', 'general')
-    tags = getattr(args, 'tags', None)
+    # Construct paths
+    template_dir = manager.templates_dir / directory_name
+    config_file = template_dir / 'config.json'
 
-    # If name not provided, derive from filename
-    if not name:
-        name = source_path.stem.replace('config_prompt.', '').replace('.', '_')
-
-    # If display name not provided, use name
-    if not display_name:
-        display_name = name.replace('_', ' ').title()
-
-    # If description not provided, use default
-    if not description:
-        description = f"Imported template: {display_name}"
-
-    # Parse tags
-    tag_list = tags.split(',') if tags else []
-
-    console.print(f"[yellow]Importing template from {source_path}...[/yellow]")
-
-    if manager.import_template(
-        source_path,
-        name,
-        display_name,
-        description,
-        category,
-        author="user",
-        tags=tag_list
-    ):
-        console.print(f"[green]✓ Template '{name}' imported successfully[/green]")
-        console.print(f"[dim]Template directory: {manager.templates_dir / name}[/dim]")
-        return 0
-    else:
+    # Verify directory exists
+    if not template_dir.exists():
+        console.print(f"[red]Error:[/red] Template directory not found: {template_dir}")
+        console.print()
+        console.print("The directory must exist in [cyan]configs/prompt_templates/[/cyan] before importing.")
+        console.print()
+        console.print("[bold]Available directories:[/bold]")
+        if manager.templates_dir.exists():
+            dirs = [d.name for d in manager.templates_dir.iterdir()
+                   if d.is_dir() and not d.name.startswith('.') and d.name != 'backups']
+            if dirs:
+                for d in sorted(dirs):
+                    console.print(f"  - {d}")
+            else:
+                console.print("  [dim](no template directories found)[/dim]")
+        console.print()
         return 1
+
+    # Check if config.json exists
+    if not config_file.exists():
+        console.print(f"[red]Error:[/red] config.json not found in template directory: {config_file}")
+        console.print()
+        console.print("A valid template requires a [cyan]config.json[/cyan] file with template metadata.")
+        return 1
+
+    # Read config.json
+    try:
+        with open(config_file, 'r') as f:
+            template_config = json.load(f)
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Error:[/red] Invalid JSON in config.json: {e}")
+        return 1
+
+    # Check if template already exists in registry
+    templates = manager.registry.get('templates', [])
+    for template in templates:
+        if template.get('name') == directory_name:
+            console.print(f"[red]Error:[/red] Template '{directory_name}' already exists in registry")
+            console.print(f"[yellow]Export it first if you want to re-import it[/yellow]")
+            return 1
+
+    # Create registry entry from config.json
+    new_entry = {
+        "name": directory_name,
+        "display_name": template_config.get('display_name', directory_name.replace('_', ' ').title()),
+        "description": template_config.get('description', 'Imported template'),
+        "category": template_config.get('category', 'general'),
+        "author": template_config.get('author', 'user'),
+        "version": template_config.get('version', '1.0'),
+        "tags": template_config.get('tags', []),
+        "enabled": template_config.get('enabled', False),
+        "directory": directory_name,
+        "created_date": template_config.get('created_date', datetime.now().isoformat()),
+        "last_modified": template_config.get('last_modified', None)
+    }
+
+    # Add to registry
+    templates.append(new_entry)
+    manager.registry['templates'] = templates
+    manager.registry['last_updated'] = datetime.now().isoformat()
+    manager._save_registry()
+
+    console.print()
+    console.print(f"[green]✓[/green] Successfully imported template '{directory_name}'")
+    console.print()
+    console.print("The template has been added to the registry with settings from config.json:")
+    console.print(f"  - enabled: {new_entry['enabled']}")
+    console.print(f"  - display_name: {new_entry['display_name']}")
+    console.print(f"  - description: {new_entry['description']}")
+    console.print()
+    console.print("[bold]Next Steps:[/bold]")
+    console.print(f"  - Review the registry entry in prompt_templates_registry.json if needed")
+    if not new_entry['enabled']:
+        console.print(f"  - Enable the template: [cyan]llf prompt enable {directory_name}[/cyan]")
+    console.print()
+
+    return 0
 
 
 def export_template_command(config: Config, args) -> int:
     """
-    Export a template to an external file.
-
-    Args:
-        config: Configuration instance.
-        args: Parsed command-line arguments.
-
-    Returns:
-        Exit code.
-    """
-    manager = get_prompt_manager(config)
-    template_name = args.template_name
-    output = getattr(args, 'output', None)
-
-    # Generate default output filename if not provided
-    if not output:
-        output = f"prompt_{template_name}.json"
-
-    output_path = Path(output)
-
-    console.print(f"[yellow]Exporting template '{template_name}'...[/yellow]")
-
-    if manager.export_template(template_name, output_path):
-        console.print(f"[green]✓ Template exported to: {output_path}[/green]")
-        return 0
-    else:
-        console.print(f"[red]Failed to export template '{template_name}'[/red]")
-        return 1
-
-
-def enable_template_command(config: Config, args) -> int:
-    """
-    Enable a template.
+    Export a template from the registry to config.json in its directory.
+    Copies metadata from prompt_templates_registry.json to configs/prompt_templates/<directory_name>/config.json
 
     Args:
         config: Configuration instance.
@@ -319,17 +332,85 @@ def enable_template_command(config: Config, args) -> int:
     manager = get_prompt_manager(config)
     template_name = args.template_name
 
-    if manager.enable_template(template_name):
-        console.print(f"[green]✓ Template '{template_name}' enabled[/green]")
-        return 0
-    else:
-        console.print(f"[red]Template '{template_name}' not found[/red]")
+    # Find template in registry
+    templates = manager.registry.get('templates', [])
+    template_to_export = None
+    for template in templates:
+        if template.get('name') == template_name or template.get('display_name') == template_name:
+            template_to_export = template
+            break
+
+    if not template_to_export:
+        console.print(f"[red]Error:[/red] Template '{template_name}' not found in registry")
         return 1
+
+    # Get the actual name and directory
+    actual_name = template_to_export.get('name')
+    directory = template_to_export.get('directory', actual_name)
+    template_dir = manager.templates_dir / directory
+
+    # Verify template directory exists
+    if not template_dir.exists():
+        console.print(f"[yellow]Warning:[/yellow] Template directory not found: {template_dir}")
+        console.print(f"[yellow]Removing from registry only[/yellow]")
+
+        # Remove from registry
+        templates.remove(template_to_export)
+        manager.registry['templates'] = templates
+        manager.registry['last_updated'] = datetime.now().isoformat()
+        manager._save_registry()
+
+        console.print(f"[green]✓[/green] Template '{template_name}' removed from registry")
+        return 0
+
+    # Create config.json with registry metadata
+    config_file = template_dir / 'config.json'
+    config_data = {
+        "name": template_to_export.get('name'),
+        "display_name": template_to_export.get('display_name'),
+        "description": template_to_export.get('description'),
+        "category": template_to_export.get('category'),
+        "author": template_to_export.get('author'),
+        "version": template_to_export.get('version'),
+        "tags": template_to_export.get('tags', []),
+        "enabled": template_to_export.get('enabled'),
+        "created_date": template_to_export.get('created_date'),
+        "last_modified": template_to_export.get('last_modified')
+    }
+
+    try:
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f, indent=2)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Failed to write config.json: {e}")
+        return 1
+
+    # Remove from registry
+    templates.remove(template_to_export)
+    manager.registry['templates'] = templates
+    manager.registry['last_updated'] = datetime.now().isoformat()
+    manager._save_registry()
+
+    console.print()
+    console.print(f"[green]✓[/green] Successfully exported template '{template_name}'")
+    console.print()
+    console.print("The template has been removed from the registry.")
+    console.print()
+    console.print(f"[bold]Data Location:[/bold]")
+    console.print(f"  Template metadata saved to:")
+    console.print(f"  [cyan]{config_file}[/cyan]")
+    console.print()
+    console.print("[bold]Next Steps:[/bold]")
+    console.print(f"  - The template directory and files remain at: {template_dir}")
+    console.print(f"  - To re-import later, use: [dim]llf prompt import {actual_name}[/dim]")
+    console.print()
+
+    return 0
 
 
 def disable_template_command(config: Config, args) -> int:
     """
-    Disable a template.
+    Disable the currently active template by resetting config to blank.
 
     Args:
         config: Configuration instance.
@@ -339,13 +420,18 @@ def disable_template_command(config: Config, args) -> int:
         Exit code.
     """
     manager = get_prompt_manager(config)
-    template_name = args.template_name
 
-    if manager.disable_template(template_name):
-        console.print(f"[green]✓ Template '{template_name}' disabled[/green]")
+    current_template = manager.get_active_template()
+    if not current_template:
+        console.print("[yellow]No template is currently enabled[/yellow]")
+        return 0
+
+    if manager.disable_template():
+        console.print(f"[green]✓ Template '{current_template}' disabled[/green]")
+        console.print("[dim]Prompt configuration reset to blank[/dim]")
         return 0
     else:
-        console.print(f"[red]Template '{template_name}' not found[/red]")
+        console.print(f"[red]Failed to disable template[/red]")
         return 1
 
 
@@ -517,9 +603,9 @@ def create_template_command(config: Config, args) -> int:
     return 0
 
 
-def show_active_template_command(config: Config, args) -> int:
+def show_enabled_command(config: Config, args) -> int:
     """
-    Show the currently active template and its configuration.
+    Show the currently enabled template and its configuration.
 
     Args:
         config: Configuration instance.
@@ -532,14 +618,14 @@ def show_active_template_command(config: Config, args) -> int:
     active_name = manager.get_active_template()
 
     if not active_name:
-        console.print("[yellow]No template is currently active[/yellow]")
-        console.print("[dim]Load a template with: llf prompt load TEMPLATE_NAME[/dim]")
+        console.print("[yellow]No template is currently enabled[/yellow]")
+        console.print("[dim]Enable a template with: llf prompt enable TEMPLATE_NAME[/dim]")
         return 0
 
-    # Show active template info
+    # Show enabled template info
     template = manager.get_template(active_name)
     if template:
-        console.print(f"[bold cyan]Active Template: {template['display_name']}[/bold cyan]")
+        console.print(f"[bold cyan]Enabled Template: {template['display_name']}[/bold cyan]")
         console.print(f"[dim]Name: {template['name']}[/dim]")
         console.print(f"[dim]Category: {template['category']}[/dim]")
         console.print(f"[dim]Description: {template['description']}[/dim]")

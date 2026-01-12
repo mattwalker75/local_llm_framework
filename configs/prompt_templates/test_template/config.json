@@ -1,0 +1,15 @@
+{
+  "name": "test_template",
+  "display_name": "Test Template",
+  "description": "A test template for import/export",
+  "category": "testing",
+  "author": "test_user",
+  "version": "1.0",
+  "tags": [
+    "test",
+    "example"
+  ],
+  "enabled": false,
+  "created_date": "2026-01-11T00:00:00Z",
+  "last_modified": null
+}

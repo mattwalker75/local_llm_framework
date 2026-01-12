@@ -104,10 +104,11 @@ class DevCommands:
             console.print("  boolean - true/false values")
             console.print("  array   - List of values")
             console.print("  object  - Nested structure")
-            console.print("\n[dim]Note: OpenAI's function calling supports all these types.")
-            console.print("Example with constraints:[/dim]")
-            console.print('  {"type": "integer", "minimum": 1, "maximum": 100}')
-            console.print('  {"type": "string", "enum": ["option1", "option2"]}\n')
+            console.print("\n[dim]Note: OpenAI's function calling supports all these types.[/dim]")
+            console.print("[dim]Example with constraints:[/dim]")
+            console.print('  {"type": "integer", "minimum": 1, "maximum": 100}', highlight=False)
+            console.print('  {"type": "string", "enum": ["option1", "option2"]}', highlight=False)
+            console.print()
 
             add_params = Confirm.ask("Add parameters?", default=True)
 

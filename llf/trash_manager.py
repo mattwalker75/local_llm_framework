@@ -48,17 +48,17 @@ class TrashManager:
 
     def _generate_trash_id(self, item_type: str, item_name: str) -> str:
         """
-        Generate unique trash ID with timestamp prefix.
+        Generate unique trash ID with timestamp.
 
         Args:
             item_type: Type of item (memory, datastore, etc.)
-            item_name: Original name of the item
+            item_name: Original name of the item (not used in ID, stored in metadata)
 
         Returns:
-            Trash ID in format: YYYYMMDD_HHMMSS_itemname
+            Trash ID in format: YYYYMMDD_HHMMSS
         """
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        return f"{timestamp}_{item_name}"
+        return timestamp
 
     def _get_trash_path(self, item_type: str, trash_id: str) -> Path:
         """
