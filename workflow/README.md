@@ -455,9 +455,8 @@ with which prompts I passed to the AI.
 
        - Pull the descriptions from:  14_Input_From_AI.txt
 2.  Work on adding the above functionality and unit tests
-3.  
-
-
+3.  Code cleanup and unit testing
+4.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
 
 
