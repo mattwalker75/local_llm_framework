@@ -1,6 +1,6 @@
 {
   "version": "1.1",
-  "last_updated": "2026-01-12",
+  "last_updated": "2026-01-13",
   "global_config": {
     "require_approval": false,
     "sensitive_operations": [
@@ -47,9 +47,9 @@
         "requires_approval": false,
         "use_case": "Allow LLM to read and write files within configured whitelist patterns",
         "mode": "ro",
-        "root_dir": "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-479/test_root_dir_relative_path_re0",
+        "root_dir": "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-582/test_root_dir_relative_path_re0",
         "whitelist": [
-          "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-479/test_execute_write_ro_mode0/*"
+          "/private/var/folders/r_/zptmbg257hj9bn9njl4mnqd80000gn/T/pytest-of-matt/pytest-582/test_execute_write_ro_mode0/*"
         ],
         "permissions": {
           "max_file_size": "10MB",
