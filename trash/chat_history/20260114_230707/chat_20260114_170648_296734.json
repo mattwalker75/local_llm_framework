@@ -1,0 +1,22 @@
+{
+  "session_id": "20260114_170648_296734",
+  "timestamp": "2026-01-14T17:06:48.296734",
+  "messages": [
+    {
+      "role": "user",
+      "content": "this is a test",
+      "timestamp": "2026-01-14T17:06:48.296645"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm here and ready to help! What would you like to test or know about? Feel free to ask any questions or let me know if you have a specific topic in mind.",
+      "timestamp": "2026-01-14T17:06:48.296713"
+    }
+  ],
+  "metadata": {
+    "model": "Qwen/Qwen2.5-32B-Instruct-GGUF",
+    "timestamp": "2026-01-14T17:06:48.296721",
+    "server_url": "http://127.0.0.1:8000/v1"
+  },
+  "message_count": 2
+}
