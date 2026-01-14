@@ -77,6 +77,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [How to use and develop tools for the LLM to use](docs/HOW_TOs/Tools/Setup_Tools.md)
    - [Strong security considerations when working with tools](docs/HOW_TOs/Tools/Security.md)
    - [Tool development template](docs/HOW_TOs/Tools/Tool_Template.md)
+   - [How to develop your own tool](docs/HOW_TOs/Tools/Develop_New_Tools.md)
 - LLM data flows with different functionality enabled
    - [When Data Stores ( RAG Vector Stores ) are enabled](docs/Data_Flow/Data_Store_Flow.md)
    - [When long term Memory is enabled](docs/Data_Flow/Memory_Flow.md)
@@ -85,6 +86,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [When all the functionality is enable](docs/Data_Flow/Complete_Flow.md)
 - How To documents
    - [How to add functionality to the LLM, such as updating files and Intenet access](docs/HOW_TOs/Tools/Setup_Tools.md)
+      - [How to develop your own tools](docs/HOW_TOs/Tools/Develop_New_Tools.md)
    - [Cool stuff to do with chat (prompt engineering / scripting / task specialization)](docs/HOW_TOs/Fun_With_Chat.md)
    - [Use LLM as your personal documentation reference tool (RAG Vector Store)](docs/HOW_TOs/Setup_Datastore_RAG.md)
    - [Have LLM remember anything you want (Long term Memory)](docs/HOW_TOs/Setup_Memory.md)
@@ -93,6 +95,7 @@ The following is the index of data sources and how-to's to get your up and runni
    - [Access the backend local LLM from another computer](docs/HOW_TOs/Setup_Network_Access_LLM.md)
    - [Access the GUI from another computer](docs/HOW_TOs/Setup_Network_Access_GUI.md)
    - [How to download and use other LLM's](docs/HOW_TOs/Setup_LLMs.md)
+   - [No fears of delets with a Trash bin](docs/HOW_TOs/Using_Trash_Bin.md)
    - [Troubleshooting Notes](docs/HOW_TOs/Troubleshooting.md)
  
 ## System Requirements

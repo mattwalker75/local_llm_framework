@@ -104,7 +104,6 @@ Before setting up an external LLM, ensure you have:
 When using external LLMs, your configuration is **simpler** because:
 
 **❌ You DON'T need:**
-- `local_llm_server` section (no local server)
 - `local_llm_servers` array (no servers to manage)
 - llama-server binary
 - Downloaded model files
@@ -140,7 +139,7 @@ A minimal external LLM configuration looks like this:
 ```
 
 **Notice:**
-- No `local_llm_server` section
+- No `local_llm_servers` section
 - No `llama_server_path`
 - No `gguf_file`
 - Much simpler!

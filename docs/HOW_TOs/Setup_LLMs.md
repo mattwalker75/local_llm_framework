@@ -440,13 +440,16 @@ After downloading and optionally converting your model, configure it in `configs
 **Single server format:**
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "/path/to/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "model_dir": "Model-Directory-Name",
-    "gguf_file": "model-file.gguf"
-  },
+  "local_llm_servers": [
+      {
+         "name": "default",
+         "llama_server_path": "/path/to/llama-server",
+         "server_host": "127.0.0.1",
+         "server_port": 8000,
+         "model_dir": "Model-Directory-Name",
+         "gguf_file": "model-file.gguf"
+      }
+  ],
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
     "model_name": "Model/Name"
@@ -483,15 +486,18 @@ Open `configs/config.json` in your editor:
 
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "healthcheck_interval": 2.0,
-    "auto_start": false,
-    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
-    "gguf_file": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
-  },
+  "local_llm_servers": [
+      {
+         "name": "default",
+         "llama_server_path": "../llama.cpp/build/bin/llama-server",
+         "server_host": "127.0.0.1",
+         "server_port": 8000,
+         "healthcheck_interval": 2.0,
+         "auto_start": false,
+         "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
+         "gguf_file": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
+      }
+  ],
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
     "api_key": "EMPTY",
@@ -1430,7 +1436,7 @@ You now know how to download, convert, and configure multiple LLM models for the
    ```
 
 4. **Single Server Config**:
-   - Use `local_llm_server` (singular)
+   - Use `local_llm_servers` (array with single entry)
    - One model at a time
    - Simpler setup
 
@@ -1501,13 +1507,15 @@ llf server stop qwen-coder
 **Single server template:**
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "model_dir": "MODEL-DIR-GGUF",
-    "gguf_file": "model.gguf"
-  },
+  "local_llm_servers": [
+      {
+         "llama_server_path": "../llama.cpp/build/bin/llama-server",
+         "server_host": "127.0.0.1",
+         "server_port": 8000,
+         "model_dir": "MODEL-DIR-GGUF",
+         "gguf_file": "model.gguf"
+      }
+  ],
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
     "model_name": "Model/Name"

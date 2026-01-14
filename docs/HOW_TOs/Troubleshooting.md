@@ -89,9 +89,11 @@ Please compile llama.cpp first or configure the correct path.
    Edit `configs/config.json`:
    ```json
    {
-     "local_llm_server": {
-       "llama_server_path": "../llama.cpp/build/bin/llama-server"
-     }
+     "local_llm_servers": [
+         {
+            "llama_server_path": "../llama.cpp/build/bin/llama-server"
+         }
+     ],
    }
    ```
 
@@ -124,9 +126,11 @@ llf --log-level DEBUG server start
    ```json
    // Change port in configs/config.json
    {
-     "local_llm_server": {
-       "server_port": 8001
-     }
+     "local_llm_servers": [
+         {
+            "server_port": 8001
+         }
+     ],
    }
    ```
 
@@ -270,9 +274,11 @@ Available files: ['different-file.gguf']
 2. **Update config to match:**
    ```json
    {
-     "local_llm_server": {
-       "gguf_file": "actual-filename-here.gguf"
-     }
+     "local_llm_servers": [
+         {
+            "gguf_file": "actual-filename-here.gguf"
+         }
+     ],
    }
    ```
 
@@ -440,9 +446,11 @@ Invalid tool_execution_mode 'dual_pass'. Must be one of: single_pass, dual_pass_
 **Config:**
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server"
-  }
+  "local_llm_servers": [
+      {
+         "llama_server_path": "../llama.cpp/build/bin/llama-server"
+      }
+  ],
 }
 ```
 
@@ -463,7 +471,7 @@ Invalid tool_execution_mode 'dual_pass'. Must be one of: single_pass, dual_pass_
 ```
 
 **Important:**
-- No need for `local_llm_server` section when using external API
+- No need for `local_llm_servers` section when using external API
 - No need to build llama.cpp
 - Must have valid API key
 - Internet connection required
@@ -788,11 +796,13 @@ top
 4. **Limit context size in server params:**
    ```json
    {
-     "local_llm_server": {
-       "server_params": {
-         "--ctx-size": 2048
-       }
-     }
+     "local_llm_servers": [
+         {
+            "server_params": {
+               "--ctx-size": 2048
+            }
+         }
+     ],
    }
    ```
 

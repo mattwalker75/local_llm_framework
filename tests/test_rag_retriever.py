@@ -944,3 +944,68 @@ class TestFormatContextEdgeCases:
         # Should skip whitespace-only text
         assert 'Valid text' in context
         assert context.count('[Source:') == 1
+
+
+class TestMetadataMismatch:
+    """Test metadata count mismatch warning (line 259)."""
+
+    def test_metadata_count_mismatch_warning(self, tmp_path):
+        """Test that metadata mismatch triggers warning (line 259)."""
+        registry_path = tmp_path / "registry.json"
+        registry_data = {"data_stores": []}
+        with open(registry_path, 'w') as f:
+            json.dump(registry_data, f)
+
+        # Mock _load_registry to avoid actual loading
+        with patch.object(RAGRetriever, '_load_registry'):
+            retriever = RAGRetriever(registry_path=registry_path)
+
+        # Create store with mismatched metadata
+        store_dir = tmp_path / "test_store"
+        store_dir.mkdir()
+        (store_dir / "index.faiss").touch()
+
+        # Create metadata with 2 entries
+        with open(store_dir / "metadata.jsonl", 'w') as f:
+            f.write('{"text": "entry1", "chunk_id": 0}\n')
+            f.write('{"text": "entry2", "chunk_id": 1}\n')
+
+        stored_config = {'embedding_model': 'test-model', 'dimension': 384}
+        with open(store_dir / "config.json", 'w') as f:
+            json.dump(stored_config, f)
+
+        store_config = {
+            'vector_store_path': str(store_dir),
+            'embedding_model': 'test-model',
+            'display_name': 'Test Store',
+            'top_k_results': 2
+        }
+
+        # Mock the embedding model
+        mock_model = Mock()
+        mock_model.encode.return_value = np.array([[0.1, 0.2, 0.3]])
+
+        # Mock SentenceTransformer constructor
+        with patch('llf.rag_retriever.SentenceTransformer', return_value=mock_model):
+            # Mock faiss.read_index
+            mock_index = Mock()
+            mock_index.ntotal = 3  # Mismatch: index has 3, metadata has 2
+            mock_index.search.return_value = (np.array([[0.85]]), np.array([[0]]))
+
+            mock_faiss.read_index.return_value = mock_index
+
+            # Mock logger to capture warning
+            with patch('llf.rag_retriever.logger') as mock_logger:
+                # Load the store - should trigger warning on line 259
+                retriever._load_vector_store("test_store", store_config)
+
+                # Verify warning was logged (line 259)
+                warning_calls = [call for call in mock_logger.warning.call_args_list
+                                if 'Metadata count mismatch' in str(call)]
+                assert len(warning_calls) > 0, "Expected metadata mismatch warning to be logged"
+
+                # Also verify the warning contains the expected information
+                warning_message = str(mock_logger.warning.call_args_list[0])
+                assert 'test_store' in warning_message
+                assert 'index=3' in warning_message
+                assert 'metadata=2' in warning_message
