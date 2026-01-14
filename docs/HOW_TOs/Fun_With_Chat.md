@@ -228,6 +228,88 @@ LLM: Great question! Let me help you discover this yourself.
 
 Or delete the file and it will auto-regenerate with defaults.
 
+### Managing different prompts
+
+View the prompt management command:
+```bash
+llf prompt -h
+```
+
+**Example output:**
+```
+usage: llf prompt [-h] [--category CATEGORY] [--var VAR] [--name NAME] [--display-name DISPLAY_NAME] [--description DESCRIPTION]
+                  [--author AUTHOR] [--tags TAGS] [--output OUTPUT]
+
+Manage prompt templates for different conversation contexts and tasks.
+...
+
+actions:
+  list                             List all prompt templates
+  list --category CATEGORY         List templates by category
+  info TEMPLATE_NAME               Show detailed template information
+  enable TEMPLATE_NAME             Enable a template (makes it active)
+  enable TEMPLATE_NAME --var key=value  Enable template with variable substitution
+  disable                          Disable currently enabled template (reset to blank)
+  show_enabled                     Show currently enabled template
+  import DIRECTORY_NAME            Import template from directory to registry
+  export TEMPLATE_NAME             Export template from registry (saves config.json, keeps files)
+  backup                           Create backup of all templates
+  delete TEMPLATE_NAME             Delete a template (with confirmation)
+  create                           Create a new template interactively
+
+Examples:
+  llf prompt list                  List all available templates
+  llf prompt info coding_assistant
+```
+
+List available prompts to use
+```bash
+llf prompt list
+```
+
+**Example output:**
+```
+NAME                ┃ DISPLAY NAME        ┃ CATEGORY    ┃ VERSION ┃ AUTHOR ┃ STATUS
+creative_writer     │ Creative Writer     │ writing     │ 1.0     │ system |
+socratic_tutor      │ Socratic Tutor      │ education   │ 1.0     │ system |
+coding_assistant    │ Coding Assistant    │ development │ 1.0     │ system |
+```
+
+Lets change over to the `coding_assistant` prompt template to use
+```bash
+llf prompt enable coding_assistant
+```
+
+Note:  You can now run `llf prompt list` again and see the prompt is enabled
+
+Once you enable a prompt you want to use then you can enter a chat conversation with the LLM
+```bash
+llf chat
+```
+
+Run the following command to reset the active prompt back to system default
+```bash
+llf prompt disable
+```
+
+You can use the following command to create your own custom prompt to use:
+```bash
+llf prompt create
+```
+
+You can use the following command to export a prompt out of the system:
+```bash
+llf prompt export TEMPLATE_NAME
+```
+
+Note:  When you perform the `export` command, the prompt data does not get modified and is still located under `configs/prompt_templates`
+
+You can use the following command to import a prompt from the `configs/prompt_templates` directory into the system:
+```bash
+llf prompt import DIRECTORY_NAME_FROM_PROMPT_TEMPLATES
+```
+
+
 ---
 
 ## Non-Interactive CLI Mode
@@ -1416,6 +1498,68 @@ esac
 ./productivity.sh add "Write unit tests for authentication"
 ./productivity.sh check
 ./productivity.sh evening
+```
+
+---
+
+## Chat session history and re-use
+
+All chat conversations are saved locally under `configs/chat_history` unless the `--no-history` parameter is added to the `llf chat` command
+
+### Enable and Disable chat history
+
+By default all chat conversations are saved locally in a JSON formatted document in `configs/chat_history`. 
+
+You can use the `--no-history` parmeter to disable logging for the current session
+```bash
+llf chat --no-history
+```
+
+### Viewing chat logs
+You can run the following command to view the chat log information
+```bash
+llf chat history list
+```
+
+**Example Output:**
+```
+SESSION ID             ┃ DATE                ┃ MESSAGES ┃ MODEL
+20260114_162050_159296 │ 2026-01-14 16:20:50 │ 2        │ Qwen/Qwen2.5-32B-Instruct-GGUF
+20260114_162021_248062 │ 2026-01-14 16:20:21 │ 4        │ Qwen/Qwen2.5-32B-Instruct-GGUF
+```
+
+You can run the following command to view the details of one of the chat logs
+```bash
+llf chat history info 20260114_162021_248062
+```
+
+NOTE:  The output will generate the detailed information of the chat engagement with the LLM during that session
+
+### Continue an old conversation with the LLM
+
+You can load one of the chat logs with the LLM which will make the conversation engagement continue where you left off from the log perspective
+```bash
+llf chat --continue-session 20260114_162021_248062
+```
+
+You can specify any SESSION ID, to continue a conversation.
+
+### Export chat log data
+
+You can export the chat sessions to an external file.  The following exported file types are supported
+- txt
+- json
+- md
+- pdf
+
+Lets export the SESSION ID `20260114_162021_248062` and save it to a JSON document
+```bash
+llf chat export 20260114_162021_248062 --format json --output my_chat.json
+```
+
+Take the content of the JSON file and load it into a local chat to use
+```bash
+llf chat --import-session my_chat.json
 ```
 
 ---
