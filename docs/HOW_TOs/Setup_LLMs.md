@@ -187,19 +187,29 @@ llf model -h
 
 **Output:**
 ```
-usage: llf model [-h] {download,list,info} ...
+usage: llf model [-h] {download,list,info,delete,import,export} ...
 
-Download, list, and manage LLM models
+Download, list, and manage LLM models that run locally via the local OpenAI compatible server.
 
 positional arguments:
-  download     Download a model from HuggingFace Hub or URL
-  list         List all downloaded models
-  info         Show detailed model information
+  {download,list,info,delete,import,export}
+                        Model action to perform
+    download            Download a model from HuggingFace Hub or URL
+    list                List all downloaded models
+    info                Show detailed model information
+    delete              Delete a model from local storage
+    import              Import a model into the configuration
+    export              Export (remove) model from the configuration
+
+...
 
 Examples:
   llf model download --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf model list
   llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model delete Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model import Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
+  llf model export Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 ```
 
 ### Step 2: Download a GGUF Model (Recommended)
@@ -238,15 +248,13 @@ llf model list
 
 **Example output:**
 ```
-Available models in /path/to/models/:
-  1. Qwen--Qwen2.5-Coder-7B-Instruct-GGUF/
-     └─ qwen2.5-coder-7b-instruct-q5_k_m.gguf (4.8 GB)
-
-  2. meta-llama--Llama-3.1-8B-Instruct/
-     └─ model-00001-of-00004.safetensors (4.9 GB)
-     └─ model-00002-of-00004.safetensors (4.9 GB)
-     └─ ... (needs GGUF conversion)
+Downloaded Models:
+  ✓ Qwen/Qwen2.5-32B-Instruct-GGUF (21.66 GB)
+  ✓ Qwen/Qwen2.5-Coder-7B-Instruct-GGUF (93.54 GB)
+  ✓ Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF (20.23 GB)
+  ✓ bartowski/Llama-3.3-70B-Instruct-GGUF (46.52 GB)
 ```
+NOTE:  The models are downloaded and stored in the `models` directory.
 
 ### Step 5: Get Model Information
 
@@ -261,11 +269,17 @@ llf model info --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
 
 **Example output:**
 ```
-Model: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
-Location: /path/to/models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF
-Format: GGUF
-Size: 4.8 GB
-Status: Ready to use
+Name: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF 
+Path: /path/to/local_llm_framework/models/Qwen--Qwen2.5-Coder-7B-Instruct-GGUF 
+Downloaded: Yes 
+Size: 93.54 GB 
+
+ Verification:      
+   - Exists: Yes      
+   - Has Config: Yes  
+   - Has Tokenizer: Yes  
+   - Has Weights: Yes  
+   - Valid: Yes
 ```
 
 ### Alternative: Direct URL Download
@@ -431,7 +445,9 @@ Available models in /path/to/models/:
 
 ---
 
-## Configuring Single LLM Server
+## Configuring Single LLM Server Manually ( Good to do the first time )
+
+This is good to do the first time after installation to familarize yourself with the configuration files.  The more easier process will be the Automatic configuration which will be shown right after this Manual section
 
 After downloading and optionally converting your model, configure it in `configs/config.json`.
 
@@ -554,6 +570,135 @@ llf chat
 Type a message and verify the model responds correctly!
 
 ---
+
+## Configuring Single LLM Server Automatically
+
+After downloading and optionally converting your model, lets update `configs/config.json` via some helpful `llf` commands.  This will typically be the method you will want to use to change the local LLM that you are using.
+
+### Assumptions we will make
+- You have reviewed the manual process noted right above this section.
+- You are familiar with the `configs/config.json` config file and do not need to review it
+- You have the `configs/config.json` file with basic configurations in place referencing the `llama-server`
+- You know that the downloaded models are located in the `models` directory
+
+### Step 1: List the downloaded models
+
+```bash
+llf model list
+```
+**Expected output:**
+```
+  ✓ Qwen/Qwen2.5-32B-Instruct-GGUF (21.66 GB)
+  ✓ Qwen/Qwen2.5-Coder-7B-Instruct-GGUF (93.54 GB)
+  ✓ Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF (20.23 GB)
+```
+
+### Step 2: List the models registered with the backend server
+
+```bash
+llf server list
+```
+
+**Expected output:**
+```
+NAME                         PORT   STATUS    MODEL
+default                      8000   Stopped   Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF
+Active Endpoint -> default   8000   Stopped   Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF
+```
+Note:  The `Active Endpoint ->` line defines what server the local client is point it.
+
+Cross reference what the `default` is pointing to from the output generated from the `llf model list` command
+
+### 3: Update default to point to your preferred local LLM
+
+Lets first remove the current reference to the `default` entry
+
+```bash
+llf model export Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF
+```
+
+Lets verify the configuration was removed
+
+```bash
+llf server list
+```
+
+**Expected ouptput:**
+```
+NAME                         PORT   STATUS    MODEL
+default                      8000   Stopped   Not configured
+Active Endpoint -> default   8000   Stopped   Not configured
+```
+
+Lets review the downloaded models
+
+```bash
+llf model list
+```
+
+**Expected output:**
+```
+Downloaded Models:
+  ✓ Qwen/Qwen2.5-32B-Instruct-GGUF (21.66 GB)
+  ✓ Qwen/Qwen2.5-Coder-7B-Instruct-GGUF (93.54 GB)
+  ✓ Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF (20.23 GB)
+  ✓ bartowski/Llama-3.3-70B-Instruct-GGUF (46.52 GB)
+```
+
+Lets work on importing the `Qwen/Qwen2.5-32B-Instruct-GGUF` model to use
+
+Lets import the model to use
+
+```bash
+llf model import Qwen/Qwen2.5-32B-Instruct-GGUF
+```
+
+Lets re-run the `llf server list` command to verify the model is imported
+
+```bash
+llf server list
+```
+
+The output should show that it is now associated with the imported model
+
+Now we configured the server side configuration, and we now need to update the client side
+
+Modify the client side configuration to point to the new `default` server
+
+```bash
+llf server switch default
+```
+
+### Step 4: Verify Configuration
+
+```bash
+# This should show no errors
+llf server status
+```
+
+**Expected output:**
+```
+Server is not running
+```
+
+That's correct - server isn't running yet, but config is valid!
+
+### Step 5: Start the Server
+
+```bash
+llf server start --daemon
+```
+
+### Step 6: Test with Chat
+
+```bash
+llf chat
+```
+
+Type a message and verify the model responds correctly!
+
+---
+
 
 ## Configuring Multiple LLM Servers
 
