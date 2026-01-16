@@ -34,6 +34,7 @@ beautifulsoup4>=4.12.0           # HTML parsing for web page processing (modules
 pymupdf>=1.23.0                  # PDF document processing (modules/Process_PDF.py)
 python-docx>=1.1.0               # Microsoft Word (.docx) processing (modules/Process_DOC.py)
 striprtf>=0.0.26                 # Rich Text Format (.rtf) processing (modules/Process_DOC.py)
+reportlab>=4.0.0                 # PDF generation for chat export (chat_exporters.py)
 
 # ----------------------------------------------------------------------------
 # Internet Search Tools

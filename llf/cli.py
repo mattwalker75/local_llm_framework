@@ -1908,6 +1908,11 @@ Examples:
   llf tool enable TOOL_NAME        Enable a tool
   llf tool disable TOOL_NAME       Disable a tool
   llf tool info TOOL_NAME          Show tool information
+  llf tool import TOOL_NAME        Import a tool from directory to registry
+  llf tool export TOOL_NAME        Export a tool from registry (keeps files)
+  llf tool config get KEY          Get a global configuration value
+  llf tool config set KEY VALUE    Set a global configuration value
+  llf tool config list             List all global configuration settings
   llf tool whitelist list TOOL_NAME           List whitelisted patterns for a tool
   llf tool whitelist add TOOL_NAME PATTERN    Add pattern to tool whitelist
   llf tool whitelist remove TOOL_NAME INDEX   Remove pattern from tool whitelist by index
@@ -2385,6 +2390,7 @@ Examples:
   llf server restart                           Restart default server
   llf server restart --share                   Restart server with network access
   llf server switch LOCAL_SERVER_NAME          Switch default server
+  llf server list_models                       List available models from configured endpoint
 
   # Model selection
   llf server start --gguf-dir model_GGUF --gguf-file my-model.gguf
