@@ -155,7 +155,7 @@ TOOL_DEFINITION = {
 }
 ```
 
-The following is the main code for your LLM tool.  As you can see, this is a simple `hello world` type of tool.
+The following is the main code for your LLM tool.  Typically when using the `llf dev create-tool` command, this will be the only section of code that you will need to modify.  Think of the `execute()` function for LLM tooling like a traditional coding `main` statement in that your could execution will always start in `execute()` and you should always have it end in `execute()`.  As you can see, this is a simple `hello world` type of tool.
 ```
 def execute(arguments: Dict[str, Any]) -> Dict[str, Any]:
     try:

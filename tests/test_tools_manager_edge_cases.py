@@ -64,7 +64,7 @@ def tools_manager(temp_registry):
 @pytest.fixture
 def real_tools_dir():
     """Get the real tools directory."""
-    return Path(__file__).parent.parent / "llf" / "tools"
+    return Path(__file__).parent.parent / "tools"
 
 
 class TestSetGlobalConfigEdgeCases:
@@ -102,7 +102,7 @@ class TestImportToolEdgeCases:
     def test_import_tool_missing_required_field(self, tools_manager, real_tools_dir):
         """Test importing tool with missing required field (lines 471-475)."""
         tool_dir = real_tools_dir / "incomplete_tool_test"
-        tool_dir.mkdir(exist_ok=True)
+        tool_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Create config missing 'description' field
@@ -138,7 +138,7 @@ class TestImportToolEdgeCases:
     def test_import_tool_missing_metadata(self, tools_manager, real_tools_dir):
         """Test importing tool with missing metadata section (lines 478-479)."""
         tool_dir = real_tools_dir / "no_metadata_tool_test"
-        tool_dir.mkdir(exist_ok=True)
+        tool_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Create config without metadata
@@ -169,7 +169,7 @@ class TestImportToolEdgeCases:
     def test_import_tool_missing_metadata_field(self, tools_manager, real_tools_dir):
         """Test importing tool with missing metadata field (lines 481-484)."""
         tool_dir = real_tools_dir / "incomplete_metadata_tool_test"
-        tool_dir.mkdir(exist_ok=True)
+        tool_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Create config with incomplete metadata (missing 'category')
@@ -204,7 +204,7 @@ class TestImportToolEdgeCases:
     def test_import_tool_name_mismatch(self, tools_manager, real_tools_dir):
         """Test importing tool with name mismatch (lines 490-491)."""
         tool_dir = real_tools_dir / "wrong_name_tool_test"
-        tool_dir.mkdir(exist_ok=True)
+        tool_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Create config with different name than directory
@@ -238,7 +238,7 @@ class TestImportToolEdgeCases:
     def test_import_tool_save_failure(self, tools_manager, real_tools_dir):
         """Test importing tool when save fails (lines 499-503)."""
         tool_dir = real_tools_dir / "new_valid_tool_test"
-        tool_dir.mkdir(exist_ok=True)
+        tool_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Create valid config
@@ -271,13 +271,80 @@ class TestImportToolEdgeCases:
             if tool_dir.exists():
                 shutil.rmtree(tool_dir)
 
-    def test_import_tool_generic_exception(self, tools_manager):
-        """Test importing tool with generic exception (lines 507-508)."""
-        # Mock open to raise an exception
-        with patch('builtins.open', side_effect=RuntimeError("Unexpected error")):
-            success, message = tools_manager.import_tool("any_tool")
+    def test_import_tool_json_decode_error(self, tools_manager, real_tools_dir):
+        """Test importing tool with invalid JSON (line 506)."""
+        tool_dir = real_tools_dir / "invalid_json_tool_test"
+        tool_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Create invalid JSON file
+            config_path = tool_dir / "config.json"
+            config_path.write_text('{invalid json{{')
+
+            success, message = tools_manager.import_tool("invalid_json_tool_test")
             assert success is False
-            assert "Failed to import tool" in message
+            assert "Invalid JSON in config file" in message
+        finally:
+            if tool_dir.exists():
+                shutil.rmtree(tool_dir)
+
+    def test_import_tool_generic_exception(self, tools_manager, real_tools_dir):
+        """Test importing tool with generic exception (lines 507-508)."""
+        tool_dir = real_tools_dir / "exception_tool_test"
+        tool_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Create a valid config file
+            config_path = tool_dir / "config.json"
+            config_path.write_text('{"name": "test"}')
+
+            # Mock json.load to raise an unexpected exception
+            with patch('json.load', side_effect=RuntimeError("Unexpected error")):
+                success, message = tools_manager.import_tool("exception_tool_test")
+                assert success is False
+                assert "Failed to import tool" in message
+        finally:
+            if tool_dir.exists():
+                shutil.rmtree(tool_dir)
+
+    def test_import_tool_success(self, tools_manager, real_tools_dir):
+        """Test successful tool import (lines 500-501)."""
+        tool_dir = real_tools_dir / "valid_tool_test"
+        tool_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Create valid config
+            config_data = {
+                "name": "valid_tool_test",
+                "display_name": "Valid Tool",
+                "description": "A valid tool",
+                "type": "postprocessor",
+                "enabled": True,
+                "directory": "valid_tool_test",
+                "created_date": "2026-01-01",
+                "last_modified": "2026-01-01",
+                "metadata": {
+                    "category": "testing",
+                    "requires_approval": False,
+                    "dependencies": []
+                }
+            }
+
+            config_path = tool_dir / "config.json"
+            with open(config_path, 'w') as f:
+                json.dump(config_data, f)
+
+            success, message = tools_manager.import_tool("valid_tool_test")
+            assert success is True
+            assert "imported successfully" in message
+
+            # Verify tool was added to registry
+            tool_info = tools_manager.get_tool_info("valid_tool_test")
+            assert tool_info is not None
+            assert tool_info['name'] == "valid_tool_test"
+        finally:
+            if tool_dir.exists():
+                shutil.rmtree(tool_dir)
 
 
 class TestListAvailableToolsEdgeCases:
