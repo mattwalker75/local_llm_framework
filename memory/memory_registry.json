@@ -1,16 +1,16 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-05",
+  "last_updated": "2026-01-11",
   "memories": [
     {
       "name": "main_memory",
       "display_name": "Main Memory",
-      "description": "Custom memory instance",
+      "description": "Imported memory instance",
       "directory": "main_memory",
       "enabled": false,
       "type": "persistent",
-      "created_date": "2026-01-05",
-      "last_modified": null,
+      "created_date": "2026-01-05T18:47:21.192028+00:00Z",
+      "last_modified": "2026-01-05T18:53:06.062930+00:00Z",
       "metadata": {
         "storage_type": "json",
         "max_entries": 10000,

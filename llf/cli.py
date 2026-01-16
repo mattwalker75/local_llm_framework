@@ -40,7 +40,7 @@ import sys
 import os
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import signal
 from datetime import datetime, UTC
 import json
@@ -48,6 +48,8 @@ import shutil
 
 from rich.console import Console
 from rich.panel import Panel
+
+from llf.trash_manager import TrashManager
 from rich.markdown import Markdown
 from rich.prompt import Prompt
 
@@ -63,6 +65,18 @@ from .server_commands import (
     status_server_command,
     switch_server_command
 )
+from .prompt_commands import (
+    list_templates_command,
+    info_template_command,
+    import_template_command,
+    export_template_command,
+    enable_template_command,
+    disable_template_command,
+    backup_templates_command,
+    delete_template_command,
+    create_template_command,
+    show_enabled_command
+)
 
 logger = get_logger(__name__)
 console = Console()
@@ -75,7 +89,7 @@ class CLI:
     Provides interactive prompt loop and command handling.
     """
 
-    def __init__(self, config: Config, prompt_config: Optional[PromptConfig] = None, auto_start_server: bool = False, no_server_start: bool = False):
+    def __init__(self, config: Config, prompt_config: Optional[PromptConfig] = None, auto_start_server: bool = False, no_server_start: bool = False, save_history: bool = True, imported_session: Optional[Dict[str, Any]] = None):
         """
         Initialize CLI.
 
@@ -84,6 +98,8 @@ class CLI:
             prompt_config: Optional prompt configuration for formatting LLM messages.
             auto_start_server: Automatically start server if not running.
             no_server_start: Do not start server if not running (exit with error).
+            save_history: Save chat conversations to history (default: True).
+            imported_session: Optional session data to import and continue.
         """
         self.config = config
         self.prompt_config = prompt_config
@@ -93,6 +109,13 @@ class CLI:
         self.auto_start_server = auto_start_server
         self.no_server_start = no_server_start
         self.started_server = False  # Track if this instance started the server
+        self.save_history = save_history
+        self.imported_session = imported_session
+
+        # Initialize chat history manager
+        from llf.chat_history import ChatHistory
+        history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+        self.chat_history = ChatHistory(history_dir)
 
         # Load module registry and initialize text-to-speech and speech-to-text if enabled
         self.tts = None
@@ -405,7 +428,17 @@ If STT fails, the system will automatically fall back to keyboard input.
     def interactive_loop(self) -> None:
         """Run interactive chat loop."""
         self.running = True
-        conversation_history = []
+
+        # Initialize conversation history from imported session if provided
+        if self.imported_session and 'messages' in self.imported_session:
+            conversation_history = self.imported_session['messages'].copy()
+            console.print(f"[cyan]✓ Imported {len(conversation_history)} messages from previous session[/cyan]")
+            if self.imported_session.get('metadata', {}).get('model'):
+                console.print(f"[dim]Previous model: {self.imported_session['metadata']['model']}[/dim]")
+            console.print(f"[dim]Current model: {self.config.model_name}[/dim]")
+            console.print()
+        else:
+            conversation_history = []
 
         # Print initial separator before first user input
         console.print("[dim]" + "─" * 60 + "[/dim]")
@@ -584,6 +617,27 @@ If STT fails, the system will automatically fall back to keyboard input.
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
                 logger.error(f"Interactive loop error: {e}")
+
+        # Save conversation history after loop ends
+        if self.save_history and conversation_history and len(conversation_history) > 0:
+            try:
+                # Add timestamps to messages
+                for msg in conversation_history:
+                    if 'timestamp' not in msg:
+                        msg['timestamp'] = datetime.now().isoformat()
+
+                # Prepare metadata
+                metadata = {
+                    'model': self.config.model_name,
+                    'timestamp': datetime.now().isoformat(),
+                    'server_url': self.config.api_base_url
+                }
+
+                # Save to history
+                filepath = self.chat_history.save_session(conversation_history, metadata)
+                console.print(f"[dim]Conversation saved to: {filepath.name}[/dim]")
+            except Exception as e:
+                logger.warning(f"Failed to save chat history: {e}")
 
     def cli_question(self, question: str) -> int:
         """
@@ -1353,6 +1407,380 @@ def server_command(args) -> int:
         return 1
 
 
+def prompt_command(args) -> int:
+    """
+    Handle prompt template command.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    config = get_config()
+
+    # Default to 'list' if no action provided
+    action = args.action if args.action else 'list'
+
+    # Route to appropriate command handler
+    if action == 'list':
+        return list_templates_command(config, args)
+    elif action == 'info':
+        return info_template_command(config, args)
+    elif action == 'enable':
+        return enable_template_command(config, args)
+    elif action == 'disable':
+        return disable_template_command(config, args)
+    elif action == 'import':
+        return import_template_command(config, args)
+    elif action == 'export':
+        return export_template_command(config, args)
+    elif action == 'backup':
+        return backup_templates_command(config, args)
+    elif action == 'delete':
+        return delete_template_command(config, args)
+    elif action == 'create':
+        return create_template_command(config, args)
+    elif action == 'show_enabled':
+        return show_enabled_command(config, args)
+    else:
+        console.print(f"[red]Error:[/red] Unknown action '{action}'")
+        console.print("[dim]Available actions: list, info, enable, disable, import, export, backup, delete, create, show_enabled[/dim]")
+        return 1
+
+
+def chat_history_list_command(config: Config, args) -> int:
+    """
+    List saved chat sessions.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+    from rich.table import Table
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get filter options
+    days = getattr(args, 'days', None)
+    limit = getattr(args, 'limit', None)
+
+    # List sessions
+    sessions = chat_history.list_sessions(limit=limit, days=days)
+
+    if not sessions:
+        console.print("[yellow]No chat sessions found[/yellow]")
+        if days:
+            console.print(f"[dim]No sessions in the last {days} days[/dim]")
+        return 0
+
+    # Create table
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("SESSION ID", style="green")
+    table.add_column("DATE", style="cyan")
+    table.add_column("MESSAGES", style="yellow")
+    table.add_column("MODEL", style="dim")
+
+    for session in sessions:
+        # Parse timestamp
+        timestamp = datetime.fromisoformat(session['timestamp'])
+        date_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Get model name
+        model_name = session['metadata'].get('model', 'Unknown')
+
+        table.add_row(
+            session['session_id'],
+            date_str,
+            str(session['message_count']),
+            model_name
+        )
+
+    console.print(table)
+
+    # Show total size
+    total_size = chat_history.get_total_size()
+    size_mb = total_size / (1024 * 1024)
+    console.print(f"\n[dim]Total history size: {size_mb:.2f} MB[/dim]")
+    console.print(f"[dim]History directory: {history_dir}[/dim]")
+
+    return 0
+
+
+def chat_history_info_command(config: Config, args) -> int:
+    """
+    Display detailed information about a chat session.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+
+    session_id = args.session_id
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Load the session
+    session_data = chat_history.load_session(session_id)
+    if not session_data:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+        return 1
+
+    # Display session header
+    metadata = session_data.get('metadata', {})
+    timestamp = session_data.get('timestamp', 'Unknown')
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        timestamp_str = timestamp
+
+    header = f"""[bold cyan]Session ID:[/bold cyan] {session_id}
+[bold cyan]Date:[/bold cyan] {timestamp_str}
+[bold cyan]Model:[/bold cyan] {metadata.get('model', 'Unknown')}
+[bold cyan]Messages:[/bold cyan] {session_data.get('message_count', len(session_data.get('messages', [])))}"""
+
+    console.print(Panel(header, title="Chat Session Info", border_style="cyan"))
+    console.print()
+
+    # Display conversation
+    messages = session_data.get('messages', [])
+
+    for i, msg in enumerate(messages, 1):
+        role = msg.get('role', 'unknown')
+        content = msg.get('content', '')
+        timestamp = msg.get('timestamp', '')
+
+        # Format role header
+        if role == 'user':
+            role_display = "👤 User"
+            style = "bold green"
+            border_style = "green"
+        elif role == 'assistant':
+            role_display = "🤖 Assistant"
+            style = "bold blue"
+            border_style = "blue"
+        elif role == 'system':
+            role_display = "⚙️ System"
+            style = "bold yellow"
+            border_style = "yellow"
+        else:
+            role_display = f"❓ {role.title()}"
+            style = "bold white"
+            border_style = "white"
+
+        # Create message header
+        header_parts = [f"[{style}]{role_display}[/{style}]"]
+        if timestamp:
+            header_parts.append(f"[dim]{timestamp}[/dim]")
+
+        # Display message
+        console.print(" ".join(header_parts))
+        console.print(Panel(content, border_style=border_style, padding=(0, 1)))
+        console.print()
+
+    # Show footer with actions
+    console.print("[dim]─" * 80 + "[/dim]")
+    console.print(f"[dim]Actions:[/dim]")
+    console.print(f"  • Continue this conversation: [cyan]llf chat --continue-session {session_id}[/cyan]")
+    console.print(f"  • Export to file: [cyan]llf chat export {session_id}[/cyan]")
+    console.print()
+
+    return 0
+
+
+def chat_history_cleanup_command(config: Config, args) -> int:
+    """
+    Cleanup old chat sessions (bulk operation).
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get options
+    days = args.days
+    dry_run = getattr(args, 'dry_run', False)
+
+    # Confirm if not dry run
+    if not dry_run:
+        console.print(f"[yellow]This will delete all chat sessions older than {days} days.[/yellow]")
+        response = input("Are you sure? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            console.print("[dim]Cancelled[/dim]")
+            return 0
+
+    # Purge sessions
+    deleted_count = chat_history.purge_old_sessions(days=days, dry_run=dry_run)
+
+    if dry_run:
+        console.print(f"\n[cyan]Dry run complete: {deleted_count} sessions would be deleted[/cyan]")
+    else:
+        console.print(f"\n[green]✓ Cleaned up {deleted_count} sessions[/green]")
+
+    return 0
+
+
+def chat_history_delete_command(config: Config, args) -> int:
+    """
+    Delete a specific chat session (move to trash).
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Initialize trash manager
+    project_root = Path(__file__).parent.parent
+    trash_dir = project_root / 'trash'
+    trash_manager = TrashManager(trash_dir)
+
+    # Get session ID
+    session_id = args.session_id
+
+    # Load session to verify it exists
+    session_data = chat_history.load_session(session_id)
+    if not session_data:
+        console.print(f"[red]Session '{session_id}' not found[/red]")
+        console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+        return 1
+
+    # Get session file path (with chat_ prefix)
+    session_file = history_dir / f"chat_{session_id}.json"
+
+    if not session_file.exists():
+        console.print(f"[red]Session file not found: {session_file}[/red]")
+        return 1
+
+    # Move to trash
+    success, trash_id = trash_manager.move_to_trash(
+        item_type='chat_history',
+        item_name=session_id,
+        paths=[session_file],
+        original_metadata={
+            'session_id': session_id,
+            'title': session_data.get('title', 'No title'),
+            'timestamp': session_data.get('timestamp', 'Unknown')
+        }
+    )
+
+    if not success:
+        console.print(f"[red]Error:[/red] Failed to move session to trash: {trash_id}")
+        return 1
+
+    console.print()
+    console.print(f"[green]✓[/green] Chat session '{session_id}' moved to trash")
+    console.print()
+    console.print(f"[bold]Trash ID:[/bold] {trash_id}")
+    console.print()
+    console.print("[bold]Recovery Options:[/bold]")
+    console.print(f"  - View trash: [cyan]llf trash list[/cyan]")
+    console.print(f"  - Restore: [cyan]llf trash restore {trash_id}[/cyan]")
+    console.print()
+    console.print("[dim]Items in trash are automatically deleted after 30 days[/dim]")
+    console.print()
+
+    return 0
+
+
+def chat_export_command(config: Config, args) -> int:
+    """
+    Export a chat session to a file.
+
+    Args:
+        config: Configuration instance.
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code.
+    """
+    from llf.chat_history import ChatHistory
+    from llf.chat_exporters import get_exporter
+
+    # Initialize chat history manager
+    history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+    chat_history = ChatHistory(history_dir)
+
+    # Get session
+    session_id = args.session_id
+    session_data = chat_history.load_session(session_id)
+
+    if not session_data:
+        console.print(f"[red]Session '{session_id}' not found[/red]")
+        console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+        return 1
+
+    # Get export options
+    export_format = args.format
+    output_path = args.output
+    include_timestamps = not getattr(args, 'no_timestamps', False)
+    include_system = not getattr(args, 'no_system', False)
+
+    # Generate default output filename if not specified
+    if not output_path:
+        extension_map = {
+            'markdown': 'md',
+            'md': 'md',
+            'json': 'json',
+            'txt': 'txt',
+            'text': 'txt',
+            'pdf': 'pdf'
+        }
+        ext = extension_map.get(export_format, 'txt')
+        output_path = f"chat_{session_id}.{ext}"
+
+    output_path = Path(output_path)
+
+    try:
+        # Get exporter and export
+        exporter = get_exporter(export_format, include_timestamps=include_timestamps, include_system=include_system)
+        exporter.export(session_data, output_path)
+
+        console.print(f"[green]✓ Exported session to: {output_path}[/green]")
+        console.print(f"[dim]Format: {export_format}[/dim]")
+        return 0
+
+    except ImportError as e:
+        console.print(f"[red]Export failed: {e}[/red]")
+        if 'reportlab' in str(e):
+            console.print("[yellow]Install reportlab for PDF export: pip install reportlab[/yellow]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Export failed: {e}[/red]")
+        return 1
+
+
 def main():
     """Main entry point for CLI application."""
     parser = argparse.ArgumentParser(
@@ -1366,6 +1794,7 @@ Examples:
   llf chat                         Start interactive chat (prompts to start server if not running)
   llf chat --auto-start-server     Auto-start server if not running (no prompt)
   llf chat --no-server-start       Exit with error if server not running
+  llf chat --no-history            Start chat without saving conversation history
   llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
   llf chat --gguf-dir test_gguf --gguf-file my-model.gguf
 
@@ -1374,6 +1803,30 @@ Examples:
   llf chat --cli "Explain Python" --auto-start-server
   llf chat --cli "Code review" --huggingface-model custom/model
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
+
+  # Resume and import conversations
+  llf chat --continue-session SESSION_ID           Continue from a saved session
+  llf chat --continue-session SESSION_ID --no-history  Resume without saving new history
+  llf chat --import-session path/to/chat.json      Import external session from JSON
+  llf chat --import-session path/to/chat.md        Import external session from Markdown
+  llf chat --import-session path/to/chat.txt       Import external session from text
+
+  # Chat history management
+  llf chat history list                            List all saved chat sessions
+  llf chat history list --days 7                   List sessions from last 7 days
+  llf chat history list --limit 10                 List last 10 sessions
+  llf chat history info SESSION_ID                 Display full conversation content
+  llf chat history delete SESSION_ID               Delete a specific session (move to trash)
+  llf chat history cleanup --days 30               Delete sessions older than 30 days (bulk)
+  llf chat history cleanup --days 30 --dry-run     Preview what would be deleted
+
+  # Chat export
+  llf chat export SESSION_ID                       Export session to Markdown
+  llf chat export SESSION_ID --format json         Export as JSON
+  llf chat export SESSION_ID --format pdf          Export as PDF
+  llf chat export SESSION_ID --output chat.md      Export to specific file
+  llf chat export SESSION_ID --no-timestamps       Export without timestamps
+  llf chat export SESSION_ID --no-system           Export without system messages
 
   # Local Server management
   llf server list                              List all configured servers and status
@@ -1435,8 +1888,10 @@ Examples:
   llf memory create MEMORY_NAME           Create a new memory instance
   llf memory enable MEMORY_NAME           Enable a memory instance
   llf memory disable MEMORY_NAME          Disable a memory instance
-  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
   llf memory info MEMORY_NAME             Show memory instance information
+  llf memory import MEMORY_NAME           Import memory from memory/ directory
+  llf memory export MEMORY_NAME           Export memory (remove from registry, keep files)
+  llf memory delete MEMORY_NAME           Delete a memory instance (must be disabled)
 
   # Module management
   llf module list                  List modules
@@ -1453,9 +1908,42 @@ Examples:
   llf tool enable TOOL_NAME        Enable a tool
   llf tool disable TOOL_NAME       Disable a tool
   llf tool info TOOL_NAME          Show tool information
+  llf tool import TOOL_NAME        Import a tool from directory to registry
+  llf tool export TOOL_NAME        Export a tool from registry (keeps files)
+  llf tool config get KEY          Get a global configuration value
+  llf tool config set KEY VALUE    Set a global configuration value
+  llf tool config list             List all global configuration settings
   llf tool whitelist list TOOL_NAME           List whitelisted patterns for a tool
   llf tool whitelist add TOOL_NAME PATTERN    Add pattern to tool whitelist
   llf tool whitelist remove TOOL_NAME INDEX   Remove pattern from tool whitelist by index
+
+  # Prompt Template management
+  llf prompt list                             List all prompt templates
+  llf prompt list --category development      List templates by category
+  llf prompt info coding_assistant            Show detailed template information
+  llf prompt enable coding_assistant          Enable a template (makes it active)
+  llf prompt enable socratic_tutor --var topic=Python   Enable with variable substitution
+  llf prompt disable                          Disable currently enabled template (reset to blank)
+  llf prompt show_enabled                     Show currently enabled template
+  llf prompt import my_template               Import template from directory to registry
+  llf prompt export my_template               Export template from registry (saves config.json, keeps files)
+  llf prompt create                           Create new template interactively
+  llf prompt backup                           Backup all templates before changes
+
+  # Trash management (30-day recovery)
+  llf trash list                              List all items in trash
+  llf trash list --type memory                List only memory items in trash
+  llf trash list --older-than 30              List items older than 30 days
+  llf trash info TRASH_ID                     Show detailed information about a trashed item
+  llf trash restore TRASH_ID                  Restore an item from trash to original location
+  llf trash empty                             Delete items older than 30 days (with confirmation)
+  llf trash empty --all                       Delete all items in trash (with confirmation)
+  llf trash empty --force                     Skip confirmation prompt
+  llf trash empty --dry-run                   Preview what would be deleted
+
+  # Developer tools
+  llf dev create-tool                         Create a new tool with interactive wizard
+  llf dev validate-tool TOOL_NAME             Validate tool structure and configuration
 
   # Global Configuration Flags (use with any command)
   llf --log-level DEBUG chat                           Enable debug logging for chat
@@ -1522,8 +2010,8 @@ For setup instructions, see: https://github.com/ggml-org/llama.cpp
     # Chat command (default)
     chat_parser = subparsers.add_parser(
         'chat',
-        help='Start interactive chat with LLM',
-        description='Start an interactive chat session with an LLM either locally running or remote.',
+        help='Start interactive chat with LLM or manage chat history',
+        description='Start an interactive chat session with an LLM either locally running or remote, or manage chat history.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1531,10 +2019,29 @@ Examples:
   llf chat                                     Start interactive chat session
   llf chat --auto-start-server                 Auto-start server if not running
   llf chat --no-server-start                   Exit with error if server not running
+  llf chat --no-history                        Disable saving conversation history
 
   # CLI mode (non-interactive, for scripting)
   llf chat --cli "What is 2+2?"                Ask a single question and exit
   cat file.txt | llf chat --cli "Summarize this"  Pipe data to LLM with question
+
+  # Resume and import conversations
+  llf chat --continue-session SESSION_ID       Continue from a saved session ID
+  llf chat --import-session path/to/chat.json  Import external session (JSON/MD/TXT)
+
+  # Chat history management
+  llf chat history list                        List saved chat sessions
+  llf chat history list --days 7               List sessions from last 7 days
+  llf chat history info SESSION_ID             Display full conversation content
+  llf chat history delete SESSION_ID           Delete a specific session (move to trash)
+  llf chat history cleanup --days 30           Delete sessions older than 30 days (bulk)
+  llf chat history cleanup --days 30 --dry-run Preview what would be deleted
+
+  # Export conversations
+  llf chat export SESSION_ID                   Export session to markdown (default)
+  llf chat export SESSION_ID --format json     Export to JSON format
+  llf chat export SESSION_ID --format pdf --output chat.pdf
+  llf chat export SESSION_ID --no-timestamps   Export without timestamps
 
   # Model selection
   llf chat --huggingface-model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF
@@ -1574,9 +2081,132 @@ Examples:
         help='Do not start server if not running (exit with error instead)'
     )
     chat_parser.add_argument(
+        '--no-history',
+        action='store_true',
+        help='Disable saving conversation history for this session'
+    )
+    chat_parser.add_argument(
+        '--continue-session',
+        metavar='SESSION_ID',
+        help='Continue a previous conversation from a saved session ID'
+    )
+    chat_parser.add_argument(
+        '--import-session',
+        metavar='FILE',
+        help='Import and continue from an external session file (.json, .md, .txt)'
+    )
+    chat_parser.add_argument(
         '--cli',
         metavar='QUESTION',
         help='Non-interactive mode: ask a single question and exit (for scripting)'
+    )
+
+    # Chat subcommands for history and export management
+    chat_subparsers = chat_parser.add_subparsers(
+        dest='chat_action',
+        metavar='ACTION',
+        help='Chat management actions (history, export)'
+    )
+
+    # chat history command
+    history_parser = chat_subparsers.add_parser(
+        'history',
+        help='Manage chat history',
+        description='List, view, and purge saved chat sessions'
+    )
+    history_subparsers = history_parser.add_subparsers(
+        dest='history_action',
+        required=True,
+        metavar='ACTION',
+        help='History actions'
+    )
+
+    # history list
+    list_history_parser = history_subparsers.add_parser(
+        'list',
+        help='List saved chat sessions'
+    )
+    list_history_parser.add_argument(
+        '--days',
+        type=int,
+        help='Only show sessions from last N days'
+    )
+    list_history_parser.add_argument(
+        '--limit',
+        type=int,
+        help='Maximum number of sessions to show'
+    )
+
+    # history info
+    info_history_parser = history_subparsers.add_parser(
+        'info',
+        help='Display detailed information about a chat session'
+    )
+    info_history_parser.add_argument(
+        'session_id',
+        metavar='SESSION_ID',
+        help='Session ID to display'
+    )
+
+    # history cleanup (bulk delete old sessions)
+    cleanup_history_parser = history_subparsers.add_parser(
+        'cleanup',
+        help='Delete old chat sessions (bulk operation)'
+    )
+    cleanup_history_parser.add_argument(
+        '--days',
+        type=int,
+        required=True,
+        help='Delete sessions older than N days'
+    )
+    cleanup_history_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be deleted without actually deleting'
+    )
+
+    # history delete (single session)
+    delete_history_parser = history_subparsers.add_parser(
+        'delete',
+        help='Delete a specific chat session (move to trash with 30-day recovery)'
+    )
+    delete_history_parser.add_argument(
+        'session_id',
+        metavar='SESSION_ID',
+        help='Session ID to delete'
+    )
+
+    # chat export command
+    export_parser = chat_subparsers.add_parser(
+        'export',
+        help='Export chat session to file',
+        description='Export a saved chat session to various formats (markdown, json, txt, pdf)'
+    )
+    export_parser.add_argument(
+        'session_id',
+        metavar='SESSION_ID',
+        help='Session ID or filename to export (e.g., "20250109_143022" or "chat_20250109_143022.json")'
+    )
+    export_parser.add_argument(
+        '--format',
+        choices=['markdown', 'md', 'json', 'txt', 'text', 'pdf'],
+        default='markdown',
+        help='Export format (default: markdown)'
+    )
+    export_parser.add_argument(
+        '--output',
+        metavar='FILE',
+        help='Output file path (default: auto-generated based on session ID and format)'
+    )
+    export_parser.add_argument(
+        '--no-timestamps',
+        action='store_true',
+        help='Exclude timestamps from export'
+    )
+    export_parser.add_argument(
+        '--no-system',
+        action='store_true',
+        help='Exclude system messages from export'
     )
 
     # Model command (with subcommands: download, list, info)
@@ -1760,6 +2390,7 @@ Examples:
   llf server restart                           Restart default server
   llf server restart --share                   Restart server with network access
   llf server switch LOCAL_SERVER_NAME          Switch default server
+  llf server list_models                       List available models from configured endpoint
 
   # Model selection
   llf server start --gguf-dir model_GGUF --gguf-file my-model.gguf
@@ -1908,6 +2539,7 @@ actions:
   list --attached           List only attached data stores
   import DIRECTORY_NAME     Import a vector store from data_stores/vector_stores
   export DATA_STORE_NAME    Export a data store (remove from registry, keep data)
+  delete DATA_STORE_NAME    Delete a data store (move to trash with 30-day recovery)
   attach DATA_STORE_NAME    Attach data store to query
   attach all                Attach all data stores
   detach DATA_STORE_NAME    Detach data store
@@ -1977,8 +2609,10 @@ actions:
   create MEMORY_NAME        Create a new memory instance
   enable MEMORY_NAME        Enable a memory instance
   disable MEMORY_NAME       Disable a memory instance
-  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
   info MEMORY_NAME          Show memory instance information
+  import MEMORY_NAME        Import a memory instance from the memory directory
+  export MEMORY_NAME        Export a memory instance (removes from registry, keeps files)
+  delete MEMORY_NAME        Delete a memory instance (must be disabled first)
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -2011,6 +2645,8 @@ actions:
   enable TOOL_NAME --auto          Enable a tool with auto mode
   disable TOOL_NAME                Disable a tool (sets to false)
   info TOOL_NAME                   Show tool information
+  import TOOL_NAME                 Import a tool from directory to registry
+  export TOOL_NAME                 Export a tool from registry (keeps files)
   config get KEY                   Get a global configuration value
   config set KEY VALUE             Set a global configuration value
   config list                      List all global configuration settings
@@ -2049,6 +2685,187 @@ actions:
         '--auto',
         action='store_true',
         help='Enable tool with auto mode (use with enable action)'
+    )
+
+    # Prompt command
+    prompt_parser = subparsers.add_parser(
+        'prompt',
+        help='Prompt Template Management',
+        description='Manage prompt templates for different conversation contexts and tasks.',
+        epilog='''
+actions:
+  list                             List all prompt templates
+  list --category CATEGORY         List templates by category
+  info TEMPLATE_NAME               Show detailed template information
+  enable TEMPLATE_NAME             Enable a template (makes it active)
+  enable TEMPLATE_NAME --var key=value  Enable template with variable substitution
+  disable                          Disable currently enabled template (reset to blank)
+  show_enabled                     Show currently enabled template
+  import DIRECTORY_NAME            Import template from directory to registry
+  export TEMPLATE_NAME             Export template from registry (saves config.json, keeps files)
+  backup                           Create backup of all templates
+  delete TEMPLATE_NAME             Delete a template (with confirmation)
+  create                           Create a new template interactively
+
+Examples:
+  llf prompt list                  List all available templates
+  llf prompt list --category development
+  llf prompt info coding_assistant
+  llf prompt enable coding_assistant
+  llf prompt enable socratic_tutor --var topic=Python
+  llf prompt disable               Disable current template and reset to blank config
+  llf prompt show_enabled          Show which template is currently enabled
+  llf prompt import my_template    Import template from configs/prompt_templates/my_template/
+  llf prompt export my_template    Export template (removes from registry, saves config.json)
+  llf prompt create                Start interactive template creation
+  llf prompt backup                Create backup before making changes
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    prompt_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    prompt_parser.add_argument(
+        'template_name',
+        nargs='?',
+        help=argparse.SUPPRESS  # Template name or file path for various actions
+    )
+    prompt_parser.add_argument(
+        '--category',
+        type=str,
+        help='Filter templates by category (use with list action)'
+    )
+    prompt_parser.add_argument(
+        '--var',
+        action='append',
+        help='Variable substitution in format key=value (use with enable action)'
+    )
+    prompt_parser.add_argument(
+        '--name',
+        type=str,
+        help='Custom name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--display-name',
+        type=str,
+        help='Display name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--description',
+        type=str,
+        help='Description for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--author',
+        type=str,
+        help='Author name for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--tags',
+        type=str,
+        help='Comma-separated tags for imported template (use with import action)'
+    )
+    prompt_parser.add_argument(
+        '--output',
+        type=str,
+        help='Output file path for exported template (use with export action)'
+    )
+
+    # Dev command (for tool development)
+    # Trash management command
+    trash_parser = subparsers.add_parser(
+        'trash',
+        help='Trash Management',
+        description='Manage deleted items with 30-day recovery. View, restore, or permanently delete items from trash.',
+        epilog='''
+actions:
+  list                             List all items in trash
+  list --type memory               List only memory items in trash
+  list --older-than 30             List items older than 30 days
+  info TRASH_ID                    Show detailed information about a trashed item
+  restore TRASH_ID                 Restore an item from trash to original location
+  empty                            Delete items older than 30 days (with confirmation)
+  empty --all                      Delete all items in trash (with confirmation)
+  empty --force                    Skip confirmation prompt
+  empty --dry-run                  Preview what would be deleted
+
+Examples:
+  llf trash list                   View all trashed items
+  llf trash list --type datastore  View only deleted datastores
+  llf trash info 20260110_143022
+  llf trash restore 20260110_143022
+  llf trash empty --older-than 60  Delete items older than 60 days
+  llf trash empty --all --dry-run  Preview deleting all trash
+
+Note:
+  Deleted items are kept in trash for 30 days before automatic removal.
+  After restore, you must manually re-import items to update registries.
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    trash_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS
+    )
+    trash_parser.add_argument(
+        'trash_id',
+        nargs='?',
+        help=argparse.SUPPRESS
+    )
+    trash_parser.add_argument(
+        '--type',
+        choices=['memory', 'datastore', 'chat_history', 'template'],
+        help='Filter by item type'
+    )
+    trash_parser.add_argument(
+        '--older-than',
+        type=int,
+        metavar='DAYS',
+        help='Filter/delete items older than N days'
+    )
+    trash_parser.add_argument(
+        '--all',
+        action='store_true',
+        help='Empty all items from trash (use with empty action)'
+    )
+    trash_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Skip confirmation prompt (use with empty action)'
+    )
+    trash_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Preview what would be deleted (use with empty action)'
+    )
+
+    dev_parser = subparsers.add_parser(
+        'dev',
+        help='Development Tools',
+        description='Developer tools for creating and validating custom tools.',
+        epilog='''
+actions:
+  create-tool                      Create a new tool with interactive wizard
+  validate-tool TOOL_NAME          Validate tool structure and configuration
+
+Examples:
+  llf dev create-tool              Start interactive tool creation wizard
+  llf dev validate-tool my_tool    Validate 'my_tool' structure
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    dev_parser.add_argument(
+        'action',
+        nargs='?',
+        help=argparse.SUPPRESS  # Suppress auto-generated help - using custom actions section instead
+    )
+    dev_parser.add_argument(
+        'tool_name',
+        nargs='?',
+        help=argparse.SUPPRESS  # Tool name for validate-tool action
     )
 
     # Parse arguments
@@ -2803,9 +3620,113 @@ finally:
                 console.print(f"[red]Error:[/red] Failed to export data store: {e}")
                 return 1
 
+        elif action == 'delete':
+            if not args.datastore_name:
+                console.print("[red]Error:[/red] Data store name required for delete command")
+                console.print("[dim]Usage: llf datastore delete DATA_STORE_NAME[/dim]")
+                return 1
+
+            datastore_name = args.datastore_name
+            project_root = Path(__file__).parent.parent
+            trash_dir = project_root / 'trash'
+            trash_manager = TrashManager(trash_dir)
+
+            # Read datastore registry
+            try:
+                with open(datastore_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                data_stores = registry.get('data_stores', [])
+
+                # Find the datastore by name or display_name
+                datastore_found = False
+                datastore_to_delete = None
+                for ds in data_stores:
+                    if ds.get('name') == datastore_name or ds.get('display_name') == datastore_name:
+                        datastore_found = True
+                        datastore_to_delete = ds
+                        break
+
+                if not datastore_found:
+                    console.print(f"[red]Error:[/red] Data store '{datastore_name}' not found in registry")
+                    return 1
+
+                # Get the actual name and vector store path
+                actual_name = datastore_to_delete.get('name')
+                vector_store_path_rel = datastore_to_delete.get('vector_store_path', f'data_stores/vector_stores/{actual_name}')
+
+                # Construct absolute path
+                vector_store_path_obj = Path(vector_store_path_rel)
+                if vector_store_path_obj.is_absolute():
+                    vector_store_path = vector_store_path_obj
+                else:
+                    vector_store_path = project_root / vector_store_path_rel
+
+                if not vector_store_path.exists():
+                    console.print(f"[yellow]Warning:[/yellow] Vector store directory not found: {vector_store_path}")
+                    console.print(f"[yellow]Removing from registry only[/yellow]")
+
+                    # Remove from registry
+                    data_stores.remove(datastore_to_delete)
+                    registry['data_stores'] = data_stores
+                    current_date = datetime.now().strftime('%Y-%m-%d')
+                    registry['last_updated'] = current_date
+
+                    # Save updated registry
+                    with open(datastore_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    console.print(f"[green]✓[/green] Data store '{datastore_name}' removed from registry")
+                    return 0
+
+                # Move to trash
+                success, trash_id = trash_manager.move_to_trash(
+                    item_type='datastore',
+                    item_name=actual_name,
+                    paths=[vector_store_path],
+                    original_metadata=datastore_to_delete
+                )
+
+                if not success:
+                    console.print(f"[red]Error:[/red] Failed to move datastore to trash: {trash_id}")
+                    return 1
+
+                # Remove from registry
+                data_stores.remove(datastore_to_delete)
+                registry['data_stores'] = data_stores
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                registry['last_updated'] = current_date
+
+                # Save updated registry
+                with open(datastore_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Data store '{datastore_name}' moved to trash")
+                console.print()
+                console.print(f"[bold]Trash ID:[/bold] {trash_id}")
+                console.print()
+                console.print("[bold]Recovery Options:[/bold]")
+                console.print(f"  - View trash: [cyan]llf trash list[/cyan]")
+                console.print(f"  - Restore: [cyan]llf trash restore {trash_id}[/cyan]")
+                console.print(f"  - After restore, re-import: [cyan]llf datastore import {actual_name}[/cyan]")
+                console.print()
+                console.print("[dim]Items in trash are automatically deleted after 30 days[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Data store registry not found at {datastore_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in data store registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to delete data store: {e}")
+                return 1
+
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, attach, detach, info, import, export[/dim]")
+            console.print("[dim]Available actions: list, attach, detach, info, import, export, delete[/dim]")
             return 1
 
         return 0
@@ -3186,6 +4107,196 @@ Contains the memory data files
             console.print(f"Memory location: memory/{memory_name}/")
             console.print()
 
+        elif action == 'export':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for export command")
+                console.print("[dim]Usage: llf memory export MEMORY_NAME[/dim]")
+                return 1
+
+            memory_name = args.memory_name
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Find the memory instance by name or display_name
+                memory_to_remove = None
+                for m in memories:
+                    if m.get('name') == memory_name or m.get('display_name') == memory_name:
+                        memory_to_remove = m
+                        break
+
+                if not memory_to_remove:
+                    console.print(f"[red]Error:[/red] Memory '{memory_name}' not found in registry")
+                    return 1
+
+                # Get the actual name and directory path
+                actual_name = memory_to_remove.get('name')
+                directory = memory_to_remove.get('directory', actual_name)
+                memory_path = f'memory/{directory}'
+
+                # Remove from registry
+                memories.remove(memory_to_remove)
+                registry['memories'] = memories
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                registry['last_updated'] = current_date
+
+                # Save updated registry
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully exported memory '{memory_name}'")
+                console.print()
+                console.print("The memory has been removed from the registry.")
+                console.print()
+                console.print(f"[bold]Data Location:[/bold]")
+                console.print(f"  The memory data is still located at:")
+                console.print(f"  [cyan]{memory_path}[/cyan]")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - You can manually delete the directory if no longer needed")
+                console.print(f"  - Or move it to another location for use elsewhere")
+                console.print(f"  - To re-import later, use: [dim]llf memory import {actual_name}[/dim]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to export memory: {e}")
+                return 1
+
+        elif action == 'import':
+            if not args.memory_name:
+                console.print("[red]Error:[/red] Memory name required for import command")
+                console.print("[dim]Usage: llf memory import MEMORY_NAME[/dim]")
+                return 1
+
+            directory_name = args.memory_name
+            project_root = Path(__file__).parent.parent
+            memory_base_dir = project_root / 'memory'
+            memory_dir = memory_base_dir / directory_name
+
+            # Verify directory exists
+            if not memory_dir.exists():
+                console.print(f"[red]Error:[/red] Directory '{directory_name}' not found in memory/ directory")
+                console.print()
+                console.print("The directory must exist in the [cyan]memory/[/cyan] folder before importing.")
+                console.print()
+                console.print("[bold]Available directories:[/bold]")
+                if memory_base_dir.exists():
+                    dirs = [d.name for d in memory_base_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+                    if dirs:
+                        for d in sorted(dirs):
+                            console.print(f"  - {d}")
+                    else:
+                        console.print("  [dim](no directories found)[/dim]")
+                console.print()
+                return 1
+
+            # Check for required files
+            metadata_file = memory_dir / 'metadata.json'
+            memory_file = memory_dir / 'memory.jsonl'
+            index_file = memory_dir / 'index.json'
+
+            missing_files = []
+            if not metadata_file.exists():
+                missing_files.append('metadata.json')
+            if not memory_file.exists():
+                missing_files.append('memory.jsonl')
+            if not index_file.exists():
+                missing_files.append('index.json')
+
+            if missing_files:
+                console.print(f"[red]Error:[/red] Memory directory is missing required files:")
+                for mf in missing_files:
+                    console.print(f"  - {mf}")
+                console.print()
+                console.print("A valid memory instance requires: metadata.json, memory.jsonl, and index.json")
+                return 1
+
+            # Read memory registry
+            try:
+                with open(memory_registry_path, 'r') as f:
+                    registry = json.load(f)
+
+                memories = registry.get('memories', [])
+
+                # Check if memory already exists in registry
+                for memory in memories:
+                    if memory.get('name') == directory_name:
+                        console.print(f"[red]Error:[/red] Memory '{directory_name}' already exists in registry")
+                        console.print(f"[yellow]Export it first if you want to re-import it[/yellow]")
+                        return 1
+
+                # Read metadata from memory directory
+                try:
+                    with open(metadata_file, 'r') as f:
+                        memory_metadata = json.load(f)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error:[/red] Invalid JSON in metadata.json: {e}")
+                    return 1
+
+                # Create display name from directory name
+                display_name = directory_name.replace('_', ' ').replace('-', ' ').title()
+                current_date = datetime.now().strftime('%Y-%m-%d')
+
+                # Create registry entry with defaults
+                new_entry = {
+                    "name": directory_name,
+                    "display_name": display_name,
+                    "description": "Imported memory instance",
+                    "directory": directory_name,
+                    "enabled": False,
+                    "type": "persistent",
+                    "created_date": memory_metadata.get('created_date', current_date),
+                    "last_modified": memory_metadata.get('last_updated', None),
+                    "metadata": {
+                        "storage_type": "json",
+                        "max_entries": 10000,
+                        "compression": False
+                    }
+                }
+
+                # Add to registry
+                memories.append(new_entry)
+                registry['memories'] = memories
+                registry['last_updated'] = current_date
+
+                # Save registry
+                with open(memory_registry_path, 'w') as f:
+                    json.dump(registry, f, indent=2)
+
+                console.print()
+                console.print(f"[green]✓[/green] Successfully imported memory '{directory_name}'")
+                console.print()
+                console.print("The memory has been added to the registry with default settings:")
+                console.print(f"  - enabled: false")
+                console.print(f"  - display_name: {display_name}")
+                console.print(f"  - description: Imported memory instance")
+                console.print()
+                console.print("[bold]Next Steps:[/bold]")
+                console.print(f"  - Review and edit the registry entry in memory/memory_registry.json if needed")
+                console.print(f"  - Enable the memory: [cyan]llf memory enable {directory_name}[/cyan]")
+                console.print()
+
+            except FileNotFoundError:
+                console.print(f"[red]Error:[/red] Memory registry not found at {memory_registry_path}")
+                return 1
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in memory registry: {e}")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to import memory: {e}")
+                return 1
+
         elif action == 'delete':
             if not args.memory_name:
                 console.print("[red]Error:[/red] Memory name required for delete command")
@@ -3193,6 +4304,9 @@ Contains the memory data files
                 return 1
 
             memory_name = args.memory_name
+            project_root = Path(__file__).parent.parent
+            trash_dir = project_root / 'trash'
+            trash_manager = TrashManager(trash_dir)
 
             # Read memory registry
             try:
@@ -3222,19 +4336,35 @@ Contains the memory data files
 
                 # Get directory path
                 directory = memory.get('directory', memory_name)
-                project_root = Path(__file__).parent.parent
                 memory_dir = project_root / 'memory' / directory
 
-                # Delete directory if it exists
-                if memory_dir.exists():
-                    try:
-                        shutil.rmtree(memory_dir)
-                        console.print(f"[green]✓[/green] Deleted directory: {memory_dir}")
-                    except Exception as e:
-                        console.print(f"[red]Error:[/red] Failed to delete directory {memory_dir}: {e}")
-                        return 1
-                else:
-                    console.print(f"[yellow]Warning:[/yellow] Directory not found: {memory_dir}")
+                if not memory_dir.exists():
+                    console.print(f"[yellow]Warning:[/yellow] Memory directory not found: {memory_dir}")
+                    console.print(f"[yellow]Removing from registry only[/yellow]")
+
+                    # Remove from registry
+                    memories.pop(memory_index)
+                    registry['memories'] = memories
+                    registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+                    # Save registry
+                    with open(memory_registry_path, 'w') as f:
+                        json.dump(registry, f, indent=2)
+
+                    console.print(f"[green]✓[/green] Memory '{memory_name}' removed from registry")
+                    return 0
+
+                # Move to trash
+                success, trash_id = trash_manager.move_to_trash(
+                    item_type='memory',
+                    item_name=memory_name,
+                    paths=[memory_dir],
+                    original_metadata=memory
+                )
+
+                if not success:
+                    console.print(f"[red]Error:[/red] Failed to move memory to trash: {trash_id}")
+                    return 1
 
                 # Remove from registry
                 memories.pop(memory_index)
@@ -3245,13 +4375,21 @@ Contains the memory data files
                 try:
                     with open(memory_registry_path, 'w') as f:
                         json.dump(registry, f, indent=2)
-                    console.print(f"[green]✓[/green] Removed entry from memory_registry.json")
                 except Exception as e:
                     console.print(f"[red]Error:[/red] Failed to update registry file: {e}")
                     return 1
 
                 console.print()
-                console.print(f"[green]Successfully deleted memory instance '{memory_name}'[/green]")
+                console.print(f"[green]✓[/green] Memory instance '{memory_name}' moved to trash")
+                console.print()
+                console.print(f"[bold]Trash ID:[/bold] {trash_id}")
+                console.print()
+                console.print("[bold]Recovery Options:[/bold]")
+                console.print(f"  - View trash: [cyan]llf trash list[/cyan]")
+                console.print(f"  - Restore: [cyan]llf trash restore {trash_id}[/cyan]")
+                console.print(f"  - After restore, re-enable: [cyan]llf memory enable {memory_name}[/cyan]")
+                console.print()
+                console.print("[dim]Items in trash are automatically deleted after 30 days[/dim]")
                 console.print()
 
             except FileNotFoundError:
@@ -3266,7 +4404,7 @@ Contains the memory data files
 
         else:
             console.print(f"[red]Error:[/red] Unknown action '{action}'")
-            console.print("[dim]Available actions: list, enable, disable, info, create, delete[/dim]")
+            console.print("[dim]Available actions: list, enable, disable, info, create, import, export, delete[/dim]")
             return 1
 
         return 0
@@ -3993,7 +5131,223 @@ Contains the memory data files
 
         return 0
 
+    elif args.command == 'prompt':
+        return prompt_command(args)
+
+    elif args.command == 'trash':
+        # Trash Management
+        project_root = Path(__file__).parent.parent
+        trash_dir = project_root / 'trash'
+        trash_manager = TrashManager(trash_dir)
+
+        action = getattr(args, 'action', 'list')
+        trash_id = getattr(args, 'trash_id', None)
+        item_type = getattr(args, 'type', None)
+        older_than = getattr(args, 'older_than', None)
+        force = getattr(args, 'force', False)
+        dry_run = getattr(args, 'dry_run', False)
+        empty_all = getattr(args, 'all', False)
+
+        if action == 'list':
+            # List trash items
+            items = trash_manager.list_trash_items(item_type=item_type, older_than_days=older_than)
+
+            if not items:
+                console.print("[dim]Trash is empty[/dim]")
+                return 0
+
+            from rich.table import Table
+            table = Table(show_header=True)
+            table.add_column("Trash ID", style="cyan", width=17)
+            table.add_column("Type", style="green", width=12)
+            table.add_column("Name", style="white", width=30)
+            table.add_column("Age (days)", style="yellow", width=12, justify="right")
+
+            for item in items:
+                trash_id_str = item.get('trash_id', 'Unknown')
+                item_type_str = item.get('item_type', 'Unknown')
+                item_name = item.get('item_name', 'Unknown')
+                age_days = item.get('age_days', 0)
+
+                table.add_row(trash_id_str, item_type_str, item_name, str(age_days))
+
+            console.print()
+            console.print(table)
+            console.print()
+            console.print(f"[dim]Total items: {len(items)}[/dim]")
+            console.print()
+
+            # Show stats
+            stats = trash_manager.get_trash_stats()
+            if stats['items_over_30_days'] > 0:
+                console.print(f"[yellow]⚠ {stats['items_over_30_days']} item(s) are over 30 days old and can be permanently deleted[/yellow]")
+                console.print(f"[dim]Use 'llf trash empty' to remove them[/dim]")
+                console.print()
+
+            return 0
+
+        elif action == 'info':
+            if not trash_id:
+                console.print("[red]Error: Trash ID required[/red]")
+                console.print("Usage: llf trash info <TRASH_ID>")
+                return 1
+
+            metadata = trash_manager.get_trash_info(trash_id)
+            if not metadata:
+                console.print(f"[red]Trash item not found: {trash_id}[/red]")
+                return 1
+
+            # Display detailed information
+            from rich.panel import Panel
+
+            item_type = metadata.get('item_type', 'Unknown')
+            item_name = metadata.get('item_name', 'Unknown')
+            deleted_date = metadata.get('deleted_date', 'Unknown')
+            age_days = metadata.get('age_days', 0)
+            moved_items = metadata.get('moved_items', [])
+
+            info_text = f"""[bold]Item Type:[/bold] {item_type}
+[bold]Item Name:[/bold] {item_name}
+[bold]Deleted:[/bold] {deleted_date}
+[bold]Age:[/bold] {age_days} days
+[bold]Files:[/bold] {len(moved_items)} file(s)"""
+
+            console.print()
+            console.print(Panel(info_text, title=f"Trash Item: {trash_id}", border_style="cyan"))
+            console.print()
+
+            # Show file paths
+            console.print("[bold]Original Locations:[/bold]")
+            for item in moved_items:
+                original_path = item.get('original_path', 'Unknown')
+                console.print(f"  [dim]{original_path}[/dim]")
+            console.print()
+
+            # Show recovery instructions
+            console.print("[bold]Recovery:[/bold]")
+            console.print(f"  [cyan]llf trash restore {trash_id}[/cyan]")
+            console.print()
+
+            return 0
+
+        elif action == 'restore':
+            if not trash_id:
+                console.print("[red]Error: Trash ID required[/red]")
+                console.print("Usage: llf trash restore <TRASH_ID>")
+                return 1
+
+            success, message = trash_manager.restore_from_trash(trash_id)
+            if success:
+                console.print(f"[green]✓ {message}[/green]")
+                return 0
+            else:
+                console.print(f"[red]✗ {message}[/red]")
+                return 1
+
+        elif action == 'empty':
+            # Determine what to delete
+            if empty_all:
+                days = 0
+            elif older_than:
+                days = older_than
+            else:
+                days = 30
+
+            # Get items that would be deleted
+            items_to_delete = trash_manager.list_trash_items(older_than_days=days)
+
+            if not items_to_delete:
+                console.print(f"[dim]No items to delete (threshold: {days} days)[/dim]")
+                return 0
+
+            # Show what will be deleted
+            console.print(f"\n[yellow]Items to be permanently deleted ({len(items_to_delete)}):[/yellow]\n")
+            for item in items_to_delete:
+                item_name = item.get('item_name', 'Unknown')
+                item_type = item.get('item_type', 'Unknown')
+                age_days = item.get('age_days', 0)
+                console.print(f"  [dim]{item_type}:[/dim] {item_name} [dim]({age_days} days old)[/dim]")
+            console.print()
+
+            # Confirm if not forced or dry-run
+            if dry_run:
+                console.print(f"[cyan]Dry run complete: {len(items_to_delete)} items would be deleted[/cyan]")
+                return 0
+
+            if not force:
+                console.print("[yellow]⚠ This action cannot be undone![/yellow]")
+                response = input("Continue? (yes/no): ")
+                if response.lower() not in ['yes', 'y']:
+                    console.print("[dim]Cancelled[/dim]")
+                    return 0
+
+            # Empty trash
+            deleted_count, deleted_ids = trash_manager.empty_trash(
+                older_than_days=days,
+                force=empty_all,
+                dry_run=False
+            )
+
+            console.print(f"\n[green]✓ Permanently deleted {deleted_count} item(s) from trash[/green]\n")
+            return 0
+
+        else:
+            console.print(f"[red]Unknown trash action: {action}[/red]")
+            console.print("\nValid actions: list, info, restore, empty")
+            return 1
+
+    elif args.command == 'dev':
+        # Development Tools
+        from llf.dev_commands import DevCommands
+
+        # Get tools directory
+        tools_dir = Path(__file__).parent.parent / 'tools'
+        dev_commands = DevCommands(tools_dir)
+
+        action = getattr(args, 'action', None)
+        tool_name = getattr(args, 'tool_name', None)
+
+        if not action or action == 'create-tool':
+            # Interactive tool creation wizard
+            return dev_commands.create_tool_interactive()
+
+        elif action == 'validate-tool':
+            if not tool_name:
+                console.print("[red]Error: Tool name required[/red]")
+                console.print("Usage: llf dev validate-tool <tool_name>")
+                return 1
+
+            return dev_commands.validate_tool(tool_name)
+
+        else:
+            console.print(f"[red]Unknown dev action: {action}[/red]")
+            console.print("\nValid actions: create-tool, validate-tool")
+            return 1
+
     elif args.command == 'chat' or args.command is None:
+        # Check if this is a chat subcommand (history or export)
+        chat_action = getattr(args, 'chat_action', None)
+
+        if chat_action == 'history':
+            # Handle chat history subcommands
+            history_action = getattr(args, 'history_action', None)
+            if history_action == 'list':
+                return chat_history_list_command(config, args)
+            elif history_action == 'info':
+                return chat_history_info_command(config, args)
+            elif history_action == 'cleanup':
+                return chat_history_cleanup_command(config, args)
+            elif history_action == 'delete':
+                return chat_history_delete_command(config, args)
+            else:
+                console.print("[red]Unknown history action[/red]")
+                return 1
+
+        elif chat_action == 'export':
+            # Handle chat export command
+            return chat_export_command(config, args)
+
+        # No subcommand - start interactive chat
         # Override model settings if specified via CLI flags
         if hasattr(args, 'huggingface_model') and args.huggingface_model:
             config.model_name = args.huggingface_model
@@ -4007,11 +5361,58 @@ Contains the memory data files
         auto_start = getattr(args, 'auto_start_server', False)
         no_start = getattr(args, 'no_server_start', False)
 
+        # Get history flag (default is True, disabled with --no-history)
+        save_history = not getattr(args, 'no_history', False)
+
         # Get CLI question if provided
         cli_question = getattr(args, 'cli', None)
 
+        # Handle session continuation and import
+        imported_session = None
+        continue_session_id = getattr(args, 'continue_session', None)
+        import_session_file = getattr(args, 'import_session', None)
+
+        # Check that both aren't specified
+        if continue_session_id and import_session_file:
+            console.print("[red]Error: Cannot use both --continue-session and --import-session[/red]")
+            console.print("Use --continue-session for saved session IDs, --import-session for external files")
+            return 1
+
+        if continue_session_id or import_session_file:
+            from llf.chat_history import ChatHistory
+            history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
+            chat_history_manager = ChatHistory(history_dir)
+
+            if continue_session_id:
+                # Continue from a saved session ID (not a file path)
+                session_data = chat_history_manager.load_session(continue_session_id)
+                if session_data:
+                    imported_session = session_data
+                else:
+                    console.print(f"[red]Could not find session: {continue_session_id}[/red]")
+                    console.print("[dim]Use 'llf chat history list' to see available sessions[/dim]")
+                    return 1
+
+            elif import_session_file:
+                # Import from an external file (.json, .md, .txt)
+                import_path = Path(import_session_file)
+                if not import_path.exists():
+                    console.print(f"[red]File not found: {import_session_file}[/red]")
+                    return 1
+
+                # Check file extension
+                if import_path.suffix.lower() not in ['.json', '.md', '.markdown', '.txt']:
+                    console.print(f"[red]Unsupported file format: {import_path.suffix}[/red]")
+                    console.print("[yellow]Supported formats: .json, .md, .txt[/yellow]")
+                    return 1
+
+                imported_session = chat_history_manager.import_session(import_path)
+                if not imported_session:
+                    console.print(f"[red]Failed to import session from: {import_session_file}[/red]")
+                    return 1
+
         # Default to chat
-        cli = CLI(config, prompt_config=prompt_config, auto_start_server=auto_start, no_server_start=no_start)
+        cli = CLI(config, prompt_config=prompt_config, auto_start_server=auto_start, no_server_start=no_start, save_history=save_history, imported_session=imported_session)
         return cli.run(cli_question=cli_question)
     else:
         parser.print_help()

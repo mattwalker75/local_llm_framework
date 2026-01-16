@@ -203,7 +203,7 @@ After downloading (and optionally converting) your model, you need to configure 
 
 The main configuration file is `configs/config.json`. It has two main sections:
 
-1. **`local_llm_servers`** or **`local_llm_server`**: Defines the llama-server configuration
+1. **`local_llm_servers`**: Defines the llama-server configuration and supports multiple server configurations
 2. **`llm_endpoint`**: Defines how to connect to the LLM
 
 ### Single Server Configuration
@@ -212,15 +212,16 @@ Edit `configs/config.json`:
 
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "/path/to/llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "healthcheck_interval": 2.0,
-    "auto_start": false,
-    "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
-    "gguf_file": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
-  },
+  "local_llm_servers": [
+    {
+      "name": "qwen-coder",
+      "llama_server_path": "/path/to/llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8000,
+      "model_dir": "Qwen--Qwen2.5-Coder-7B-Instruct-GGUF",
+      "gguf_file": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
+    }
+  ],
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
     "api_key": "EMPTY",

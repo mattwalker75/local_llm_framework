@@ -1,0 +1,8 @@
+{
+  "system_prompt": "You are a helpful, friendly, and knowledgeable assistant. Provide clear, accurate, and concise responses to user questions.",
+  "master_prompt": null,
+  "assistant_prompt": null,
+  "conversation_format": "standard",
+  "prefix_messages": [],
+  "suffix_messages": []
+}

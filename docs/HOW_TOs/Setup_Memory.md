@@ -248,33 +248,16 @@ This will perform the following:
 
 You can create multiple memory instances for different purposes (e.g., work, personal, projects).
 
-### Using the create_memory.py Tool ( THIS IS LEGACY METHOD )
-
-NOTE:  THIS HAS BEEN REPLACED WITH `llf memory create MEMORY_MODULE_NAME`
-
-**Location:** `bin/tools/create_memory.py`
-
-**Basic usage:**
-```bash
-./bin/tools/create_memory.py my_custom_memory
-```
-
-**Examples:**
-```bash
-# Create a work-related memory
-./bin/tools/create_memory.py work_context
-
-# Create a project memory
-./bin/tools/create_memory.py python_project
-
-# Create a personal memory
-./bin/tools/create_memory.py personal_notes
-```
-
 ### Creating The Memory Module
 
 ```bash
 llf memory create my_memory_module
+```
+
+**Examples:**
+```bash
+# Create a project memory
+llf memory create python_project
 ```
 
 ### What Gets Created
@@ -597,9 +580,9 @@ The system supports five memory categories:
 
 ```bash
 # Create separate memories
-./bin/tools/create_memory.py work_projects
-./bin/tools/create_memory.py personal_assistant
-./bin/tools/create_memory.py learning_journal
+llf memory create work_projects
+llf memory create personal_assistant
+llf memory create learning_journal
 
 # Enable the one you need
 llf memory enable work_projects
@@ -747,7 +730,7 @@ llf memory disable personal_assistant
 ```bash
 # Registry should be at memory/memory_registry.json
 # If missing, recreate main_memory:
-./bin/tools/create_memory.py main_memory
+llf memory create main_memory
 llf memory enable main_memory
 ```
 
@@ -818,7 +801,7 @@ cat memory/memory_registry.json | python3 -m json.tool
 3. **Create new memory instance:**
    ```bash
    # Start fresh with new instance
-   ./bin/tools/create_memory.py main_memory_2025
+   llf memory create main_memory_2025
    llf memory enable main_memory_2025
    llf memory disable main_memory
    ```
@@ -858,7 +841,7 @@ llf memory disable main_memory
 llf memory info main_memory
 
 # Create new memory instance
-./bin/tools/create_memory.py my_memory
+llf memory create my_memory
 
 # Check memory directory
 ls -la memory/main_memory/
@@ -875,7 +858,6 @@ cat memory/memory_registry.json | python3 -m json.tool
 | Memory data | `memory/main_memory/memory.jsonl` | Stores all memory entries |
 | Index | `memory/main_memory/index.json` | Fast ID lookups |
 | Metadata | `memory/main_memory/metadata.json` | Statistics |
-| Create script | `bin/tools/create_memory.py` | Creates new instances |
 
 ### Memory Operations (LLM Tools)
 

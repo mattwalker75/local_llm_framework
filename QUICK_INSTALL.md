@@ -93,11 +93,14 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
   Ensure `llama_server_path` is pointing to the llama-server binary.<br>
   EXAMPLE:
    ```json
-      {
-        "local_llm_server": {
-          "llama_server_path": "../llama.cpp/build/bin/llama-server",
-          "server_host": "127.0.0.1",
-          "server_port": 8000,
+      "local_llm_servers": [
+         {
+            "name": "default",
+            "llama_server_path": "../llama.cpp/build/bin/llama-server",
+            "server_host": "127.0.0.1",
+            "server_port": 8000,
+            "healthcheck_interval": 2.0,
+            "auto_start": false,
    ```
 
 - Modify the following file:  `local_llm_framework/bin/tools/convert_huggingface_llm_2_gguf.sh`
@@ -178,15 +181,18 @@ NOTE:  This is only needed if you are using llama.cpp to run local LLM models
    - Ensure the "gguf_file" is set to the .gguf model file name in the above mentioned directory.
      EXAMPLE:
       ```json
-      {
-        "local_llm_server": {
-          "llama_server_path": "../llama.cpp/build/bin/llama-server",
-          "server_host": "127.0.0.1",
-          "server_port": 8000,
-          "healthcheck_interval": 2.0,
-          "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
-          "gguf_file": "Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf"
-        },
+         "local_llm_servers": [
+            {
+               "name": "default",
+               "llama_server_path": "../llama.cpp/build/bin/llama-server",
+               "server_host": "127.0.0.1",
+               "server_port": 8000,
+               "healthcheck_interval": 2.0,
+               "auto_start": false,
+               "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
+               "gguf_file": "Qwen--Qwen3-Coder-30B-A3B-Instruct_f16_q5_K_M.gguf"
+            }
+         ],
       ```
 
 - Run the following commands to start the local Llama server

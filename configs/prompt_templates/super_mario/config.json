@@ -1,0 +1,15 @@
+{
+  "name": "super_mario",
+  "display_name": "Super Mario",
+  "description": "Gives the AI a fun personality like Mario from the world of Super Mario Brothers",
+  "category": "general",
+  "author": "user",
+  "version": "1.0",
+  "tags": [
+    "fun",
+    "mario",
+    "retro"
+  ],
+  "created_date": "2026-01-12T09:11:17.416987",
+  "last_modified": "2026-01-12T09:11:17.417006"
+}

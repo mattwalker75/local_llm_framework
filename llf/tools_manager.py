@@ -468,10 +468,27 @@ class ToolsManager:
                 tool_config = json.load(f)
 
             # Validate required fields
-            required_fields = ['name', 'type', 'directory']
+            required_fields = ['name', 'display_name', 'description', 'type', 'enabled', 'directory', 'created_date', 'last_modified']
+            missing_fields = []
             for field in required_fields:
                 if field not in tool_config:
-                    return False, f"Tool config missing required field: {field}"
+                    missing_fields.append(field)
+
+            # Check metadata required fields
+            if 'metadata' not in tool_config:
+                missing_fields.append('metadata')
+            else:
+                required_metadata = ['category', 'requires_approval', 'dependencies']
+                for field in required_metadata:
+                    if field not in tool_config['metadata']:
+                        missing_fields.append(f'metadata.{field}')
+
+            if missing_fields:
+                return False, f"Tool config missing required fields: {', '.join(missing_fields)}"
+
+            # Verify tool name matches directory name
+            if tool_config.get('name') != tool_name:
+                return False, f"Tool name mismatch: directory='{tool_name}', config.name='{tool_config.get('name')}'"
 
             # Add to registry
             tools = self.registry.get('tools', [])

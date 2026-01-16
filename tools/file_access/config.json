@@ -10,6 +10,7 @@
   "metadata": {
     "category": "file_access",
     "requires_approval": false,
+    "dependencies": [],
     "use_case": "Allow LLM to read and write files within configured whitelist patterns",
     "mode": "ro",
     "root_dir": ".",

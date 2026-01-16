@@ -1,0 +1,15 @@
+{
+  "name": "minimal",
+  "display_name": "Minimal Prompt",
+  "description": "Minimal configuration with no system prompts",
+  "category": "general",
+  "author": "system",
+  "version": "1.0",
+  "tags": [
+    "minimal",
+    "basic",
+    "simple"
+  ],
+  "created_date": "2026-01-09T09:47:59.830697",
+  "last_modified": "2026-01-09T09:47:59.830699"
+}

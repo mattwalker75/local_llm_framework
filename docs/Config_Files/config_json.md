@@ -43,8 +43,7 @@ A configuration file contains the following top-level sections:
 
 ```json
 {
-  "local_llm_server": { ... },           // Single server (legacy)
-  "local_llm_servers": [ ... ],          // Multiple servers (modern)
+  "local_llm_servers": [ ... ],          // Single and Multiple server
   "llm_endpoint": { ... },               // API connection settings
   "model_dir": "models",                 // Model storage directory
   "cache_dir": ".cache",                 // Cache directory
@@ -63,14 +62,18 @@ Use this configuration for running a single local GGUF model with llama-server.
 
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "healthcheck_interval": 2.0,
-    "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
-    "gguf_file": "qwen3-coder-30b.gguf"
-  },
+  "local_llm_servers": [
+    {
+      "name": "default",
+      "llama_server_path": "../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8000,
+      "healthcheck_interval": 2.0,
+      "auto_start": false,
+      "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "gguf_file": "qwen3-coder-30b.gguf"
+    }
+  ],
 
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
@@ -100,21 +103,24 @@ You can add `server_params` to customize llama-server behavior:
 
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "../llama.cpp/build/bin/llama-server",
-    "server_host": "127.0.0.1",
-    "server_port": 8000,
-    "healthcheck_interval": 2.0,
-    "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
-    "gguf_file": "qwen3-coder-30b.gguf",
-
-    "server_params": {
-      "ctx-size": "8192",
-      "n-gpu-layers": "40",
-      "threads": "8",
-      "batch-size": "512"
+  "local_llm_servers": [
+    {
+      "name": "default",
+      "llama_server_path": "../llama.cpp/build/bin/llama-server",
+      "server_host": "127.0.0.1",
+      "server_port": 8000,
+      "healthcheck_interval": 2.0,
+      "auto_start": false,
+      "model_dir": "Qwen--Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "gguf_file": "qwen3-coder-30b.gguf",
+      "server_params": {
+        "ctx-size": "8192",
+        "n-gpu-layers": "40",
+        "threads": "8",
+        "batch-size": "512"
+      }
     }
-  },
+  ],
 
   "llm_endpoint": {
     "api_base_url": "http://127.0.0.1:8000/v1",
@@ -413,7 +419,6 @@ Configure the framework to use Anthropic's Claude API.
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `local_llm_server` | Object | No | Single local server configuration (legacy) |
 | `local_llm_servers` | Array | No | Multiple local server configurations |
 | `llm_endpoint` | Object | Yes | API connection settings |
 | `model_dir` | String | Yes | Directory for storing models (relative to project root) |
@@ -421,7 +426,7 @@ Configure the framework to use Anthropic's Claude API.
 | `inference_params` | Object | Yes | LLM generation parameters |
 | `log_level` | String | Yes | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 
-### Local Server Options (`local_llm_server` or items in `local_llm_servers`)
+### Local Server Options (items in `local_llm_servers`)
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
@@ -607,7 +612,7 @@ The `tool_execution_mode` option controls how the framework handles streaming an
 
 | Configuration Type | Required Sections | Optional Sections |
 |-------------------|-------------------|-------------------|
-| **Single Local Server** | `local_llm_server`, `llm_endpoint`, `inference_params` | `server_params` |
+| **Single Local Server** | `local_llm_servers`, `llm_endpoint`, `inference_params` | `server_params` |
 | **Multi Local Servers** | `local_llm_servers`, `llm_endpoint`, `inference_params` | `server_params` per server |
 | **OpenAI** | `llm_endpoint`, `inference_params` | None (no server sections) |
 | **Anthropic** | `llm_endpoint`, `inference_params` | None (no server sections) |

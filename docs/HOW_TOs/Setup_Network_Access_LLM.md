@@ -244,13 +244,16 @@ Open `configs/config.json` and change `server_host`:
 
 ```json
 {
-  "local_llm_server": {
-    "llama_server_path": "/path/to/llama-server",
-    "server_host": "0.0.0.0",  ← Change from 127.0.0.1 to 0.0.0.0
-    "server_port": 8000,
-    "model_dir": "YourModel-GGUF",
-    "gguf_file": "model.gguf"
-  },
+  "local_llm_servers": [
+      {
+         "name": "default",
+         "llama_server_path": "/path/to/llama-server",
+         "server_host": "0.0.0.0",  ← Change from 127.0.0.1 to 0.0.0.0
+         "server_port": 8000,
+         "model_dir": "YourModel-GGUF",
+         "gguf_file": "model.gguf"
+      }
+  ]
   "llm_endpoint": {
     "api_base_url": "http://0.0.0.0:8000/v1",  ← Also update this
     "api_key": "EMPTY",
