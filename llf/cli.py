@@ -116,6 +116,7 @@ class CLI:
         from llf.chat_history import ChatHistory
         history_dir = Path(config.config_file).parent / 'chat_history' if config.config_file else Path.cwd() / 'chat_history'
         self.chat_history = ChatHistory(history_dir)
+        self.current_session_file = None  # Track current session for incremental logging
 
         # Load module registry and initialize text-to-speech and speech-to-text if enabled
         self.tts = None
@@ -425,6 +426,76 @@ If STT fails, the system will automatically fall back to keyboard input.
             logger.error(f"Server startup failed: {e}")
             return False
 
+    def _ensure_session_started(self) -> Optional[Path]:
+        """
+        Ensure a session file exists for incremental logging.
+
+        Creates a new session file if one doesn't exist yet.
+
+        Returns:
+            Path to the session file, or None if save_history is disabled.
+        """
+        if not self.save_history:
+            return None
+
+        if self.current_session_file is None:
+            try:
+                metadata = {
+                    'model': self.config.model_name,
+                    'interface': 'cli',
+                    'server_url': self.config.api_base_url
+                }
+                self.current_session_file = self.chat_history.start_session(metadata)
+                logger.debug(f"Started new chat session: {self.current_session_file.name}")
+            except Exception as e:
+                logger.warning(f"Failed to start chat session: {e}")
+                return None
+
+        return self.current_session_file
+
+    def _append_to_chat_history(self, user_message: str, assistant_response: str) -> bool:
+        """
+        Append a user/assistant message pair to the current session.
+
+        This is called after each LLM response for incremental logging.
+
+        Args:
+            user_message: The user's message
+            assistant_response: The assistant's response
+
+        Returns:
+            True if messages were appended, False otherwise
+        """
+        session_file = self._ensure_session_started()
+        if not session_file:
+            return False
+
+        try:
+            timestamp = datetime.now().isoformat()
+
+            messages = [
+                {'role': 'user', 'content': user_message, 'timestamp': timestamp},
+                {'role': 'assistant', 'content': assistant_response, 'timestamp': timestamp}
+            ]
+
+            success = self.chat_history.append_messages(session_file, messages)
+            if success:
+                logger.debug(f"Appended messages to session: {session_file.name}")
+            return success
+        except Exception as e:
+            logger.warning(f"Failed to append to chat history: {e}")
+            return False
+
+    def _start_new_session(self) -> Optional[Path]:
+        """
+        Start a new session file (used when clearing chat).
+
+        Returns:
+            Path to the new session file, or None if save_history is disabled.
+        """
+        self.current_session_file = None  # Reset to force new session
+        return self._ensure_session_started()
+
     def interactive_loop(self) -> None:
         """Run interactive chat loop."""
         self.running = True
@@ -501,6 +572,7 @@ If STT fails, the system will automatically fall back to keyboard input.
                     console.clear()
                     self.print_welcome()
                     conversation_history = []  # Clear conversation history
+                    self._start_new_session()  # Start new session for incremental logging
                     continue
 
                 # Print separator line
@@ -587,6 +659,9 @@ If STT fails, the system will automatically fall back to keyboard input.
                         'content': full_response
                     })
 
+                    # Save this exchange to chat history (incremental logging)
+                    self._append_to_chat_history(user_input, full_response)
+
                     # Print separator line after response
                     console.print("\n[dim]" + "─" * 60 + "[/dim]")
 
@@ -618,26 +693,8 @@ If STT fails, the system will automatically fall back to keyboard input.
                 console.print(f"[red]Error: {e}[/red]")
                 logger.error(f"Interactive loop error: {e}")
 
-        # Save conversation history after loop ends
-        if self.save_history and conversation_history and len(conversation_history) > 0:
-            try:
-                # Add timestamps to messages
-                for msg in conversation_history:
-                    if 'timestamp' not in msg:
-                        msg['timestamp'] = datetime.now().isoformat()
-
-                # Prepare metadata
-                metadata = {
-                    'model': self.config.model_name,
-                    'timestamp': datetime.now().isoformat(),
-                    'server_url': self.config.api_base_url
-                }
-
-                # Save to history
-                filepath = self.chat_history.save_session(conversation_history, metadata)
-                console.print(f"[dim]Conversation saved to: {filepath.name}[/dim]")
-            except Exception as e:
-                logger.warning(f"Failed to save chat history: {e}")
+        # With incremental logging, chat history is saved after each exchange.
+        # No batch save needed at the end.
 
     def cli_question(self, question: str) -> int:
         """

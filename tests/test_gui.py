@@ -71,12 +71,14 @@ class TestLLMFrameworkGUI:
         assert gui.model_manager is not None
         assert gui.runtime is not None
 
-    def test_initialization_with_defaults(self):
+    def test_initialization_with_defaults(self, tmp_path):
         """Test GUI initialization with default configs."""
         with patch('llf.gui.get_config') as mock_get_config, \
              patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
 
-            mock_get_config.return_value = Mock()
+            mock_config = Mock()
+            mock_config.config_file = tmp_path / "config.json"
+            mock_get_config.return_value = mock_config
             mock_get_prompt_config.return_value = Mock()
 
             gui = LLMFrameworkGUI()
@@ -86,12 +88,14 @@ class TestLLMFrameworkGUI:
             mock_get_config.assert_called_once()
             mock_get_prompt_config.assert_called_once()
 
-    def test_initialization_with_auth_key(self):
+    def test_initialization_with_auth_key(self, tmp_path):
         """Test GUI initialization with authentication key."""
         with patch('llf.gui.get_config') as mock_get_config, \
              patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
 
-            mock_get_config.return_value = Mock()
+            mock_config = Mock()
+            mock_config.config_file = tmp_path / "config.json"
+            mock_get_config.return_value = mock_config
             mock_get_prompt_config.return_value = Mock()
 
             auth_key = "test_secret_key_123"
@@ -101,12 +105,14 @@ class TestLLMFrameworkGUI:
             assert gui.config is not None
             assert gui.prompt_config is not None
 
-    def test_initialization_without_auth_key(self):
+    def test_initialization_without_auth_key(self, tmp_path):
         """Test GUI initialization without authentication key."""
         with patch('llf.gui.get_config') as mock_get_config, \
              patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
 
-            mock_get_config.return_value = Mock()
+            mock_config = Mock()
+            mock_config.config_file = tmp_path / "config.json"
+            mock_get_config.return_value = mock_config
             mock_get_prompt_config.return_value = Mock()
 
             gui = LLMFrameworkGUI()
@@ -185,6 +191,7 @@ class TestLLMFrameworkGUI:
              patch.object(gui.runtime, 'is_server_running', return_value=True), \
              patch.object(gui.runtime, 'stop_server') as mock_stop:
 
+            # shutdown_gui no longer takes history/save_enabled args (incremental logging)
             result = gui.shutdown_gui()
 
             mock_stop.assert_called_once()
@@ -197,6 +204,7 @@ class TestLLMFrameworkGUI:
         with patch.object(gui.runtime, 'is_server_running', return_value=True), \
              patch.object(gui.runtime, 'stop_server') as mock_stop:
 
+            # shutdown_gui no longer takes history/save_enabled args (incremental logging)
             result = gui.shutdown_gui()
 
             mock_stop.assert_not_called()
@@ -207,6 +215,7 @@ class TestLLMFrameworkGUI:
         with patch.object(gui.runtime, 'is_server_running', return_value=False), \
              patch.object(gui.runtime, 'stop_server') as mock_stop:
 
+            # shutdown_gui no longer takes history/save_enabled args (incremental logging)
             result = gui.shutdown_gui()
 
             mock_stop.assert_not_called()
@@ -220,6 +229,7 @@ class TestLLMFrameworkGUI:
              patch.object(gui.runtime, 'is_server_running', return_value=True), \
              patch.object(gui.runtime, 'stop_server', side_effect=Exception("Stop error")):
 
+            # shutdown_gui no longer takes history/save_enabled args (incremental logging)
             result = gui.shutdown_gui()
 
             assert "error" in result.lower()
@@ -709,12 +719,8 @@ class TestLLMFrameworkGUI:
         """Test clearing chat history."""
         result = gui.clear_chat()
 
-        # clear_chat now returns tuple: (empty list, status message)
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        assert result[0] == []  # Empty chat list
-        # Status message is either empty or save confirmation
-        assert isinstance(result[1], str)
+        # clear_chat returns empty list for chatbot
+        assert result == []
 
     def test_create_interface(self, gui):
         """Test creating Gradio interface."""
@@ -812,7 +818,7 @@ class TestNewGUIMethods:
     """Test new GUI methods added for enhanced functionality."""
 
     @pytest.fixture
-    def gui(self):
+    def gui(self, tmp_path):
         """Create GUI instance for testing."""
         with patch('llf.gui.get_config') as mock_get_config, \
              patch('llf.gui.get_prompt_config') as mock_get_prompt_config:
@@ -821,6 +827,7 @@ class TestNewGUIMethods:
             mock_config.model_dir = Path("/tmp/models")
             mock_config.cache_dir = Path("/tmp/cache")
             mock_config.model_name = "test-model"
+            mock_config.config_file = tmp_path / "config.json"  # Required for chat history init
             mock_config.is_using_external_api.return_value = False
             mock_config.has_local_server_config.return_value = True
 

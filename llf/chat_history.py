@@ -50,15 +50,83 @@ class ChatHistory:
         session_data = {
             "session_id": session_id,
             "timestamp": timestamp.isoformat(),
-            "messages": messages,
             "metadata": metadata or {},
-            "message_count": len(messages)
+            "messages": messages
         }
 
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(session_data, f, indent=2, ensure_ascii=False)
 
         return filepath
+
+    def start_session(self, metadata: Optional[Dict[str, Any]] = None) -> Path:
+        """
+        Start a new chat session file with metadata initialized.
+
+        Creates a session file with metadata at the top and an empty messages array.
+        Use append_messages() to add messages incrementally.
+
+        Args:
+            metadata: Optional metadata about the session (model, interface, etc.).
+
+        Returns:
+            Path to the new session file.
+        """
+        timestamp = datetime.now()
+        session_id = timestamp.strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"chat_{session_id}.json"
+        filepath = self.history_dir / filename
+
+        session_data = {
+            "session_id": session_id,
+            "timestamp": timestamp.isoformat(),
+            "metadata": metadata or {},
+            "messages": []
+        }
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(session_data, f, indent=2, ensure_ascii=False)
+
+        return filepath
+
+    def append_messages(self, filepath: Path, messages: List[Dict[str, Any]]) -> bool:
+        """
+        Append messages to an existing session file.
+
+        This enables incremental logging where messages are saved immediately
+        after each exchange rather than all at once at session end.
+
+        Args:
+            filepath: Path to the session file.
+            messages: List of message dictionaries to append.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            filepath = Path(filepath)
+            if not filepath.exists():
+                console.print(f"[red]Session file not found: {filepath}[/red]")
+                return False
+
+            with open(filepath, 'r', encoding='utf-8') as f:
+                session_data = json.load(f)
+
+            # Add timestamps to messages if not present
+            for msg in messages:
+                if 'timestamp' not in msg:
+                    msg['timestamp'] = datetime.now().isoformat()
+
+            session_data['messages'].extend(messages)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(session_data, f, indent=2, ensure_ascii=False)
+
+            return True
+
+        except Exception as e:
+            console.print(f"[red]Error appending to session: {e}[/red]")
+            return False
 
     def load_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -118,7 +186,7 @@ class ChatHistory:
                     'session_id': data['session_id'],
                     'filename': filepath.name,
                     'timestamp': data['timestamp'],
-                    'message_count': data['message_count'],
+                    'message_count': data.get('message_count', len(data.get('messages', []))),
                     'metadata': data.get('metadata', {})
                 })
 

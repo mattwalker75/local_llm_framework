@@ -65,6 +65,7 @@ from .prompt_config import PromptConfig, get_prompt_config
 from .model_manager import ModelManager
 from .llm_runtime import LLMRuntime
 from .logging_config import get_logger
+from .chat_history import ChatHistory
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,7 @@ class LLMFrameworkGUI:
     - Config: Edit config.json and config_prompt.json
     """
 
-    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None, share: bool = False):
+    def __init__(self, config: Optional[Config] = None, prompt_config: Optional[PromptConfig] = None, auth_key: Optional[str] = None, share: bool = False, save_history: bool = True):
         """
         Initialize GUI.
 
@@ -97,15 +98,21 @@ class LLMFrameworkGUI:
             prompt_config: Prompt configuration instance (defaults to global)
             auth_key: Optional authentication key for securing GUI access
             share: Whether GUI is running in share mode (--share flag)
+            save_history: Whether to save chat history to disk (default: True)
         """
         self.config = config or get_config()
         self.prompt_config = prompt_config or get_prompt_config()
         self.model_manager = ModelManager(self.config)
         self.runtime = LLMRuntime(self.config, self.model_manager, self.prompt_config)
-        self.chat_history: List[Tuple[str, str]] = []
         self.started_server = False  # Track if GUI started the server
         self.auth_key = auth_key  # Authentication key (None = no auth required)
         self.is_share_mode = share  # Track if running in share mode
+        self.save_history = save_history  # Track if chat history should be saved
+
+        # Initialize chat history manager
+        history_dir = Path(self.config.config_file).parent / 'chat_history' if self.config.config_file else Path.cwd() / 'chat_history'
+        self.chat_history_manager = ChatHistory(history_dir)
+        self.current_session_file = None  # Track current session file for incremental logging
 
         # Load module registry and initialize text-to-speech and speech-to-text if enabled
         self.tts = None
@@ -280,13 +287,14 @@ class LLMFrameworkGUI:
 
     # ===== Chat Tab Functions =====
 
-    def chat_respond(self, message: str, history: List[dict]):
+    def chat_respond(self, message: str, history: List[dict], save_enabled: bool = True):
         """
         Process chat message and stream response.
 
         Args:
             message: User's message
             history: Chat history as list of message dicts with 'role' and 'content'
+            save_enabled: Whether to save this exchange to chat history (from UI checkbox)
 
         Yields:
             Tuple of (empty string to clear input, updated history with streaming content)
@@ -362,6 +370,10 @@ class LLMFrameworkGUI:
                     current_history = history + [{"role": "assistant", "content": response_text}]
                     yield "", current_history
 
+            # Save this exchange to chat history if enabled (incremental logging)
+            if save_enabled and response_text:
+                self._append_to_chat_history(message, response_text)
+
             # If TTS is enabled AND user has it toggled on, handle based on mode
             if self.tts and self.tts_enabled_state and response_text:
                 if not self.is_share_mode:
@@ -387,19 +399,105 @@ class LLMFrameworkGUI:
             history = history + [{"role": "assistant", "content": error_msg}]
             yield "", history
 
+    def _ensure_session_started(self) -> Optional[Path]:
+        """
+        Ensure a session file exists for incremental logging.
+
+        Creates a new session file if one doesn't exist yet.
+
+        Returns:
+            Path to the session file, or None if save_history is disabled.
+        """
+        if not self.save_history:
+            return None
+
+        if self.current_session_file is None:
+            try:
+                metadata = {
+                    'model': self.config.model_name,
+                    'interface': 'gui',
+                    'share_mode': self.is_share_mode
+                }
+                self.current_session_file = self.chat_history_manager.start_session(metadata)
+                logger.info(f"Started new chat session: {self.current_session_file.name}")
+            except Exception as e:
+                logger.warning(f"Failed to start chat session: {e}")
+                return None
+
+        return self.current_session_file
+
+    def _append_to_chat_history(self, user_message: str, assistant_response: str) -> bool:
+        """
+        Append a user/assistant message pair to the current session.
+
+        This is called after each LLM response when save_history is enabled.
+
+        Args:
+            user_message: The user's message
+            assistant_response: The assistant's response
+
+        Returns:
+            True if messages were appended, False otherwise
+        """
+        session_file = self._ensure_session_started()
+        if not session_file:
+            return False
+
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().isoformat()
+
+            messages = [
+                {'role': 'user', 'content': user_message, 'timestamp': timestamp},
+                {'role': 'assistant', 'content': assistant_response, 'timestamp': timestamp}
+            ]
+
+            success = self.chat_history_manager.append_messages(session_file, messages)
+            if success:
+                logger.debug(f"Appended messages to session: {session_file.name}")
+            return success
+        except Exception as e:
+            logger.warning(f"Failed to append to chat history: {e}")
+            return False
+
+    def _start_new_session(self) -> Optional[Path]:
+        """
+        Start a new session file (used when clearing chat).
+
+        Returns:
+            Path to the new session file, or None if save_history is disabled.
+        """
+        self.current_session_file = None  # Reset to force new session
+        return self._ensure_session_started()
+
     def clear_chat(self) -> List:
-        """Clear chat history."""
+        """
+        Clear chat history and start a new session.
+
+        With incremental logging, messages are already saved after each exchange,
+        so clearing just starts a fresh session file.
+
+        Returns:
+            Empty list for the chatbot
+        """
+        # Start a new session for future messages
+        if self.save_history:
+            self._start_new_session()
         return []
 
     def shutdown_gui(self) -> str:
         """
         Shutdown the GUI gracefully.
 
+        With incremental logging, chat history is already saved after each exchange,
+        so no additional save is needed.
+
         Returns:
             Status message
         """
         try:
             logger.info("Shutting down GUI...")
+
             # Only stop server if it was started by the GUI (not if started with --daemon)
             if self.started_server and self.config.has_local_server_config() and self.runtime.is_server_running():
                 self.runtime.stop_server()
@@ -1892,10 +1990,7 @@ class LLMFrameworkGUI:
                         container=False
                     )
 
-                # Shutdown handler
-                shutdown_btn.click(self.shutdown_gui, None, shutdown_status).then(
-                    lambda: gr.update(visible=True), None, shutdown_status
-                )
+                # Note: Shutdown handler is set up after chatbot is defined (to save chat history)
 
                 # Server startup prompt (shown on load if server not running)
                 needs_start, startup_msg = self.check_server_on_startup()
@@ -1969,7 +2064,14 @@ class LLMFrameworkGUI:
                                 with gr.Row(visible=self.stt is not None) as voice_controls_row:
                                     start_listening_btn = gr.Button("🎤 Start Listening", size="sm", variant="primary")
                                     stop_listening_btn = gr.Button("🛑 Stop Listening", size="sm", variant="stop", visible=False)
-                                clear = gr.Button("Clear Chat")
+                                with gr.Row():
+                                    clear = gr.Button("Clear Chat")
+                                    save_history_enabled = gr.Checkbox(
+                                        label="💾 Save History",
+                                        value=self.save_history,  # Default from constructor
+                                        container=False,
+                                        info="Log each exchange to file"
+                                    )
                                 # Add reload modules button
                                 reload_modules_btn = gr.Button("🔄 Reload Modules", size="sm", variant="secondary")
 
@@ -1995,7 +2097,7 @@ class LLMFrameworkGUI:
     
                         # Chat interactions
                         # Submit button always works
-                        submit_event = submit.click(self.chat_respond, [msg, chatbot], [msg, chatbot])
+                        submit_event = submit.click(self.chat_respond, [msg, chatbot, save_history_enabled], [msg, chatbot])
 
                         # Add browser TTS for share mode
                         if self.is_share_mode and self.tts:
@@ -2079,11 +2181,11 @@ class LLMFrameworkGUI:
                         # When disabled, we want multiline input (Enter creates newline)
                         # Problem: Gradio's .submit() always intercepts Enter and clears the textbox
                         # Solution: Check checkbox, and if disabled, restore the message + add newline
-                        def handle_enter_key(message, history, enter_enabled):
+                        def handle_enter_key(message, history, enter_enabled, save_enabled):
                             """Handle Enter key press based on checkbox state."""
                             if enter_enabled:
                                 # Submit: process the message
-                                for update in self.chat_respond(message, history):
+                                for update in self.chat_respond(message, history, save_enabled):
                                     yield update
                             else:
                                 # Don't submit: restore message with newline added
@@ -2092,7 +2194,7 @@ class LLMFrameworkGUI:
 
                         enter_event = msg.submit(
                             handle_enter_key,
-                            inputs=[msg, chatbot, submit_on_enter],
+                            inputs=[msg, chatbot, submit_on_enter, save_history_enabled],
                             outputs=[msg, chatbot]
                         )
 
@@ -2209,6 +2311,15 @@ class LLMFrameworkGUI:
 
                         tts_enabled.change(toggle_tts, inputs=[tts_enabled], outputs=[])
 
+                        # Save History toggle event handler
+                        def toggle_save_history(enabled):
+                            """Update save_history state when user toggles checkbox."""
+                            self.save_history = enabled
+                            logger.debug(f"Save history toggled: {enabled}")
+                            return None  # No UI update needed
+
+                        save_history_enabled.change(toggle_save_history, inputs=[save_history_enabled], outputs=[])
+
                         # Voice input event handlers (always wire up, work even if STT not initially loaded)
                         # We'll check self.stt and self.listening_mode_active inside the handlers
                         def start_listening_mode():
@@ -2319,10 +2430,14 @@ class LLMFrameworkGUI:
                                         gr.update()
                                     )
 
-                        def continuous_listen_respond_loop(chatbot_history):
+                        def continuous_listen_respond_loop(chatbot_history, save_enabled=True):
                             """
                             Continuous loop: listen -> transcribe -> respond -> listen again.
                             Runs while listening_mode_active is True.
+
+                            Args:
+                                chatbot_history: Current chat history
+                                save_enabled: Whether to save exchanges to chat history
                             """
                             # Safety check: STT must be available
                             if not self.stt:
@@ -2393,6 +2508,11 @@ class LLMFrameworkGUI:
                                     # Update history with complete response
                                     current_history = current_history + [{"role": "assistant", "content": response_text}]
 
+                                    # Save this exchange to chat history if enabled (incremental logging)
+                                    # Check self.save_history directly to pick up real-time checkbox changes
+                                    if self.save_history and response_text:
+                                        self._append_to_chat_history(text, response_text)
+
                                     # Speak response if TTS enabled
                                     if self.tts and self.tts_enabled_state and response_text:
                                         if not self.is_share_mode:
@@ -2431,7 +2551,7 @@ class LLMFrameworkGUI:
                             )
 
                         # Start listening button: activate continuous mode and conditionally start loop
-                        def start_and_maybe_loop(chatbot_history):
+                        def start_and_maybe_loop(chatbot_history, save_enabled):
                             """Start listening mode, and if successful, run the continuous loop."""
                             # Try to start listening mode
                             start_vis, stop_vis, status_vis, status_val, proceed = start_listening_mode()
@@ -2456,7 +2576,7 @@ class LLMFrameworkGUI:
                             # If STT is available, proceed with continuous loop
                             if proceed and self.stt:
                                 # Run the continuous listen loop
-                                for update in continuous_listen_respond_loop(chatbot_history):
+                                for update in continuous_listen_respond_loop(chatbot_history, save_enabled):
                                     yield (
                                         gr.update(),  # start_btn
                                         gr.update(),  # stop_btn
@@ -2467,7 +2587,7 @@ class LLMFrameworkGUI:
 
                         start_listening_btn.click(
                             start_and_maybe_loop,
-                            inputs=[chatbot],
+                            inputs=[chatbot, save_history_enabled],
                             outputs=[start_listening_btn, stop_listening_btn, voice_status, msg, chatbot]
                         )
 
@@ -2476,6 +2596,15 @@ class LLMFrameworkGUI:
                             stop_listening_mode,
                             inputs=[],
                             outputs=[start_listening_btn, stop_listening_btn, voice_status]
+                        )
+
+                        # Shutdown handler
+                        shutdown_btn.click(
+                            self.shutdown_gui,
+                            inputs=None,
+                            outputs=[shutdown_status]
+                        ).then(
+                            lambda: gr.update(visible=True), None, shutdown_status
                         )
 
                     # ===== Server Tab =====

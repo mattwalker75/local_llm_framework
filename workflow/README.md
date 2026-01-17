@@ -470,6 +470,9 @@ with which prompts I passed to the AI.
 2.  Enable chat history in the GUI, like we do with the chat CLI via "llf chat"
        - Have it log the exact same way as how it does via the "llf chat" command and provide the ability to 
          disable logging but have it enabled by default
-
+       - This is handled by a simple enable/disable switch in the chat window
+3.  Enable the ability to view past chat conversations.  similar to the following:
+    "llf chat history list", "llf chat history info", and "llf chat --continue-session"
+       - 
 
 
