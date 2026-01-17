@@ -458,5 +458,18 @@ with which prompts I passed to the AI.
 3.  Code cleanup and unit testing
 4.  --  COMMITED THE CODE AND CALLED THE TWEAKS AND CLEANUP COMPLETE
 
+#### Add GUI counterparts to the added CLI functionality ( not all will be applicable )
+1.  Review the current CLI functionality and determine which parts need to have a GUI counterpart
+      The following is the list of what we need to add:
+        - Need to record chat history, like we do in the CLI to configs/chat_history
+        - Enable teh ability to load a chat from the configs/chat_history
+        - Under "Configuration" add a "prompt template" next to "config.json" and "config_prompt.json".
+           - List out the available prompt templates
+           - Enable prompts, which will load it into config_prompt.json and update prompt_templates_registry.json
+           - Provide a lot of the functionality as the "llf prompt" command
+2.  Enable chat history in the GUI, like we do with the chat CLI via "llf chat"
+       - Have it log the exact same way as how it does via the "llf chat" command and provide the ability to 
+         disable logging but have it enabled by default
+
 
 

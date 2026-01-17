@@ -709,7 +709,12 @@ class TestLLMFrameworkGUI:
         """Test clearing chat history."""
         result = gui.clear_chat()
 
-        assert result == []
+        # clear_chat now returns tuple: (empty list, status message)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert result[0] == []  # Empty chat list
+        # Status message is either empty or save confirmation
+        assert isinstance(result[1], str)
 
     def test_create_interface(self, gui):
         """Test creating Gradio interface."""
