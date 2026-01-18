@@ -67,7 +67,7 @@ class TestChatHistory:
 
         assert data['messages'] == sample_messages
         assert data['metadata'] == sample_metadata
-        assert data['message_count'] == len(sample_messages)
+        # message_count is no longer stored in file (computed from messages array length)
         assert 'session_id' in data
         assert 'timestamp' in data
 
